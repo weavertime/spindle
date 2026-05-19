@@ -38,8 +38,15 @@ import type {
 export interface SheetYTypes {
   root: Y.Map<unknown>;
   meta: Y.Map<unknown>;
-  rowOrder: Y.Array<string>;
-  colOrder: Y.Array<string>;
+  /**
+   * rowId → numeric display index. Storing the reverse direction lets each
+   * peer write to a different rowId without colliding (rowIds are random
+   * per peer). When two peers concurrently shove different rowIds at the
+   * same index, both entries persist and deserialization tie-breaks by
+   * (index, rowId) — both peers converge to the same final order.
+   */
+  rowOrder: Y.Map<number>;
+  colOrder: Y.Map<number>;
   cells: Y.Map<Cell>;
   rowHeights: Y.Map<number>;
   colWidths: Y.Map<number>;
@@ -73,8 +80,8 @@ export function getSheetYTypes(sheetMap: Y.Map<unknown>): SheetYTypes {
   return {
     root: sheetMap,
     meta: sheetMap.get('meta') as Y.Map<unknown>,
-    rowOrder: sheetMap.get('rowOrder') as Y.Array<string>,
-    colOrder: sheetMap.get('colOrder') as Y.Array<string>,
+    rowOrder: sheetMap.get('rowOrder') as Y.Map<number>,
+    colOrder: sheetMap.get('colOrder') as Y.Map<number>,
     cells: sheetMap.get('cells') as Y.Map<Cell>,
     rowHeights: sheetMap.get('rowHeights') as Y.Map<number>,
     colWidths: sheetMap.get('colWidths') as Y.Map<number>,
@@ -91,8 +98,8 @@ export function getSheetYTypes(sheetMap: Y.Map<unknown>): SheetYTypes {
 export function createSheetYMap(): Y.Map<unknown> {
   const sheetMap = new Y.Map<unknown>();
   sheetMap.set('meta', new Y.Map<unknown>());
-  sheetMap.set('rowOrder', new Y.Array<string>());
-  sheetMap.set('colOrder', new Y.Array<string>());
+  sheetMap.set('rowOrder', new Y.Map<number>());
+  sheetMap.set('colOrder', new Y.Map<number>());
   sheetMap.set('cells', new Y.Map<Cell>());
   sheetMap.set('rowHeights', new Y.Map<number>());
   sheetMap.set('colWidths', new Y.Map<number>());
@@ -161,15 +168,17 @@ function hydrateSheetYMap(sheetMap: Y.Map<unknown>, data: SheetData): void {
     t.meta.set('sortOrder', data.config.sortOrder);
   }
 
-  // rowOrder / colOrder. Wire format may be sparse Array<[idx, id]>; we
-  // rebuild a dense order of rowIds in index order.
+  // rowOrder / colOrder: wire format is sparse Array<[idx, id]>; store as
+  // Y.Map<rowId, idx>.
   if (data.rowOrder) {
-    const dense = denseRowOrderFrom(data.rowOrder);
-    t.rowOrder.push(dense);
+    for (const [idx, id] of data.rowOrder) {
+      t.rowOrder.set(id, idx);
+    }
   }
   if (data.colOrder) {
-    const dense = denseRowOrderFrom(data.colOrder);
-    t.colOrder.push(dense);
+    for (const [idx, id] of data.colOrder) {
+      t.colOrder.set(id, idx);
+    }
   }
 
   // cells — keys are already stable-form when rowOrder is present.
@@ -207,13 +216,16 @@ function hydrateSheetYMap(sheetMap: Y.Map<unknown>, data: SheetData): void {
 }
 
 /**
- * SheetData.rowOrder / colOrder is `Array<[index, id]>` (sparse). Y.Array is
- * dense, so we sort by index and produce a packed list of IDs. Gaps are
- * preserved by inserting placeholder slots — but for v1 we just compact;
- * the engine treats untouched indices as virtual rows anyway.
+ * Read a Y.Map<id, idx> back into the SheetData sparse Array<[idx, id]>
+ * form. Sorting by (idx, id) ensures deterministic tie-breaks across peers
+ * when two rowIds end up at the same display index (rare; happens only on
+ * truly-concurrent insertions).
  */
-function denseRowOrderFrom(sparse: Array<[number, string]>): string[] {
-  return [...sparse].sort(([a], [b]) => a - b).map(([, id]) => id);
+function serializeOrderMap(map: Y.Map<number>): Array<[number, string]> {
+  const entries: Array<[number, string]> = [];
+  for (const [id, idx] of map.entries()) entries.push([idx, id]);
+  entries.sort(([a, ia], [b, ib]) => a - b || ia.localeCompare(ib));
+  return entries;
 }
 
 // ============================================================================
@@ -258,8 +270,8 @@ export function serializeYDocToData(
 function serializeSheetYMap(sheetMap: Y.Map<unknown>): SheetData {
   const t = getSheetYTypes(sheetMap);
 
-  const rowOrderArr = t.rowOrder.toArray();
-  const colOrderArr = t.colOrder.toArray();
+  const rowOrderEntries = serializeOrderMap(t.rowOrder);
+  const colOrderEntries = serializeOrderMap(t.colOrder);
 
   const cells: Array<{ key: string; cell: Cell }> = [];
   for (const [key, cell] of t.cells.entries()) {
@@ -283,8 +295,8 @@ function serializeSheetYMap(sheetMap: Y.Map<unknown>): SheetData {
     id: (t.meta.get('id') as string) ?? '',
     name: (t.meta.get('name') as string) ?? '',
     cells,
-    rowOrder: rowOrderArr.map((id, idx) => [idx, id]),
-    colOrder: colOrderArr.map((id, idx) => [idx, id]),
+    rowOrder: rowOrderEntries,
+    colOrder: colOrderEntries,
     config: {
       rowHeights: rowHeights.length ? rowHeights : undefined,
       colWidths: colWidths.length ? colWidths : undefined,

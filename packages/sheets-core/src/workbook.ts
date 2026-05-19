@@ -10,8 +10,14 @@ import { SortManager } from './features/sort';
 import { getCellKey, getStableCellKey, parseCellKey } from './utils/cell-key';
 import { FormulaParser } from './formula-parser';
 import type { RangeReference, StableFormulaNode, SheetResolver } from './formula-parser';
+import * as Y from 'yjs';
 import { attachCollabToWorkbook } from './collab/binding';
 import type { CollabHandle, AttachCollabOptions } from './collab/binding';
+import {
+  getWorkbookYTypes,
+  getSheetYTypes,
+  createSheetYMap,
+} from './collab/y-schema';
 import {
   toStableAst,
   fromStableAst,
@@ -65,6 +71,10 @@ export class WorkbookImpl implements Workbook {
   // Set by attachCollab; consulted in places that need to know whether the
   // workbook is currently sourcing state from a Y.Doc.
   private collabHandle: CollabHandle | null = null;
+  // True while _reloadFromCollab is rebuilding internal state from a remote
+  // Y.Doc update. Mirror calls in mutation methods short-circuit when set,
+  // otherwise we'd echo every remote write back over the wire.
+  private isApplyingRemoteChange = false;
 
   constructor(id: string, name: string) {
     this.id = id;
@@ -81,6 +91,7 @@ export class WorkbookImpl implements Workbook {
     const id = `sheet_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const sheet = new SheetImpl(id, name);
     this.sheets.set(id, sheet);
+    this.mirrorSheetAdd(id, name, sheet);
     this.events.emit('sheetAdd', { sheetId: id, name });
     return sheet;
   }
@@ -187,6 +198,8 @@ export class WorkbookImpl implements Workbook {
 
     const sheet = this.getSheet(sheetId);
     sheet.setCell(row, col, cell);
+
+    this.mirrorCellWrite(sheet.id, row, col);
 
     this.events.emit('cellChange', {
       sheetId: sheet.id,
@@ -1239,15 +1252,94 @@ export class WorkbookImpl implements Workbook {
    * setData but signals collab origin so consumers can disambiguate.
    */
   _reloadFromCollab(data: import('./types').WorkbookData): void {
-    // Suspend history recording during the reload — remote edits should
-    // not collide with local undo/redo stacks.
+    // Suspend history recording AND collab mirroring during the reload —
+    // remote edits should not collide with local undo/redo stacks, and
+    // mirror calls would echo every remote write back over the wire.
     const wasUndoing = this.isUndoing;
     this.isUndoing = true;
+    this.isApplyingRemoteChange = true;
     try {
       this.setData(data);
     } finally {
       this.isUndoing = wasUndoing;
+      this.isApplyingRemoteChange = false;
     }
+  }
+
+  // ============================================
+  // Collab mirroring helpers (write local mutations into the Y.Doc)
+  // ============================================
+
+  /**
+   * Echo a cell write at (row, col) into the workbook's Y.Doc so peers
+   * receive the change. No-op when collab is detached or we're currently
+   * applying a remote update.
+   *
+   * Mirrors the cell value + the rowId/colId positions, so a brand-new
+   * row or column (not present at hydration time) lands on the peer side
+   * with its display index intact.
+   */
+  private mirrorCellWrite(sheetId: string, row: number, col: number): void {
+    if (!this.collabHandle || this.isApplyingRemoteChange) return;
+    const sheet = this.sheets.get(sheetId) as SheetImpl | undefined;
+    if (!sheet) return;
+    const cell = sheet.getCell(row, col);
+    if (!cell) return;
+
+    const rowId = sheet.ensureRowId(row);
+    const colId = sheet.ensureColId(col);
+    const stableKey = getStableCellKey(rowId, colId);
+
+    const ydoc = this.collabHandle.ydoc;
+    const yTypes = getWorkbookYTypes(ydoc);
+    const ySheetMap = yTypes.sheets.get(sheetId);
+    if (!ySheetMap) return;
+    const t = getSheetYTypes(ySheetMap);
+
+    ydoc.transact(() => {
+      // Ensure rowOrder/colOrder entries exist for these IDs at the right index.
+      if (t.rowOrder.get(rowId) !== row) t.rowOrder.set(rowId, row);
+      if (t.colOrder.get(colId) !== col) t.colOrder.set(colId, col);
+
+      t.cells.set(stableKey, { ...cell });
+
+      // Pool sync — if the cell references a style/format we haven't
+      // mirrored yet, push it now so peers don't render with stale ids.
+      if (cell.styleId) {
+        const style = this.stylePool.get(cell.styleId);
+        if (style && !yTypes.stylePool.has(cell.styleId)) {
+          yTypes.stylePool.set(cell.styleId, { ...style });
+        }
+      }
+      if (cell.formatId) {
+        const format = this.formatPool.get(cell.formatId);
+        if (format && !yTypes.formatPool.has(cell.formatId)) {
+          yTypes.formatPool.set(cell.formatId, { ...format });
+        }
+      }
+    });
+  }
+
+  /** Echo a new sheet into the Y.Doc. */
+  private mirrorSheetAdd(sheetId: string, name: string, sheet: SheetImpl): void {
+    if (!this.collabHandle || this.isApplyingRemoteChange) return;
+    const ydoc = this.collabHandle.ydoc;
+    const yTypes = getWorkbookYTypes(ydoc);
+    ydoc.transact(() => {
+      const ySheetMap = createSheetYMap();
+      // Seed minimal meta + counts
+      const meta = ySheetMap.get('meta') as Y.Map<unknown>;
+      meta.set('id', sheetId);
+      meta.set('name', name);
+      meta.set('rowCount', sheet.rowCount);
+      meta.set('colCount', sheet.colCount);
+      yTypes.sheets.set(sheetId, ySheetMap);
+      // Append to sheetIds order if not already present
+      const ids = yTypes.sheetIds.toArray();
+      if (!ids.includes(sheetId)) {
+        yTypes.sheetIds.push([sheetId]);
+      }
+    });
   }
 }
 
