@@ -91,6 +91,7 @@ export class WorkbookImpl implements Workbook {
     const id = `sheet_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const sheet = new SheetImpl(id, name);
     this.sheets.set(id, sheet);
+    this.attachStructureListenerIfNeeded(sheet);
     this.mirrorSheetAdd(id, name, sheet);
     this.events.emit('sheetAdd', { sheetId: id, name });
     return sheet;
@@ -105,6 +106,8 @@ export class WorkbookImpl implements Workbook {
       // Switch to first available sheet
       this.activeSheetId = Array.from(this.sheets.keys())[0];
     }
+    this.mirrorSheetDelete(sheetId);
+    this.mirrorWorkbookMeta();
     this.events.emit('sheetDelete', { sheetId });
   }
 
@@ -122,6 +125,7 @@ export class WorkbookImpl implements Workbook {
       throw new Error(`Sheet not found: ${sheetId}`);
     }
     this.activeSheetId = sheetId;
+    this.mirrorWorkbookMeta();
     this.events.emit('sheetChange', { sheetId });
   }
 
@@ -129,6 +133,7 @@ export class WorkbookImpl implements Workbook {
     const sheet = this.getSheet(sheetId);
     const oldName = sheet.name;
     sheet.name = newName;
+    this.mirrorSheetRename(sheetId, newName);
     this.events.emit('sheetRename', { sheetId, oldName, newName });
   }
 
@@ -1228,6 +1233,13 @@ export class WorkbookImpl implements Workbook {
       options,
     );
     this.collabHandle = handle;
+    // Wire structure-change listeners on every existing sheet so structural
+    // mutations (insert rows/cols, height/width, hide, freeze, filter, sort)
+    // flow into the Y.Doc. Sheets added later go through addSheet which calls
+    // attachStructureListenerIfNeeded.
+    for (const sheet of this.sheets.values()) {
+      this.attachStructureListenerIfNeeded(sheet as SheetImpl);
+    }
     this.events.emit('workbookChange', { action: 'attachCollab' });
     return handle;
   }
@@ -1240,9 +1252,24 @@ export class WorkbookImpl implements Workbook {
   /** Detach from the current collaboration session. */
   detachCollab(): void {
     if (!this.collabHandle) return;
+    for (const sheet of this.sheets.values()) {
+      (sheet as SheetImpl).__setStructureChangeListener(undefined);
+    }
     this.collabHandle.detach();
     this.collabHandle = null;
     this.events.emit('workbookChange', { action: 'detachCollab' });
+  }
+
+  /**
+   * Install our mirror handler as `sheet`'s structure-change listener iff
+   * collab is currently attached. Called from attachCollab (for existing
+   * sheets) and addSheet (for new ones).
+   */
+  private attachStructureListenerIfNeeded(sheet: SheetImpl): void {
+    if (!this.collabHandle) return;
+    sheet.__setStructureChangeListener(() => {
+      this.mirrorSheetStructure(sheet.id);
+    });
   }
 
   /**
@@ -1355,5 +1382,119 @@ export class WorkbookImpl implements Workbook {
       }
     });
   }
+
+  /** Echo a sheet deletion. */
+  private mirrorSheetDelete(sheetId: string): void {
+    if (!this.collabHandle || this.isApplyingRemoteChange) return;
+    const ydoc = this.collabHandle.ydoc;
+    const yTypes = getWorkbookYTypes(ydoc);
+    ydoc.transact(() => {
+      yTypes.sheets.delete(sheetId);
+      // Remove from sheetIds order
+      const ids = yTypes.sheetIds.toArray();
+      const idx = ids.indexOf(sheetId);
+      if (idx !== -1) yTypes.sheetIds.delete(idx, 1);
+    });
+  }
+
+  /** Echo a sheet rename. */
+  private mirrorSheetRename(sheetId: string, newName: string): void {
+    if (!this.collabHandle || this.isApplyingRemoteChange) return;
+    const ydoc = this.collabHandle.ydoc;
+    const yTypes = getWorkbookYTypes(ydoc);
+    const ySheetMap = yTypes.sheets.get(sheetId);
+    if (!ySheetMap) return;
+    const meta = ySheetMap.get('meta') as Y.Map<unknown> | undefined;
+    if (!meta) return;
+    ydoc.transact(() => {
+      meta.set('name', newName);
+    });
+  }
+
+  /** Sync workbook-level meta (activeSheetId, name, defaults) into Y. */
+  private mirrorWorkbookMeta(): void {
+    if (!this.collabHandle || this.isApplyingRemoteChange) return;
+    const ydoc = this.collabHandle.ydoc;
+    const yTypes = getWorkbookYTypes(ydoc);
+    ydoc.transact(() => {
+      yTypes.meta.set('activeSheetId', this.activeSheetId);
+      yTypes.meta.set('name', this.name);
+      yTypes.meta.set('defaultRowHeight', this.defaultRowHeight);
+      yTypes.meta.set('defaultColWidth', this.defaultColWidth);
+    });
+  }
+
+  /**
+   * Re-sync a sheet's full structure to the Y.Doc: order maps, dimension
+   * maps (heights/widths), hidden sets, filters, sort order, frozen counts,
+   * row/col counts. Cells are NOT touched here — they flow via
+   * mirrorCellWrite per setCell. Called by the SheetImpl structure-change
+   * listener after any structural mutation.
+   */
+  private mirrorSheetStructure(sheetId: string): void {
+    if (!this.collabHandle || this.isApplyingRemoteChange) return;
+    const sheet = this.sheets.get(sheetId) as SheetImpl | undefined;
+    if (!sheet) return;
+    const ydoc = this.collabHandle.ydoc;
+    const yTypes = getWorkbookYTypes(ydoc);
+    const ySheetMap = yTypes.sheets.get(sheetId);
+    if (!ySheetMap) return;
+    const t = getSheetYTypes(ySheetMap);
+
+    const orderSnapshot = sheet.snapshotOrderMaps();
+
+    ydoc.transact(() => {
+      // rowOrder: Y.Map<rowId, idx>. Rebuild wholesale (clear + repopulate).
+      for (const k of Array.from(t.rowOrder.keys())) t.rowOrder.delete(k);
+      for (const [idx, id] of orderSnapshot.rowOrder) t.rowOrder.set(id, idx);
+
+      for (const k of Array.from(t.colOrder.keys())) t.colOrder.delete(k);
+      for (const [idx, id] of orderSnapshot.colOrder) t.colOrder.set(id, idx);
+
+      // Drop cells whose row/col id was deleted from the order maps.
+      const validRowIds = new Set(orderSnapshot.rowOrder.values());
+      const validColIds = new Set(orderSnapshot.colOrder.values());
+      const orphans: string[] = [];
+      for (const key of t.cells.keys()) {
+        const sep = key.indexOf(':');
+        const rowId = key.slice(0, sep);
+        const colId = key.slice(sep + 1);
+        if (!validRowIds.has(rowId) || !validColIds.has(colId)) orphans.push(key);
+      }
+      for (const k of orphans) t.cells.delete(k);
+
+      // Dimension maps + hidden sets + filters: rebuild from sheet config.
+      syncMapToY(t.rowHeights, sheet.config.rowHeights);
+      syncMapToY(t.colWidths, sheet.config.colWidths);
+      syncSetToYMap(t.hiddenRows, sheet.config.hiddenRows);
+      syncSetToYMap(t.hiddenCols, sheet.config.hiddenCols);
+      syncMapToY(t.filters, sheet.config.filters);
+
+      // Meta updates.
+      t.meta.set('rowCount', sheet.rowCount);
+      t.meta.set('colCount', sheet.colCount);
+      setOrDelete(t.meta, 'frozenRows', sheet.config.frozenRows);
+      setOrDelete(t.meta, 'frozenCols', sheet.config.frozenCols);
+      setOrDelete(t.meta, 'showGridLines', sheet.config.showGridLines);
+      setOrDelete(t.meta, 'sortOrder', sheet.config.sortOrder);
+    });
+  }
+}
+
+function syncMapToY<V>(yMap: Y.Map<V>, sheetMap: Map<string, V> | undefined): void {
+  for (const k of Array.from(yMap.keys())) yMap.delete(k);
+  if (!sheetMap) return;
+  for (const [k, v] of sheetMap) yMap.set(k, v);
+}
+
+function syncSetToYMap(yMap: Y.Map<true>, sheetSet: Set<string> | undefined): void {
+  for (const k of Array.from(yMap.keys())) yMap.delete(k);
+  if (!sheetSet) return;
+  for (const k of sheetSet) yMap.set(k, true);
+}
+
+function setOrDelete(yMap: Y.Map<unknown>, key: string, value: unknown): void {
+  if (value === undefined) yMap.delete(key);
+  else yMap.set(key, value);
 }
 

@@ -30,6 +30,21 @@ export class SheetImpl implements Sheet {
   protected rowIdToIndex: Map<string, number> = new Map();
   protected colIdToIndex: Map<string, number> = new Map();
 
+  // Fired after any structural mutation (insert/delete row/col, height/
+  // width, hide/show, freeze, filter, sort). The collab binding wires
+  // this on attachCollab to mirror the sheet's metadata + order maps
+  // into the Y.Doc. No-op when collab is detached.
+  protected structureChangeListener: (() => void) | undefined;
+
+  /** @internal Used by the collab binding only. */
+  __setStructureChangeListener(listener: (() => void) | undefined): void {
+    this.structureChangeListener = listener;
+  }
+
+  protected notifyStructureChange(): void {
+    this.structureChangeListener?.();
+  }
+
   constructor(id: string, name: string, config: Partial<SheetConfig> = {}) {
     this.id = id;
     this.name = name;
@@ -203,6 +218,7 @@ export class SheetImpl implements Sheet {
       this.config.rowHeights = new Map();
     }
     this.config.rowHeights.set(this.ensureRowId(row), height);
+    this.notifyStructureChange();
   }
 
   getColWidth(col: number): number {
@@ -216,6 +232,7 @@ export class SheetImpl implements Sheet {
       this.config.colWidths = new Map();
     }
     this.config.colWidths.set(this.ensureColId(col), width);
+    this.notifyStructureChange();
   }
 
   // ============================================
@@ -225,23 +242,27 @@ export class SheetImpl implements Sheet {
   insertRows(startRow: number, count: number): void {
     this.shiftOrder(this.rowOrder, this.rowIdToIndex, startRow, count);
     this.rowCount += count;
+    this.notifyStructureChange();
   }
 
   deleteRows(startRow: number, count: number): void {
     this.removeOrderRange(this.rowOrder, this.rowIdToIndex, startRow, count, /*isRow*/ true);
     this.shiftOrder(this.rowOrder, this.rowIdToIndex, startRow + count, -count, startRow);
     this.rowCount = Math.max(0, this.rowCount - count);
+    this.notifyStructureChange();
   }
 
   insertCols(startCol: number, count: number): void {
     this.shiftOrder(this.colOrder, this.colIdToIndex, startCol, count);
     this.colCount += count;
+    this.notifyStructureChange();
   }
 
   deleteCols(startCol: number, count: number): void {
     this.removeOrderRange(this.colOrder, this.colIdToIndex, startCol, count, /*isRow*/ false);
     this.shiftOrder(this.colOrder, this.colIdToIndex, startCol + count, -count, startCol);
     this.colCount = Math.max(0, this.colCount - count);
+    this.notifyStructureChange();
   }
 
   /** Shift every order entry with index >= threshold by `delta`. */
@@ -331,11 +352,15 @@ export class SheetImpl implements Sheet {
       this.config.hiddenRows = new Set();
     }
     this.config.hiddenRows.add(this.ensureRowId(row));
+    this.notifyStructureChange();
   }
 
   showRow(row: number): void {
     const rowId = this.rowOrder.get(row);
-    if (rowId) this.config.hiddenRows?.delete(rowId);
+    if (rowId) {
+      this.config.hiddenRows?.delete(rowId);
+      this.notifyStructureChange();
+    }
   }
 
   isColHidden(col: number): boolean {
@@ -348,11 +373,15 @@ export class SheetImpl implements Sheet {
       this.config.hiddenCols = new Set();
     }
     this.config.hiddenCols.add(this.ensureColId(col));
+    this.notifyStructureChange();
   }
 
   showCol(col: number): void {
     const colId = this.colOrder.get(col);
-    if (colId) this.config.hiddenCols?.delete(colId);
+    if (colId) {
+      this.config.hiddenCols?.delete(colId);
+      this.notifyStructureChange();
+    }
   }
 
   // Find hidden columns adjacent to a given column (before and after)
@@ -406,6 +435,7 @@ export class SheetImpl implements Sheet {
       const colId = this.colOrder.get(c);
       if (colId) this.config.hiddenCols.delete(colId);
     }
+    this.notifyStructureChange();
   }
 
   showRowsInRange(startRow: number, endRow: number): void {
@@ -416,6 +446,7 @@ export class SheetImpl implements Sheet {
       const rowId = this.rowOrder.get(r);
       if (rowId) this.config.hiddenRows.delete(rowId);
     }
+    this.notifyStructureChange();
   }
 
   // ============================================
@@ -434,6 +465,7 @@ export class SheetImpl implements Sheet {
       throw new Error('Cannot freeze all rows');
     }
     this.config.frozenRows = count > 0 ? count : undefined;
+    this.notifyStructureChange();
   }
 
   getFrozenCols(): number {
@@ -448,6 +480,7 @@ export class SheetImpl implements Sheet {
       throw new Error('Cannot freeze all columns');
     }
     this.config.frozenCols = count > 0 ? count : undefined;
+    this.notifyStructureChange();
   }
 
   setFreeze(rows: number, cols: number): void {
@@ -458,6 +491,7 @@ export class SheetImpl implements Sheet {
   clearFreeze(): void {
     this.config.frozenRows = undefined;
     this.config.frozenCols = undefined;
+    this.notifyStructureChange();
   }
 
   hasFrozenPanes(): boolean {
@@ -470,6 +504,7 @@ export class SheetImpl implements Sheet {
 
   setSortOrder(sortOrder: SortOrder[]): void {
     this.config.sortOrder = [...sortOrder];
+    this.notifyStructureChange();
   }
 
   getSortOrder(): SortOrder[] {
@@ -478,6 +513,7 @@ export class SheetImpl implements Sheet {
 
   clearSort(): void {
     this.config.sortOrder = undefined;
+    this.notifyStructureChange();
   }
 
   hasSort(): boolean {
@@ -493,11 +529,15 @@ export class SheetImpl implements Sheet {
       this.config.filters = new Map();
     }
     this.config.filters.set(this.ensureColId(column), filter);
+    this.notifyStructureChange();
   }
 
   clearFilter(column: number): void {
     const colId = this.colOrder.get(column);
-    if (colId) this.config.filters?.delete(colId);
+    if (colId) {
+      this.config.filters?.delete(colId);
+      this.notifyStructureChange();
+    }
   }
 
   /**
@@ -524,6 +564,7 @@ export class SheetImpl implements Sheet {
 
   clearAllFilters(): void {
     this.config.filters = undefined;
+    this.notifyStructureChange();
   }
 
   // ============================================
@@ -541,6 +582,7 @@ export class SheetImpl implements Sheet {
     this.colIdToIndex = new Map();
     for (const [idx, id] of this.rowOrder) this.rowIdToIndex.set(id, idx);
     for (const [idx, id] of this.colOrder) this.colIdToIndex.set(id, idx);
+    this.notifyStructureChange();
   }
 
   /** Snapshot the current order maps (for history). */
