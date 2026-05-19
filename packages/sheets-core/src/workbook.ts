@@ -1267,6 +1267,8 @@ export class WorkbookImpl implements Workbook {
    */
   private attachStructureListenerIfNeeded(sheet: SheetImpl): void {
     if (!this.collabHandle) return;
+    // eslint-disable-next-line no-console
+    console.log('[collab] attaching structure listener to sheet', sheet.id);
     sheet.__setStructureChangeListener(() => {
       this.mirrorSheetStructure(sheet.id);
     });
@@ -1432,13 +1434,27 @@ export class WorkbookImpl implements Workbook {
    * listener after any structural mutation.
    */
   private mirrorSheetStructure(sheetId: string): void {
+    // eslint-disable-next-line no-console
+    console.log('[collab] mirrorSheetStructure', sheetId, {
+      hasHandle: !!this.collabHandle,
+      applyingRemote: this.isApplyingRemoteChange,
+    });
     if (!this.collabHandle || this.isApplyingRemoteChange) return;
     const sheet = this.sheets.get(sheetId) as SheetImpl | undefined;
-    if (!sheet) return;
+    if (!sheet) {
+      // eslint-disable-next-line no-console
+      console.warn('[collab] mirrorSheetStructure: sheet not in workbook', sheetId);
+      return;
+    }
     const ydoc = this.collabHandle.ydoc;
     const yTypes = getWorkbookYTypes(ydoc);
     const ySheetMap = yTypes.sheets.get(sheetId);
-    if (!ySheetMap) return;
+    if (!ySheetMap) {
+      // eslint-disable-next-line no-console
+      console.warn('[collab] mirrorSheetStructure: no Y sheet for', sheetId,
+        'known:', Array.from(yTypes.sheets.keys()));
+      return;
+    }
     const t = getSheetYTypes(ySheetMap);
 
     const orderSnapshot = sheet.snapshotOrderMaps();
