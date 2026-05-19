@@ -37,6 +37,7 @@ import { computeTrueLayout, DocumentLayout, PageConfig } from './true-layout-eng
 import { DomPainter, HeaderFooterContent } from './dom-painter';
 import { InputBridge, createInputBridge, CellSelection } from './input-bridge';
 import { SelectionOverlayManager, getSelectionOverlayStyles } from './selection-overlay';
+import { RemoteCursorOverlay } from './remote-cursor-overlay';
 import { TableInteractionManager, createTableInteractionManager } from './table-interactions';
 import { ImageInteractionManager, createImageInteractionManager } from './image-interactions';
 import { HeaderFooterEditor } from '../components/HeaderFooterEditor';
@@ -183,6 +184,7 @@ export const TrueLayoutEditor = forwardRef<TrueLayoutEditorHandle, TrueLayoutEdi
     const painterRef = useRef<DomPainter | null>(null);
     const inputBridgeRef = useRef<InputBridge | null>(null);
     const selectionOverlayRef = useRef<SelectionOverlayManager | null>(null);
+    const remoteCursorOverlayRef = useRef<RemoteCursorOverlay | null>(null);
     const tableInteractionRef = useRef<TableInteractionManager | null>(null);
     const imageInteractionRef = useRef<ImageInteractionManager | null>(null);
     const blocksRef = useRef<FlowBlock[]>([]);
@@ -309,12 +311,36 @@ export const TrueLayoutEditor = forwardRef<TrueLayoutEditorHandle, TrueLayoutEdi
           selectionOverlayRef.current.setScrollContainer(viewportRef.current);
         }
       }
-      
+
       return () => {
         selectionOverlayRef.current?.destroy();
         selectionOverlayRef.current = null;
       };
     }, []);
+
+    // Initialize remote-cursor overlay when collab is attached.
+    useEffect(() => {
+      if (!collabHandle) return;
+      if (!overlayRef.current || !selectionOverlayRef.current) return;
+      const overlay = new RemoteCursorOverlay(
+        collabHandle.awareness,
+        selectionOverlayRef.current,
+      );
+      overlay.initialize(overlayRef.current);
+      if (editorView) overlay.setEditorView(editorView);
+      remoteCursorOverlayRef.current = overlay;
+      return () => {
+        overlay.destroy();
+        remoteCursorOverlayRef.current = null;
+      };
+      // editorView is set after the PM editor mounts; we re-bind below.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [collabHandle]);
+
+    // Hand the live EditorView to the remote overlay once PM is up.
+    useEffect(() => {
+      remoteCursorOverlayRef.current?.setEditorView(editorView);
+    }, [editorView]);
     
     // Initialize ProseMirror - only ONCE on mount
     useEffect(() => {
@@ -528,6 +554,10 @@ export const TrueLayoutEditor = forwardRef<TrueLayoutEditorHandle, TrueLayoutEdi
       selectionOverlayRef.current?.updateLayout(newLayout, blocks, measures, doc);
       selectionOverlayRef.current?.setFocused(view.hasFocus());
       selectionOverlayRef.current?.updateSelection(view.state, view, true);  // immediate=true
+
+      // 8. Refresh remote-cursor overlay so peer carets/selections re-place on
+      //    the freshly painted pages.
+      remoteCursorOverlayRef.current?.refresh();
     }, [pageConfig, zoom, pageGap, minLinesAtBreak]);
     
     // Keep performLayoutRef in sync to avoid stale closures

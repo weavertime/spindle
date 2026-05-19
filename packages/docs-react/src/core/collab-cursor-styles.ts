@@ -9,6 +9,7 @@
 const STYLE_ID = 'pagent-collab-cursor-styles';
 
 const CSS = `
+/* y-prosemirror's default decoration cursor (used by ProseMirrorEditor). */
 .ProseMirror-yjs-cursor {
   position: relative;
   margin-left: -1px;
@@ -32,6 +33,41 @@ const CSS = `
   line-height: 1.2;
   white-space: nowrap;
   user-select: none;
+}
+
+/* TrueLayoutEditor's painted-page overlay equivalents (RemoteCursorOverlay). */
+.pagent-remote-caret {
+  position: absolute;
+  pointer-events: none;
+  border-left: 2px solid currentColor;
+  z-index: 10;
+  top: 0;
+  left: 0;
+  will-change: transform;
+}
+.pagent-remote-caret-label {
+  position: absolute;
+  top: -1.35em;
+  left: -2px;
+  font-size: 11px;
+  background-color: currentColor;
+  color: white;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  user-select: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 500;
+  line-height: 1.3;
+}
+.pagent-remote-selection-rect {
+  position: absolute;
+  pointer-events: none;
+  z-index: 9;
+  opacity: 0.25;
+  top: 0;
+  left: 0;
+  will-change: transform;
 }
 `;
 

@@ -456,6 +456,28 @@ export class SelectionOverlayManager {
   /**
    * Convert a ProseMirror position to caret coordinates
    */
+  /**
+   * Translate a PM position to a CaretPosition on the visible pages.
+   * Public surface for collaborator-cursor overlays, which feed in PM
+   * positions decoded from awareness state.
+   */
+  getCaretForPos(pos: number): CaretPosition | null {
+    return this.positionToCaret(pos, null);
+  }
+
+  /**
+   * Translate a PM range to SelectionRects on the visible pages. Public
+   * surface for collaborator-selection overlays.
+   */
+  getRectsForRange(from: number, to: number): SelectionRect[] {
+    return this.selectionToRects(from, to, null);
+  }
+
+  /** Public read-only access to the current layout (for collaborator overlays). */
+  getLayout(): DocumentLayout | null {
+    return this.layout;
+  }
+
   private positionToCaret(pos: number, _view: EditorView | null): CaretPosition | null {
     if (!this.layout) return null;
     
