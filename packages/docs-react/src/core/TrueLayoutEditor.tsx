@@ -341,17 +341,25 @@ export const TrueLayoutEditor = forwardRef<TrueLayoutEditorHandle, TrueLayoutEdi
         });
       }
       
-      const view = new EditorView(hiddenEditorRef.current, {
+      // `let view` (not const) avoids the temporal-dead-zone trap when
+      // ySyncPlugin dispatches a synchronous transaction inside the
+      // EditorView constructor — at that moment the outer `view` binding
+      // hasn't been assigned yet. The `view ?? this` fallback uses the
+      // EditorView that ProseMirror binds to `this` inside dispatchTransaction.
+      let view: EditorView | undefined;
+      view = new EditorView(hiddenEditorRef.current, {
         state,
         editable: () => editable,
         dispatchTransaction(transaction: Transaction) {
-          const newState = view.state.apply(transaction);
-          view.updateState(newState);
-          
+          // eslint-disable-next-line @typescript-eslint/no-this-alias
+          const v = (view ?? (this as unknown as EditorView));
+          const newState = v.state.apply(transaction);
+          v.updateState(newState);
+
           if (transaction.docChanged) {
             // Trigger re-layout - this will also update selection overlay
             requestAnimationFrame(() => {
-              performLayout(newState.doc, view);
+              if (view) performLayout(newState.doc, view);
             });
             
             // Notify parent of doc change (use ref to avoid stale closure)
@@ -370,8 +378,8 @@ export const TrueLayoutEditor = forwardRef<TrueLayoutEditorHandle, TrueLayoutEdi
             // Only update selection overlay if doc didn't change (layout handles it otherwise)
             // Check for immediate flag (used during drag for responsiveness)
             const isImmediate = transaction.getMeta('immediateSelection') === true;
-            selectionOverlayRef.current?.setFocused(view.hasFocus());
-            selectionOverlayRef.current?.updateSelection(newState, view, isImmediate);
+            selectionOverlayRef.current?.setFocused(v.hasFocus());
+            selectionOverlayRef.current?.updateSelection(newState, v, isImmediate);
             onSelectionChangeRef.current?.(newState);
             
             // Update active page index - only check if we actually have the callback

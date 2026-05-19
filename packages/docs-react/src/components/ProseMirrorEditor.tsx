@@ -224,18 +224,24 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorRef, ProseMirrorEdi
 
       const state = EditorState.create(stateConfig);
       
-      // Create editor view
-      const view = new EditorView(editorRef.current, {
+      // `let view` + `view ?? this` fallback avoids a temporal-dead-zone
+      // crash when ySyncPlugin dispatches its first sync transaction inside
+      // the EditorView constructor — at that moment the outer `view` binding
+      // hasn't been assigned yet.
+      let view: EditorView | undefined;
+      view = new EditorView(editorRef.current, {
         state,
         editable: () => editable,
         dispatchTransaction(transaction: Transaction) {
-          const newState = view.state.apply(transaction);
-          view.updateState(newState);
-          
+          // eslint-disable-next-line @typescript-eslint/no-this-alias
+          const v = view ?? (this as unknown as EditorView);
+          const newState = v.state.apply(transaction);
+          v.updateState(newState);
+
           if (transaction.docChanged && onChange) {
             onChange(newState);
           }
-          
+
           if ((transaction.selectionSet || transaction.docChanged) && onSelectionChange) {
             const activeMarks = activeMarksPluginKey.getState(newState) as ActiveMarks;
             onSelectionChange(newState, activeMarks);
