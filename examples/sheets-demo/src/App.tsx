@@ -1,8 +1,43 @@
 import { useState, useEffect } from 'react';
 import { WorkbookProvider, WorkbookCanvas } from '@pagent-libs/sheets-react';
 import { WorkbookImpl } from '@pagent-libs/sheets-core';
-import { InMemoryProvider, type CollabIdentity } from '@pagent-libs/shared';
+import { InMemoryProvider, type CollabIdentity, type CollabProvider } from '@pagent-libs/shared';
+import { WebSocketProvider } from '@pagent-libs/transport-websocket';
 import './App.css';
+
+// ============================================================================
+// Cross-tab WebSocket demo helpers
+// ============================================================================
+
+const COLORS = ['#ff6b6b', '#4ecdc4', '#ffd93d', '#6c5ce7', '#a8e6cf', '#ff8c42', '#54a0ff', '#48dbfb'];
+const ADJECTIVES = ['Quick', 'Calm', 'Brave', 'Sharp', 'Bright', 'Eager', 'Lucky', 'Witty'];
+const NOUNS = ['Otter', 'Lynx', 'Owl', 'Fox', 'Heron', 'Bear', 'Hare', 'Crane'];
+
+interface WsConfig {
+  url: string;
+  roomId: string;
+  identity: CollabIdentity;
+}
+
+function parseWsConfig(): WsConfig | null {
+  const params = new URLSearchParams(window.location.search);
+  const url = params.get('ws');
+  if (!url) return null;
+  const roomId = params.get('room') ?? 'sheets-demo';
+  const userName =
+    params.get('user') ??
+    `${ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)]} ${NOUNS[Math.floor(Math.random() * NOUNS.length)]}`;
+  const userColor = params.get('color') ?? COLORS[Math.floor(Math.random() * COLORS.length)];
+  return {
+    url,
+    roomId,
+    identity: {
+      userId: `user_${Math.random().toString(36).slice(2, 8)}`,
+      displayName: userName,
+      color: userColor,
+    },
+  };
+}
 
 // Sample workbook data lifted out so both single-editor and collab demo
 // can hydrate from the same starting state.
@@ -156,8 +191,67 @@ function CollabDemo({ width, height }: { width: number; height: number }) {
   );
 }
 
+/**
+ * Single-tab WebSocket collab mode. Activated by ?ws=ws://host/path in
+ * the URL. Each open tab is one peer; multiple tabs (or browsers, or
+ * machines) on the same ?ws=…&room=… all share state via the relay
+ * server at /examples/collab-server.
+ */
+function WsDemo({
+  width,
+  height,
+  config,
+}: {
+  width: number;
+  height: number;
+  config: WsConfig;
+}) {
+  const [wb, setWb] = useState<WorkbookImpl | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let provider: CollabProvider | null = null;
+    let workbook: WorkbookImpl | null = null;
+    (async () => {
+      try {
+        workbook = makeWorkbookFromSample('collab-workbook', 'Shared Workbook');
+        provider = new WebSocketProvider({ url: config.url });
+        await workbook.attachCollab(provider, config.identity, { roomId: config.roomId });
+        if (cancelled) {
+          workbook.detachCollab();
+          return;
+        }
+        setWb(workbook);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => {
+      cancelled = true;
+      try { workbook?.detachCollab(); } catch { /* ignore */ }
+    };
+  }, [config.url, config.roomId, config.identity]);
+
+  if (error) return <div style={{ padding: 16, color: 'crimson' }}>WS error: {error}</div>;
+  if (!wb) return <div style={{ padding: 16 }}>Connecting to {config.url}…</div>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ padding: '4px 12px', background: config.identity.color, color: 'white', fontWeight: 500 }}>
+        {config.identity.displayName} · room {config.roomId}
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <WorkbookProvider workbook={wb}>
+          <WorkbookCanvas width={width} height={height - 28} />
+        </WorkbookProvider>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [collabMode, setCollabMode] = useState(false);
+  const [wsConfig] = useState<WsConfig | null>(() => parseWsConfig());
   const [workbook] = useState(() => makeWorkbookFromSample());
 
   const [dimensions, setDimensions] = useState({
@@ -198,7 +292,9 @@ function App() {
         </button>
       </header>
       <main className="app-main">
-        {collabMode ? (
+        {wsConfig ? (
+          <WsDemo width={dimensions.width} height={dimensions.height} config={wsConfig} />
+        ) : collabMode ? (
           <CollabDemo width={dimensions.width} height={dimensions.height} />
         ) : (
           <WorkbookProvider workbook={workbook}>

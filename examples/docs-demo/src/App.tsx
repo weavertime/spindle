@@ -1,8 +1,43 @@
 import { useState, useEffect } from 'react';
 import { DocumentProvider, DocumentEditor } from '@pagent-libs/docs-react';
 import { DocumentImpl, type DocumentData, type HeaderFooterContent } from '@pagent-libs/docs-core';
-import { InMemoryProvider, type CollabIdentity } from '@pagent-libs/shared';
+import { InMemoryProvider, type CollabIdentity, type CollabProvider } from '@pagent-libs/shared';
+import { WebSocketProvider } from '@pagent-libs/transport-websocket';
 import './App.css';
+
+// ============================================================================
+// Cross-tab WebSocket demo helpers
+// ============================================================================
+
+const COLORS = ['#ff6b6b', '#4ecdc4', '#ffd93d', '#6c5ce7', '#a8e6cf', '#ff8c42', '#54a0ff', '#48dbfb'];
+const ADJECTIVES = ['Quick', 'Calm', 'Brave', 'Sharp', 'Bright', 'Eager', 'Lucky', 'Witty'];
+const NOUNS = ['Otter', 'Lynx', 'Owl', 'Fox', 'Heron', 'Bear', 'Hare', 'Crane'];
+
+interface WsConfig {
+  url: string;
+  roomId: string;
+  identity: CollabIdentity;
+}
+
+function parseWsConfig(): WsConfig | null {
+  const params = new URLSearchParams(window.location.search);
+  const url = params.get('ws');
+  if (!url) return null;
+  const roomId = params.get('room') ?? 'docs-demo';
+  const userName =
+    params.get('user') ??
+    `${ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)]} ${NOUNS[Math.floor(Math.random() * NOUNS.length)]}`;
+  const userColor = params.get('color') ?? COLORS[Math.floor(Math.random() * COLORS.length)];
+  return {
+    url,
+    roomId,
+    identity: {
+      userId: `user_${Math.random().toString(36).slice(2, 8)}`,
+      displayName: userName,
+      color: userColor,
+    },
+  };
+}
 
 // Sample header configuration with document title
 const sampleHeader: HeaderFooterContent = {
@@ -414,8 +449,70 @@ function CollabDemo({
   );
 }
 
+/**
+ * Single-tab WebSocket collab mode. Activated by ?ws=ws://host/path in
+ * the URL. Each open tab is one peer; multiple tabs (or browsers, or
+ * machines) on the same ?ws=…&room=… all share state via the relay
+ * server at /examples/collab-server.
+ */
+function WsDemo({
+  initialData,
+  width,
+  height,
+  config,
+}: {
+  initialData: DocumentData;
+  width: number;
+  height: number;
+  config: WsConfig;
+}) {
+  const [doc, setDoc] = useState<DocumentImpl | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let provider: CollabProvider | null = null;
+    let document: DocumentImpl | null = null;
+    (async () => {
+      try {
+        document = new DocumentImpl();
+        document.setData(initialData);
+        provider = new WebSocketProvider({ url: config.url });
+        await document.attachCollab(provider, config.identity, { roomId: config.roomId });
+        if (cancelled) {
+          document.detachCollab();
+          return;
+        }
+        setDoc(document);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => {
+      cancelled = true;
+      try { document?.detachCollab(); } catch { /* ignore */ }
+    };
+  }, [initialData, config.url, config.roomId, config.identity]);
+
+  if (error) return <div style={{ padding: 16, color: 'crimson' }}>WS error: {error}</div>;
+  if (!doc) return <div style={{ padding: 16 }}>Connecting to {config.url}…</div>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ padding: '4px 12px', background: config.identity.color, color: 'white', fontWeight: 500 }}>
+        {config.identity.displayName} · room {config.roomId}
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <DocumentProvider document={doc}>
+          <DocumentEditor width={width} height={height - 28} showToolbar={true} showRuler={true} />
+        </DocumentProvider>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [collabMode, setCollabMode] = useState(false);
+  const [wsConfig] = useState<WsConfig | null>(() => parseWsConfig());
 
   const [document] = useState(() => {
     // Create a new document and load the sample data
@@ -494,7 +591,14 @@ function App() {
         </div>
       </header>
       <main className="app-main">
-        {collabMode ? (
+        {wsConfig ? (
+          <WsDemo
+            initialData={sampleDocumentData}
+            width={dimensions.width}
+            height={dimensions.height}
+            config={wsConfig}
+          />
+        ) : collabMode ? (
           <CollabDemo
             initialData={sampleDocumentData}
             paneWidth={Math.floor(dimensions.width / 2) - 1}
