@@ -45,12 +45,14 @@ const CSS = `
   left: 0;
   will-change: transform;
 }
+/* Background color is set inline from the peer's user.color — using
+   the CSS currentColor keyword here would evaluate against the label's
+   own color: white and make the label invisible. */
 .pagent-remote-caret-label {
   position: absolute;
   top: -1.35em;
   left: -2px;
   font-size: 11px;
-  background-color: currentColor;
   color: white;
   padding: 1px 5px;
   border-radius: 3px;
@@ -59,6 +61,7 @@ const CSS = `
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-weight: 500;
   line-height: 1.3;
+  pointer-events: none;
 }
 .pagent-remote-selection-rect {
   position: absolute;

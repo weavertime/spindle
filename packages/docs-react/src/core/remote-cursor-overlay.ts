@@ -195,6 +195,9 @@ export class RemoteCursorOverlay {
     if (peer.labelEl.textContent !== name) {
       peer.labelEl.textContent = name;
     }
+    // Label background must come from inline style — see collab-cursor-styles
+    // for why CSS currentColor doesn't work here.
+    peer.labelEl.style.backgroundColor = color;
 
     // Selection rects when anchor ≠ head.
     const from = Math.min(anchor, head);
