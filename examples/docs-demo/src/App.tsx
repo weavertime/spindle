@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { DocumentProvider, DocumentEditor } from '@pagent-libs/docs-react';
 import { DocumentImpl, type DocumentData, type HeaderFooterContent } from '@pagent-libs/docs-core';
+import { InMemoryProvider, type CollabIdentity } from '@pagent-libs/shared';
 import './App.css';
 
 // Sample header configuration with document title
@@ -308,7 +309,114 @@ const sampleDocumentData: DocumentData = {
   updatedAt: new Date().toISOString(),
 };
 
+// Phase 1.6 smoke-test panel. Spins up two DocumentImpl instances on the same
+// page, each with its own InMemoryProvider connected to a shared roomId, and
+// renders them side-by-side. Edits in one editor should converge into the
+// other; remote cursors should render with the peer's color/name.
+function CollabDemo({
+  initialData,
+  paneWidth,
+  paneHeight,
+}: {
+  initialData: DocumentData;
+  paneWidth: number;
+  paneHeight: number;
+}) {
+  const [docs, setDocs] = useState<[DocumentImpl, DocumentImpl] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let docA: DocumentImpl | null = null;
+    let docB: DocumentImpl | null = null;
+
+    (async () => {
+      try {
+        docA = new DocumentImpl();
+        docB = new DocumentImpl();
+        // Both docs start from identical content; Yjs will merge the
+        // identical state into a no-op when SyncStep1 / SyncStep2 round-trip.
+        docA.setData(initialData);
+        docB.setData(initialData);
+
+        const providerA = new InMemoryProvider();
+        const providerB = new InMemoryProvider();
+
+        const identityA: CollabIdentity = {
+          userId: 'user_a',
+          displayName: 'Alice',
+          color: '#ff6b6b',
+        };
+        const identityB: CollabIdentity = {
+          userId: 'user_b',
+          displayName: 'Bob',
+          color: '#4ecdc4',
+        };
+
+        await Promise.all([
+          docA.attachCollab(providerA, identityA),
+          docB.attachCollab(providerB, identityB),
+        ]);
+
+        if (cancelled) {
+          docA.detachCollab();
+          docB.detachCollab();
+          return;
+        }
+        setDocs([docA, docB]);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      try { docA?.detachCollab(); } catch { /* ignore */ }
+      try { docB?.detachCollab(); } catch { /* ignore */ }
+    };
+  }, [initialData]);
+
+  if (error) return <div style={{ padding: 16, color: 'crimson' }}>Error: {error}</div>;
+  if (!docs) return <div style={{ padding: 16 }}>Connecting collab peers…</div>;
+
+  const paneStyle: React.CSSProperties = {
+    flex: 1,
+    minWidth: 0,
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    borderRight: '1px solid #e0e0e0',
+  };
+
+  return (
+    <div style={{ display: 'flex', height: '100%', width: '100%' }}>
+      <div style={paneStyle}>
+        <div style={{ padding: '4px 12px', background: '#ff6b6b', color: 'white', fontWeight: 500 }}>
+          Alice
+        </div>
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <DocumentProvider document={docs[0]}>
+            <DocumentEditor width={paneWidth} height={paneHeight} showToolbar={true} showRuler={false} />
+          </DocumentProvider>
+        </div>
+      </div>
+      <div style={{ ...paneStyle, borderRight: 'none' }}>
+        <div style={{ padding: '4px 12px', background: '#4ecdc4', color: 'white', fontWeight: 500 }}>
+          Bob
+        </div>
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <DocumentProvider document={docs[1]}>
+            <DocumentEditor width={paneWidth} height={paneHeight} showToolbar={true} showRuler={false} />
+          </DocumentProvider>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
+  const [collabMode, setCollabMode] = useState(false);
+
   const [document] = useState(() => {
     // Create a new document and load the sample data
     const doc = new DocumentImpl();
@@ -380,17 +488,28 @@ function App() {
           <button className="header-button" onClick={handleSave}>
             Save to Console
           </button>
+          <button className="header-button" onClick={() => setCollabMode((v) => !v)}>
+            {collabMode ? 'Single editor' : 'Collab demo'}
+          </button>
         </div>
       </header>
       <main className="app-main">
-        <DocumentProvider document={document}>
-          <DocumentEditor 
-            width={dimensions.width} 
-            height={dimensions.height}
-            showToolbar={true}
-            showRuler={true}
+        {collabMode ? (
+          <CollabDemo
+            initialData={sampleDocumentData}
+            paneWidth={Math.floor(dimensions.width / 2) - 1}
+            paneHeight={dimensions.height - 28 /* peer header strip */}
           />
-        </DocumentProvider>
+        ) : (
+          <DocumentProvider document={document}>
+            <DocumentEditor
+              width={dimensions.width}
+              height={dimensions.height}
+              showToolbar={true}
+              showRuler={true}
+            />
+          </DocumentProvider>
+        )}
       </main>
     </div>
   );
