@@ -2,6 +2,7 @@
 
 import type { Sheet, SheetConfig, Cell, Range, SortOrder } from './types';
 import { getCellKey, parseCellKey } from './utils/cell-key';
+import { generateId } from './utils/id';
 import { getRangeCells } from './utils/range';
 
 export class SheetImpl implements Sheet {
@@ -11,6 +12,13 @@ export class SheetImpl implements Sheet {
   config: SheetConfig;
   rowCount: number;
   colCount: number;
+
+  // Stable IDs for rows and columns. Sparse: only rows/cols that have been
+  // touched (cell set, height/width customized, hidden, etc.) get an entry.
+  // Untouched indices are virtual until something attaches to them.
+  // Phase 2a.1: populated but not yet consumed by storage paths.
+  protected rowOrder: Map<number, string> = new Map();
+  protected colOrder: Map<number, string> = new Map();
 
   constructor(id: string, name: string, config: Partial<SheetConfig> = {}) {
     this.id = id;
@@ -23,6 +31,40 @@ export class SheetImpl implements Sheet {
     };
     this.rowCount = 1000;
     this.colCount = 100;
+  }
+
+  // ============================================
+  // Stable ID helpers (Phase 2a.1)
+  // ============================================
+
+  /** Return the stable rowId at the given index, or undefined if untouched. */
+  getRowId(row: number): string | undefined {
+    return this.rowOrder.get(row);
+  }
+
+  /** Return the stable colId at the given index, or undefined if untouched. */
+  getColId(col: number): string | undefined {
+    return this.colOrder.get(col);
+  }
+
+  /** Return the stable rowId at the given index, generating one if absent. */
+  ensureRowId(row: number): string {
+    let id = this.rowOrder.get(row);
+    if (!id) {
+      id = generateId();
+      this.rowOrder.set(row, id);
+    }
+    return id;
+  }
+
+  /** Return the stable colId at the given index, generating one if absent. */
+  ensureColId(col: number): string {
+    let id = this.colOrder.get(col);
+    if (!id) {
+      id = generateId();
+      this.colOrder.set(col, id);
+    }
+    return id;
   }
 
   getCell(row: number, col: number): Cell | undefined {
