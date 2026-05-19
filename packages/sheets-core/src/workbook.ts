@@ -9,7 +9,14 @@ import { FormatPool } from './format-pool';
 import { SortManager } from './features/sort';
 import { getCellKey, getStableCellKey, parseCellKey } from './utils/cell-key';
 import { FormulaParser } from './formula-parser';
-import type { RangeReference } from './formula-parser';
+import type { RangeReference, StableFormulaNode, SheetResolver } from './formula-parser';
+import {
+  toStableAst,
+  fromStableAst,
+  renderStableAst,
+  collectStableDependencies,
+  StableRefDeletedError,
+} from './formula-parser/stable-ast';
 
 // Snapshot for undo/redo
 interface WorkbookSnapshot {
@@ -133,23 +140,17 @@ export class WorkbookImpl implements Workbook {
   }
 
   /**
-   * Translate the parser's numeric-coord dependency keys ("r:c") into the
-   * stable-ID keys used by the FormulaGraph. Generates row/col IDs for
-   * referenced cells that don't yet have them — necessary so the graph
-   * has a stable handle for the dep even before the cell is written.
+   * Resolver passed to the stable-AST converters so cross-sheet refs can
+   * look up the target sheet's order maps.
    */
-  private dependenciesToStable(
-    sheetId: string | undefined,
-    deps: Set<string>,
-  ): Set<string> {
-    const sheet = this.getSheet(sheetId);
-    const result = new Set<string>();
-    for (const dep of deps) {
-      const { row, col } = parseCellKey(dep);
-      if (!Number.isFinite(row) || !Number.isFinite(col)) continue;
-      result.add(getStableCellKey(sheet.ensureRowId(row), sheet.ensureColId(col)));
-    }
-    return result;
+  private buildSheetResolver(): SheetResolver {
+    return {
+      getSheet: (name?: string): Sheet | undefined => {
+        if (!name) return undefined;
+        const id = this.getSheetIdByName(name);
+        return id ? this.sheets.get(id) : undefined;
+      },
+    };
   }
 
   setCell(
@@ -233,26 +234,29 @@ export class WorkbookImpl implements Workbook {
     }
     
     const cellKey = this.graphKey(sheetId, row, col);
+    const sheet = this.getSheet(sheetId);
 
-    // Parse formula to get dependencies
+    // Parse to numeric AST, then convert to stable AST (the source of truth).
     const parseResult = this.formulaParser.parse(formula, row, col);
 
     if (parseResult.error) {
-      // Store error in cell value
       this.setCell(sheetId, row, col, { formula, value: parseResult.error as CellValue });
       return;
     }
 
-    // Update formula graph with dependencies (translated to stable keys)
-    const stableDeps = this.dependenciesToStable(sheetId, parseResult.dependencies);
+    const resolver = this.buildSheetResolver();
+    const formulaAst = toStableAst(parseResult.ast, resolver, sheet, row, col);
+    const stableDeps = collectStableDependencies(formulaAst, sheet);
+
     this.formulaGraph.addFormula(cellKey, formula, stableDeps);
-    
-    // Set cell with formula
-    this.setCell(sheetId, row, col, { formula });
-    
+
+    // Store both AST (truth) and input string (display cache; gets refreshed
+    // from the AST on every evaluation).
+    this.setCell(sheetId, row, col, { formula, formulaAst });
+
     // Evaluate and store result
     this.evaluateFormula(sheetId, row, col);
-    
+
     // Recalculate dependents
     this.recalculateDependents(cellKey, sheetId);
   }
@@ -359,45 +363,70 @@ export class WorkbookImpl implements Workbook {
     this.evaluatingCells.add(cellKey);
 
     try {
-      // Parse formula (parser resolves relative references during parsing)
-      const parseResult = this.formulaParser.parse(cell.formula, row, col);
-      
-      if (parseResult.error) {
-        this.evaluatingCells.delete(cellKey);
-        this.formulaGraph.markClean(cellKey, parseResult.error as CellValue);
-        this.setCell(sheetId, row, col, { value: parseResult.error as CellValue });
-        return parseResult.error;
+      const sheet = this.getSheet(sheetId);
+      const resolver = this.buildSheetResolver();
+
+      // Source of truth is cell.formulaAst (stable). If only the legacy
+      // string is present, parse it and upgrade in place.
+      let stableAst: StableFormulaNode | undefined = cell.formulaAst;
+      if (!stableAst) {
+        const parsed = this.formulaParser.parse(cell.formula, row, col);
+        if (parsed.error) {
+          this.evaluatingCells.delete(cellKey);
+          this.formulaGraph.markClean(cellKey, parsed.error as CellValue);
+          this.setCell(sheetId, row, col, { value: parsed.error as CellValue });
+          return parsed.error;
+        }
+        stableAst = toStableAst(parsed.ast, resolver, sheet, row, col);
+        // Persist the upgraded AST so future evaluations skip the re-parse.
+        this.setCell(sheetId, row, col, { formulaAst: stableAst });
       }
 
-      // Create evaluation context with current formula cell position captured in closure
+      // Convert stable refs back to numeric for the evaluator. Any ref whose
+      // target row/col ID has been deleted bubbles up as a #REF! error.
+      let numericAst;
+      try {
+        numericAst = fromStableAst(stableAst, resolver, sheet, row, col);
+      } catch (e) {
+        if (e instanceof StableRefDeletedError) {
+          this.evaluatingCells.delete(cellKey);
+          this.formulaGraph.markClean(cellKey, '#REF!' as CellValue);
+          this.setCell(sheetId, row, col, {
+            value: '#REF!' as CellValue,
+            formula: renderStableAst(stableAst, resolver, sheet),
+          });
+          return '#REF!';
+        }
+        throw e;
+      }
+
+      // Refresh the display string from the AST so the user sees A1
+      // notation that tracks structural edits (insert/delete/sort).
+      const refreshedFormula = renderStableAst(stableAst, resolver, sheet);
+
       const evaluationContext = {
         getCellValue: (r: number, c: number, sId?: string, sheetName?: string) => {
-          // Resolve sheet name to sheet ID if provided
           let targetSheetId = sId ?? sheetId;
           if (sheetName) {
             const resolvedSheetId = this.getSheetIdByName(sheetName);
             if (resolvedSheetId) {
               targetSheetId = resolvedSheetId;
             } else {
-              // Sheet not found - return error
               return '#REF!';
             }
           }
           return this.getCellCalculatedValue(targetSheetId, r, c);
         },
         getRangeValues: (range: RangeReference, sId?: string, sheetName?: string) => {
-          // Resolve sheet name to sheet ID if provided
           let targetSheetId = sId ?? sheetId;
           if (sheetName) {
             const resolvedSheetId = this.getSheetIdByName(sheetName);
             if (resolvedSheetId) {
               targetSheetId = resolvedSheetId;
             } else {
-              // Sheet not found - return empty array
               return [];
             }
           }
-          // Use captured row/col from the formula cell being evaluated
           return this.getRangeValues(targetSheetId, range, row, col);
         },
         getSheetIdByName: (sheetName: string) => {
@@ -405,8 +434,7 @@ export class WorkbookImpl implements Workbook {
         },
       };
 
-      // Evaluate formula
-      const result = this.formulaParser.evaluate(parseResult.ast, evaluationContext, row, col);
+      const result = this.formulaParser.evaluate(numericAst, evaluationContext, row, col);
       
       // Handle division by zero
       if (typeof result === 'number' && !isFinite(result)) {
@@ -417,17 +445,20 @@ export class WorkbookImpl implements Workbook {
         return error;
       }
 
-      // Store result
+      // Store result with the refreshed display string. Keep formula AST.
       const cellValue = result as CellValue;
       this.evaluatingCells.delete(cellKey);
       this.formulaGraph.markClean(cellKey, cellValue);
-      
-      // Update cell value (but keep formula)
+
       const currentCell = this.getCell(sheetId, row, col);
       if (currentCell) {
-        this.setCell(sheetId, row, col, { ...currentCell, value: cellValue });
+        this.setCell(sheetId, row, col, {
+          ...currentCell,
+          value: cellValue,
+          formula: refreshedFormula,
+        });
       }
-      
+
       return result;
     } catch (error) {
       this.evaluatingCells.delete(cellKey);
@@ -566,18 +597,23 @@ export class WorkbookImpl implements Workbook {
     // Restore selection
     this.selection = { ...snapshot.selection };
 
-    // Rebuild formula graph (cells are stable-keyed; parse formulas against current indices)
+    // Rebuild formula graph. Prefer existing stable AST; parse + upgrade if absent.
     this.formulaGraph = new FormulaGraphImpl();
+    const resolver = this.buildSheetResolver();
     for (const [sheetId, sheet] of this.sheets.entries()) {
       for (const [row, col, cell] of sheet.entries()) {
-        if (cell.formula) {
-          const parseResult = this.formulaParser.parse(cell.formula, row, col);
-          if (!parseResult.error) {
-            const cellKey = this.graphKey(sheetId, row, col);
-            const stableDeps = this.dependenciesToStable(sheetId, parseResult.dependencies);
-            this.formulaGraph.addFormula(cellKey, cell.formula, stableDeps);
-          }
+        if (!cell.formula && !cell.formulaAst) continue;
+        let ast = cell.formulaAst;
+        if (!ast && cell.formula) {
+          const parsed = this.formulaParser.parse(cell.formula, row, col);
+          if (parsed.error) continue;
+          ast = toStableAst(parsed.ast, resolver, sheet, row, col);
+          cell.formulaAst = ast;
         }
+        if (!ast) continue;
+        const cellKey = this.graphKey(sheetId, row, col);
+        const deps = collectStableDependencies(ast, sheet);
+        this.formulaGraph.addFormula(cellKey, cell.formula ?? '', deps);
       }
     }
 
@@ -985,18 +1021,22 @@ export class WorkbookImpl implements Workbook {
    * Rebuild formula graph from current cells and evaluate all formulas
    */
   private rebuildFormulaGraph(): void {
+    const resolver = this.buildSheetResolver();
     for (const [sheetId, sheet] of this.sheets.entries()) {
       for (const [row, col, cell] of sheet.entries()) {
-        if (cell.formula) {
-          const parseResult = this.formulaParser.parse(cell.formula, row, col);
-          if (!parseResult.error) {
-            const cellKey = this.graphKey(sheetId, row, col);
-            const stableDeps = this.dependenciesToStable(sheetId, parseResult.dependencies);
-            this.formulaGraph.addFormula(cellKey, cell.formula, stableDeps);
-            // Evaluate the formula
-            this.evaluateFormula(sheetId, row, col);
-          }
+        if (!cell.formula && !cell.formulaAst) continue;
+        let ast = cell.formulaAst;
+        if (!ast && cell.formula) {
+          const parsed = this.formulaParser.parse(cell.formula, row, col);
+          if (parsed.error) continue;
+          ast = toStableAst(parsed.ast, resolver, sheet, row, col);
+          cell.formulaAst = ast;
         }
+        if (!ast) continue;
+        const cellKey = this.graphKey(sheetId, row, col);
+        const deps = collectStableDependencies(ast, sheet);
+        this.formulaGraph.addFormula(cellKey, cell.formula ?? '', deps);
+        this.evaluateFormula(sheetId, row, col);
       }
     }
   }

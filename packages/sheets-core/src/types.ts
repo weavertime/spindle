@@ -64,7 +64,20 @@ export interface CellFormat {
 
 export interface Cell {
   value: CellValue;
+  /**
+   * Display string for the formula (A1 notation). When `formulaAst` is also
+   * present, the AST is the source of truth and `formula` is a cache that
+   * gets regenerated on every evaluation. A cell with only `formula` and no
+   * `formulaAst` (e.g. set via legacy paths) is upgraded to a stable AST on
+   * first evaluation.
+   */
   formula?: string;
+  /**
+   * Stable-ID formula AST. Source of truth for the formula's structure; refs
+   * point at rowId/colId so they survive insert/delete/sort. Imported lazily
+   * to avoid pulling formula-parser types into every consumer of Cell.
+   */
+  formulaAst?: import('./formula-parser/stable-ast').StableFormulaNode;
   styleId?: string; // Reference to shared style in StylePool
   formatId?: string; // Reference to shared format in FormatPool
   comment?: string;
