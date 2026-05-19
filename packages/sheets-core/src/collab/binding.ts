@@ -32,7 +32,7 @@ import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import type { CollabIdentity, CollabProvider } from '@pagent-libs/shared';
 
-import { hydrateYDocFromData, serializeYDocToData } from './y-schema';
+import { getWorkbookYTypes, hydrateYDocFromData, serializeYDocToData } from './y-schema';
 import type { WorkbookData } from '../types';
 import type { WorkbookImpl } from '../workbook';
 
@@ -40,6 +40,13 @@ export interface CollabHandle {
   ydoc: Y.Doc;
   awareness: Awareness;
   identity: CollabIdentity;
+  /**
+   * Y.UndoManager tracking all local writes on the workbook's Y types.
+   * WorkbookImpl.undo/redo route through this when collab is attached,
+   * so undo produces inverse Y operations that broadcast to peers
+   * instead of the snapshot-based path that bypasses the mirror.
+   */
+  undoManager: Y.UndoManager;
   detach(): void;
 }
 
@@ -75,23 +82,41 @@ export async function attachCollabToWorkbook(
     color: identity.color,
   });
 
+  // Track every local write on the workbook's top-level Y types so undo
+  // works through Y operations (which broadcast) instead of the snapshot
+  // path on WorkbookImpl (which bypasses the mirror). Descendants of these
+  // types — per-sheet cells/rowOrder/etc. — are tracked transitively.
+  const yTypes = getWorkbookYTypes(ydoc);
+  const undoManager = new Y.UndoManager(
+    [yTypes.meta, yTypes.stylePool, yTypes.formatPool, yTypes.sheetIds, yTypes.sheets],
+    { trackedOrigins: new Set([null, undefined]), captureTimeout: 500 },
+  );
+
   const roomId = options.roomId ?? initialData.id;
 
   // --- Outbound + remote-reload dispatcher ---------------------------------
 
   const onDocUpdate = (update: Uint8Array, origin: unknown): void => {
-    if (origin === provider) {
-      // Remote bytes were just applied to Y.Doc. Reload the workbook so the
-      // engine + UI catch up. Skip the "no mutating while collab attached"
-      // guard by routing through the dedicated _reloadFromCollab entrypoint.
+    // origin === provider     → remote bytes applied via syncProtocol
+    // origin === undoManager  → our undo/redo applied an inverse op
+    // origin === null/undef   → local mutation (mirror calls, etc.)
+    const isRemote = origin === provider;
+    const isOurUndo = origin === undoManager;
+
+    if (!isRemote) {
+      // Anything we generated locally (direct write or undo) needs to go
+      // out on the wire so peers see it.
+      const encoder = encoding.createEncoder();
+      syncProtocol.writeUpdate(encoder, update);
+      provider.send('doc', encoding.toUint8Array(encoder));
+    }
+    if (isRemote || isOurUndo) {
+      // Y.Doc has new state that the workbook's internal Maps don't reflect
+      // yet — remote came in via the network, or our undo just rewrote Y.
+      // Reload via the dedicated entrypoint (suspends history + mirror).
       const newData = serializeYDocToData(ydoc, workbook.getSelection());
       workbook._reloadFromCollab(newData);
-      return;
     }
-    // Local mutation — broadcast it as a sync update.
-    const encoder = encoding.createEncoder();
-    syncProtocol.writeUpdate(encoder, update);
-    provider.send('doc', encoding.toUint8Array(encoder));
   };
   ydoc.on('update', onDocUpdate);
 
@@ -141,10 +166,11 @@ export async function attachCollabToWorkbook(
     awareness.off('update', onAwarenessUpdate);
     unsubDoc();
     unsubAwareness();
+    undoManager.destroy();
     awareness.destroy();
     provider.disconnect();
     ydoc.destroy();
   };
 
-  return { ydoc, awareness, identity, detach };
+  return { ydoc, awareness, identity, undoManager, detach };
 }

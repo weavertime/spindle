@@ -662,15 +662,19 @@ export class WorkbookImpl implements Workbook {
     if (this.isUndoing || this.isRedoing) {
       return; // Don't record history during undo/redo operations
     }
-    
+    // Collab mode uses Y.UndoManager (in the collab handle) to track local
+    // mutations through Y operations — those broadcast naturally. Skip the
+    // snapshot stack entirely so it doesn't double-undo or diverge.
+    if (this.collabHandle) return;
+
     const snapshot = this.createSnapshot();
     this.undoStack.push(snapshot);
-    
+
     // Limit history size
     if (this.undoStack.length > this.maxHistorySize) {
       this.undoStack.shift();
     }
-    
+
     // Clear redo stack when new action is performed
     this.redoStack = [];
   }
@@ -679,14 +683,21 @@ export class WorkbookImpl implements Workbook {
    * Undo the last operation
    */
   undo(): boolean {
+    if (this.collabHandle) {
+      // Route through Y.UndoManager — its inverse op flows through ydoc
+      // .on('update') with origin === undoManager, which the binding's
+      // dispatcher broadcasts AND reloads the local workbook from Y.
+      const stackItem = this.collabHandle.undoManager.undo();
+      return stackItem !== null;
+    }
     if (this.undoStack.length === 0) {
       return false;
     }
-    
+
     // Save current state to redo stack
     const currentSnapshot = this.createSnapshot();
     this.redoStack.push(currentSnapshot);
-    
+
     // Restore previous state
     const previousSnapshot = this.undoStack.pop()!;
     this.isUndoing = true;
@@ -695,7 +706,7 @@ export class WorkbookImpl implements Workbook {
     } finally {
       this.isUndoing = false;
     }
-    
+
     return true;
   }
 
@@ -703,14 +714,18 @@ export class WorkbookImpl implements Workbook {
    * Redo the last undone operation
    */
   redo(): boolean {
+    if (this.collabHandle) {
+      const stackItem = this.collabHandle.undoManager.redo();
+      return stackItem !== null;
+    }
     if (this.redoStack.length === 0) {
       return false;
     }
-    
+
     // Save current state to undo stack
     const currentSnapshot = this.createSnapshot();
     this.undoStack.push(currentSnapshot);
-    
+
     // Restore next state
     const nextSnapshot = this.redoStack.pop()!;
     this.isRedoing = true;
@@ -719,7 +734,7 @@ export class WorkbookImpl implements Workbook {
     } finally {
       this.isRedoing = false;
     }
-    
+
     return true;
   }
 
@@ -727,6 +742,7 @@ export class WorkbookImpl implements Workbook {
    * Check if undo is available
    */
   canUndo(): boolean {
+    if (this.collabHandle) return this.collabHandle.undoManager.canUndo();
     return this.undoStack.length > 0;
   }
 
@@ -734,6 +750,7 @@ export class WorkbookImpl implements Workbook {
    * Check if redo is available
    */
   canRedo(): boolean {
+    if (this.collabHandle) return this.collabHandle.undoManager.canRedo();
     return this.redoStack.length > 0;
   }
 
@@ -1267,8 +1284,6 @@ export class WorkbookImpl implements Workbook {
    */
   private attachStructureListenerIfNeeded(sheet: SheetImpl): void {
     if (!this.collabHandle) return;
-    // eslint-disable-next-line no-console
-    console.log('[collab] attaching structure listener to sheet', sheet.id);
     sheet.__setStructureChangeListener(() => {
       this.mirrorSheetStructure(sheet.id);
     });
@@ -1322,23 +1337,9 @@ export class WorkbookImpl implements Workbook {
     const ydoc = this.collabHandle.ydoc;
     const yTypes = getWorkbookYTypes(ydoc);
     const ySheetMap = yTypes.sheets.get(sheetId);
-    if (!ySheetMap) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        '[collab] mirrorCellWrite: no Y sheet for', sheetId,
-        'known:', Array.from(yTypes.sheets.keys()),
-      );
-      return;
-    }
+    if (!ySheetMap) return;
     const t = getSheetYTypes(ySheetMap);
-    if (!t.cells || !t.rowOrder || !t.colOrder) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        '[collab] mirrorCellWrite: sheet sub-maps missing for', sheetId,
-        'keys:', Array.from(ySheetMap.keys()),
-      );
-      return;
-    }
+    if (!t.cells || !t.rowOrder || !t.colOrder) return;
 
     ydoc.transact(() => {
       // Ensure rowOrder/colOrder entries exist for these IDs at the right index.
@@ -1434,27 +1435,13 @@ export class WorkbookImpl implements Workbook {
    * listener after any structural mutation.
    */
   private mirrorSheetStructure(sheetId: string): void {
-    // eslint-disable-next-line no-console
-    console.log('[collab] mirrorSheetStructure', sheetId, {
-      hasHandle: !!this.collabHandle,
-      applyingRemote: this.isApplyingRemoteChange,
-    });
     if (!this.collabHandle || this.isApplyingRemoteChange) return;
     const sheet = this.sheets.get(sheetId) as SheetImpl | undefined;
-    if (!sheet) {
-      // eslint-disable-next-line no-console
-      console.warn('[collab] mirrorSheetStructure: sheet not in workbook', sheetId);
-      return;
-    }
+    if (!sheet) return;
     const ydoc = this.collabHandle.ydoc;
     const yTypes = getWorkbookYTypes(ydoc);
     const ySheetMap = yTypes.sheets.get(sheetId);
-    if (!ySheetMap) {
-      // eslint-disable-next-line no-console
-      console.warn('[collab] mirrorSheetStructure: no Y sheet for', sheetId,
-        'known:', Array.from(yTypes.sheets.keys()));
-      return;
-    }
+    if (!ySheetMap) return;
     const t = getSheetYTypes(ySheetMap);
 
     const orderSnapshot = sheet.snapshotOrderMaps();

@@ -218,10 +218,34 @@ function cellRect(
   headerHeight: number,
 ): CellRect | null {
   if (row < 0 || col < 0) return null;
-  let y = headerHeight - scrollTop;
-  for (let r = 0; r < row; r++) y += sheet.getRowHeight(r);
-  let x = headerWidth - scrollLeft;
-  for (let c = 0; c < col; c++) x += sheet.getColWidth(c);
+  const frozenRows = sheet.getFrozenRows();
+  const frozenCols = sheet.getFrozenCols();
+
+  // Rows in the frozen band stay pinned at headerHeight regardless of
+  // scrollTop. Rows below the band scroll normally and offset past the
+  // frozen height.
+  let y: number;
+  if (row < frozenRows) {
+    y = headerHeight;
+    for (let r = 0; r < row; r++) y += sheet.getRowHeight(r);
+  } else {
+    let frozenSum = 0;
+    for (let r = 0; r < frozenRows; r++) frozenSum += sheet.getRowHeight(r);
+    y = headerHeight + frozenSum - scrollTop;
+    for (let r = frozenRows; r < row; r++) y += sheet.getRowHeight(r);
+  }
+
+  let x: number;
+  if (col < frozenCols) {
+    x = headerWidth;
+    for (let c = 0; c < col; c++) x += sheet.getColWidth(c);
+  } else {
+    let frozenColSum = 0;
+    for (let c = 0; c < frozenCols; c++) frozenColSum += sheet.getColWidth(c);
+    x = headerWidth + frozenColSum - scrollLeft;
+    for (let c = frozenCols; c < col; c++) x += sheet.getColWidth(c);
+  }
+
   return {
     x,
     y,
