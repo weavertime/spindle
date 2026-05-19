@@ -9,3 +9,9 @@ export {
   type WorkbookYTypes,
   type SheetYTypes,
 } from './y-schema';
+
+export {
+  attachCollabToWorkbook,
+  type CollabHandle,
+  type AttachCollabOptions,
+} from './binding';

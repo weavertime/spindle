@@ -10,6 +10,8 @@ import { SortManager } from './features/sort';
 import { getCellKey, getStableCellKey, parseCellKey } from './utils/cell-key';
 import { FormulaParser } from './formula-parser';
 import type { RangeReference, StableFormulaNode, SheetResolver } from './formula-parser';
+import { attachCollabToWorkbook } from './collab/binding';
+import type { CollabHandle, AttachCollabOptions } from './collab/binding';
 import {
   toStableAst,
   fromStableAst,
@@ -60,6 +62,9 @@ export class WorkbookImpl implements Workbook {
   private isUndoing = false; // Flag to prevent recording history during undo/redo
   private isRedoing = false;
   private isBatching = false; // Flag to track if we're in a batch operation
+  // Set by attachCollab; consulted in places that need to know whether the
+  // workbook is currently sourcing state from a Y.Doc.
+  private collabHandle: CollabHandle | null = null;
 
   constructor(id: string, name: string) {
     this.id = id;
@@ -1182,5 +1187,67 @@ export class WorkbookImpl implements Workbook {
     }
   }
 
+  // ============================================
+  // Collaboration
+  // ============================================
+
+  /**
+   * Attach a CollabProvider so this workbook's cells, structure, and styles
+   * sync with peers via Yjs. The returned handle exposes the Y.Doc and
+   * Awareness; the React layer reads it via getCollabHandle() to overlay
+   * remote cell selections.
+   *
+   * Idempotent guard: throws if already attached.
+   */
+  async attachCollab(
+    provider: import('@pagent-libs/shared').CollabProvider,
+    identity: import('@pagent-libs/shared').CollabIdentity,
+    options?: AttachCollabOptions,
+  ): Promise<CollabHandle> {
+    if (this.collabHandle) {
+      throw new Error('Collaboration is already attached to this workbook.');
+    }
+    const handle = await attachCollabToWorkbook(
+      this.getData(),
+      this,
+      provider,
+      identity,
+      options,
+    );
+    this.collabHandle = handle;
+    this.events.emit('workbookChange', { action: 'attachCollab' });
+    return handle;
+  }
+
+  /** Return the live collab handle, or null if not in collab mode. */
+  getCollabHandle(): CollabHandle | null {
+    return this.collabHandle;
+  }
+
+  /** Detach from the current collaboration session. */
+  detachCollab(): void {
+    if (!this.collabHandle) return;
+    this.collabHandle.detach();
+    this.collabHandle = null;
+    this.events.emit('workbookChange', { action: 'detachCollab' });
+  }
+
+  /**
+   * @internal Used by the collab binding to apply a remote-driven
+   * WorkbookData reload without tripping any guard rails that would
+   * otherwise reject setData while collab is attached. Behaves like
+   * setData but signals collab origin so consumers can disambiguate.
+   */
+  _reloadFromCollab(data: import('./types').WorkbookData): void {
+    // Suspend history recording during the reload — remote edits should
+    // not collide with local undo/redo stacks.
+    const wasUndoing = this.isUndoing;
+    this.isUndoing = true;
+    try {
+      this.setData(data);
+    } finally {
+      this.isUndoing = wasUndoing;
+    }
+  }
 }
 
