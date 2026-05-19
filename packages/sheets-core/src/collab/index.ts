@@ -4,6 +4,7 @@ export {
   getWorkbookYTypes,
   getSheetYTypes,
   createSheetYMap,
+  ensureSheetYMap,
   hydrateYDocFromData,
   serializeYDocToData,
   type WorkbookYTypes,

@@ -92,11 +92,25 @@ export function getSheetYTypes(sheetMap: Y.Map<unknown>): SheetYTypes {
 }
 
 /**
- * Build an empty Y.Map shaped like a sheet, ready to be inserted into the
- * workbook's `sheets` Y.Map. Must be called inside a Y transaction.
+ * Get or create the per-sheet Y.Map under workbook.sheets[sheetId], wired
+ * up with all its sub-Y.Maps. Must be called inside a Y transaction.
+ *
+ * The order matters: we integrate the parent sheetMap into workbook.sheets
+ * BEFORE setting child Y.Maps on it. Y.js handles mutations on detached
+ * types in most cases, but building a tree of nested Y.Maps and then
+ * integrating the root can leave the child references in an inconsistent
+ * state when read back via .get() — concretely, t.cells.set then throws
+ * "Cannot read properties of undefined (reading 'set')". Integrating the
+ * parent first sidesteps it entirely.
  */
-export function createSheetYMap(): Y.Map<unknown> {
-  const sheetMap = new Y.Map<unknown>();
+export function ensureSheetYMap(
+  parentSheets: Y.Map<Y.Map<unknown>>,
+  sheetId: string,
+): Y.Map<unknown> {
+  let sheetMap = parentSheets.get(sheetId);
+  if (sheetMap) return sheetMap;
+  sheetMap = new Y.Map<unknown>();
+  parentSheets.set(sheetId, sheetMap);
   sheetMap.set('meta', new Y.Map<unknown>());
   sheetMap.set('rowOrder', new Y.Map<number>());
   sheetMap.set('colOrder', new Y.Map<number>());
@@ -108,6 +122,24 @@ export function createSheetYMap(): Y.Map<unknown> {
   sheetMap.set('filters', new Y.Map<ColumnFilter>());
   return sheetMap;
 }
+
+/** @deprecated kept as an alias during the transition; prefer ensureSheetYMap. */
+export const createSheetYMap = (): Y.Map<unknown> => {
+  // For callers that don't have the parent yet, fall back to the old shape.
+  // Note: callers using this MUST integrate the returned map into a parent
+  // BEFORE mutating its children, otherwise the sub-Y.Maps may be unreadable.
+  const sheetMap = new Y.Map<unknown>();
+  sheetMap.set('meta', new Y.Map<unknown>());
+  sheetMap.set('rowOrder', new Y.Map<number>());
+  sheetMap.set('colOrder', new Y.Map<number>());
+  sheetMap.set('cells', new Y.Map<Cell>());
+  sheetMap.set('rowHeights', new Y.Map<number>());
+  sheetMap.set('colWidths', new Y.Map<number>());
+  sheetMap.set('hiddenRows', new Y.Map<true>());
+  sheetMap.set('hiddenCols', new Y.Map<true>());
+  sheetMap.set('filters', new Y.Map<ColumnFilter>());
+  return sheetMap;
+};
 
 // ============================================================================
 // WorkbookData → Y.Doc  (called once on attachCollab to seed peer-zero)
@@ -134,9 +166,8 @@ export function hydrateYDocFromData(ydoc: Y.Doc, data: WorkbookData): void {
 
     for (const sheetData of data.sheets) {
       types.sheetIds.push([sheetData.id]);
-      const sheetMap = createSheetYMap();
+      const sheetMap = ensureSheetYMap(types.sheets, sheetData.id);
       hydrateSheetYMap(sheetMap, sheetData);
-      types.sheets.set(sheetData.id, sheetMap);
     }
   });
 }

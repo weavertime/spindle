@@ -16,7 +16,7 @@ import type { CollabHandle, AttachCollabOptions } from './collab/binding';
 import {
   getWorkbookYTypes,
   getSheetYTypes,
-  createSheetYMap,
+  ensureSheetYMap,
 } from './collab/y-schema';
 import {
   toStableAst,
@@ -1293,8 +1293,23 @@ export class WorkbookImpl implements Workbook {
     const ydoc = this.collabHandle.ydoc;
     const yTypes = getWorkbookYTypes(ydoc);
     const ySheetMap = yTypes.sheets.get(sheetId);
-    if (!ySheetMap) return;
+    if (!ySheetMap) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[collab] mirrorCellWrite: no Y sheet for', sheetId,
+        'known:', Array.from(yTypes.sheets.keys()),
+      );
+      return;
+    }
     const t = getSheetYTypes(ySheetMap);
+    if (!t.cells || !t.rowOrder || !t.colOrder) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[collab] mirrorCellWrite: sheet sub-maps missing for', sheetId,
+        'keys:', Array.from(ySheetMap.keys()),
+      );
+      return;
+    }
 
     ydoc.transact(() => {
       // Ensure rowOrder/colOrder entries exist for these IDs at the right index.
@@ -1326,14 +1341,13 @@ export class WorkbookImpl implements Workbook {
     const ydoc = this.collabHandle.ydoc;
     const yTypes = getWorkbookYTypes(ydoc);
     ydoc.transact(() => {
-      const ySheetMap = createSheetYMap();
-      // Seed minimal meta + counts
+      const ySheetMap = ensureSheetYMap(yTypes.sheets, sheetId);
+      // Seed minimal meta + counts (now safe; sheetMap is integrated).
       const meta = ySheetMap.get('meta') as Y.Map<unknown>;
       meta.set('id', sheetId);
       meta.set('name', name);
       meta.set('rowCount', sheet.rowCount);
       meta.set('colCount', sheet.colCount);
-      yTypes.sheets.set(sheetId, ySheetMap);
       // Append to sheetIds order if not already present
       const ids = yTypes.sheetIds.toArray();
       if (!ids.includes(sheetId)) {
