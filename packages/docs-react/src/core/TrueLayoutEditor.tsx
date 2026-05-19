@@ -26,6 +26,8 @@ import { EditorState, Transaction } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { Node as PmNode } from 'prosemirror-model';
 import { docsSchema, createPlugins, blocksToPmDoc, proseMirrorToDocument, Block } from '@pagent-libs/docs-core';
+import type { CollabHandle } from '@pagent-libs/docs-core/collab';
+import { ySyncPlugin } from 'y-prosemirror';
 
 import { FlowBlock } from './flow-blocks';
 import { proseMirrorToFlowBlocks, createBlockPositionMap } from './pm-to-blocks';
@@ -92,6 +94,14 @@ export interface TrueLayoutEditorProps {
   onFooterChange?: (content: HeaderFooterContent) => void;
   /** Whether headers/footers are editable (default: true when editable is true) */
   headerFooterEditable?: boolean;
+  /**
+   * If present, the editor binds the hidden ProseMirror state to the Y.Doc's
+   * Y.XmlFragment via ySyncPlugin. Local edits propagate to peers and remote
+   * edits land in the editor through normal PM transactions, so the layout
+   * engine sees them just like local typing. initialBlocks is ignored when
+   * collabHandle is present — the Y.Doc is the source of truth.
+   */
+  collabHandle?: CollabHandle | null;
 }
 
 export interface TrueLayoutEditorHandle {
@@ -138,6 +148,7 @@ export const TrueLayoutEditor = forwardRef<TrueLayoutEditorHandle, TrueLayoutEdi
       onHeaderChange,
       onFooterChange,
       headerFooterEditable,
+      collabHandle = null,
     },
     ref
   ) {
@@ -307,13 +318,23 @@ export const TrueLayoutEditor = forwardRef<TrueLayoutEditorHandle, TrueLayoutEdi
     // Initialize ProseMirror - only ONCE on mount
     useEffect(() => {
       // Skip if already initialized or no container
-      if (editorInitializedRef.current || !hiddenEditorRef.current || !initialDocRef.current) return;
+      if (editorInitializedRef.current || !hiddenEditorRef.current) return;
+      // initialDocRef is only required for non-collab init; ySyncPlugin
+      // seeds the editor from the Y.XmlFragment instead.
+      if (!collabHandle && !initialDocRef.current) return;
       editorInitializedRef.current = true;
-      
-      const state = EditorState.create({
-        doc: initialDocRef.current,
-        plugins: createPlugins(docsSchema),
-      });
+
+      const plugins = createPlugins(docsSchema);
+      let state: EditorState;
+      if (collabHandle) {
+        plugins.unshift(ySyncPlugin(collabHandle.xmlFragment));
+        state = EditorState.create({ schema: docsSchema, plugins });
+      } else {
+        state = EditorState.create({
+          doc: initialDocRef.current!,
+          plugins,
+        });
+      }
       
       const view = new EditorView(hiddenEditorRef.current, {
         state,

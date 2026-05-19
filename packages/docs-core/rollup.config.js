@@ -6,13 +6,20 @@ import { defineConfig } from 'rollup';
 //                who don't use collab).
 //   ./collab   → Yjs-backed collaboration binding. Pulls in yjs / y-protocols.
 
-const tsPlugin = (declarationDir) =>
-  typescript({
-    tsconfig: './tsconfig.json',
-    declaration: true,
-    declarationDir,
-    rootDir: './src',
-  });
+// Only the main entry emits .d.ts files — tsc walks every reachable source
+// file and writes declarations under ./dist/, including dist/collab/*.d.ts.
+// If the collab entry also emitted declarations, it would overwrite
+// dist/collab/index.d.ts with the wrong content (the main entry's types).
+const tsPluginMain = typescript({
+  tsconfig: './tsconfig.json',
+  declaration: true,
+  declarationDir: './dist',
+  rootDir: './src',
+});
+const tsPluginNoDecl = typescript({
+  tsconfig: './tsconfig.json',
+  declaration: false,
+});
 
 const external = [
   'immer',
@@ -42,7 +49,7 @@ export default defineConfig([
       { file: 'dist/index.esm.js', format: 'esm', sourcemap: true },
     ],
     external,
-    plugins: [tsPlugin('./dist')],
+    plugins: [tsPluginMain],
   },
   {
     input: 'src/collab/index.ts',
@@ -51,6 +58,6 @@ export default defineConfig([
       { file: 'dist/collab/index.esm.js', format: 'esm', sourcemap: true },
     ],
     external,
-    plugins: [tsPlugin('./dist/collab')],
+    plugins: [tsPluginNoDecl],
   },
 ]);
