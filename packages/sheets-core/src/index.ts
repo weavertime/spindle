@@ -20,6 +20,3 @@ export * from './features';
 // Formula parser module
 export * from './formula-parser';
 
-// Collaboration module
-export * from './collaboration';
-
