@@ -14,7 +14,22 @@ const tsPlugin = (declarationDir) =>
     rootDir: './src',
   });
 
-const external = ['immer', 'yjs', 'y-protocols', 'y-protocols/awareness'];
+const external = [
+  'immer',
+  'yjs',
+  'y-protocols',
+  'y-protocols/awareness',
+  'y-prosemirror',
+  'prosemirror-model',
+  'prosemirror-state',
+  'prosemirror-transform',
+  'prosemirror-schema-basic',
+  'prosemirror-schema-list',
+  'prosemirror-keymap',
+  'prosemirror-history',
+  'prosemirror-commands',
+  'prosemirror-inputrules',
+];
 
 export default defineConfig([
   {
