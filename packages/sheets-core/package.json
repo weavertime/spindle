@@ -19,6 +19,11 @@
       "import": "./dist/index.esm.js",
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./collab": {
+      "import": "./dist/collab/index.esm.js",
+      "require": "./dist/collab/index.js",
+      "types": "./dist/collab/index.d.ts"
     }
   },
   "files": [
@@ -40,7 +45,9 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "immer": "^10.0.0"
+    "immer": "^10.0.0",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.30"
   },
   "devDependencies": {
     "@rollup/plugin-typescript": "^11.1.0",
@@ -51,4 +58,3 @@
     "typescript": "^5.2.0"
   }
 }
-
