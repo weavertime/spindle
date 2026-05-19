@@ -27,7 +27,8 @@ import { EditorView } from 'prosemirror-view';
 import { Node as PmNode } from 'prosemirror-model';
 import { docsSchema, createPlugins, blocksToPmDoc, proseMirrorToDocument, Block } from '@pagent-libs/docs-core';
 import type { CollabHandle } from '@pagent-libs/docs-core/collab';
-import { ySyncPlugin } from 'y-prosemirror';
+import { ySyncPlugin, yCursorPlugin } from 'y-prosemirror';
+import { ensureCollabCursorStyles } from './collab-cursor-styles';
 
 import { FlowBlock } from './flow-blocks';
 import { proseMirrorToFlowBlocks, createBlockPositionMap } from './pm-to-blocks';
@@ -327,7 +328,11 @@ export const TrueLayoutEditor = forwardRef<TrueLayoutEditorHandle, TrueLayoutEdi
       const plugins = createPlugins(docsSchema);
       let state: EditorState;
       if (collabHandle) {
-        plugins.unshift(ySyncPlugin(collabHandle.xmlFragment));
+        ensureCollabCursorStyles();
+        plugins.unshift(
+          ySyncPlugin(collabHandle.xmlFragment),
+          yCursorPlugin(collabHandle.awareness),
+        );
         state = EditorState.create({ schema: docsSchema, plugins });
       } else {
         state = EditorState.create({

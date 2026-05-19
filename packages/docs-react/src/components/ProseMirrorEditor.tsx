@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { EditorState, Transaction } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
-import { ySyncPlugin } from 'y-prosemirror';
+import { ySyncPlugin, yCursorPlugin } from 'y-prosemirror';
+import { ensureCollabCursorStyles } from '../core/collab-cursor-styles';
 import {
   docsSchema,
   createPlugins,
@@ -202,7 +203,11 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorRef, ProseMirrorEdi
       const plugins = createPlugins(docsSchema);
       let stateConfig: Parameters<typeof EditorState.create>[0];
       if (collabHandle) {
-        plugins.unshift(ySyncPlugin(collabHandle.xmlFragment));
+        ensureCollabCursorStyles();
+        plugins.unshift(
+          ySyncPlugin(collabHandle.xmlFragment),
+          yCursorPlugin(collabHandle.awareness),
+        );
         stateConfig = { schema: docsSchema, plugins };
       } else {
         let doc;
