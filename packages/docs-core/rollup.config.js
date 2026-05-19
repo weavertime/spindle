@@ -29,6 +29,9 @@ const external = [
   'prosemirror-history',
   'prosemirror-commands',
   'prosemirror-inputrules',
+  'y-protocols/sync',
+  'lib0/encoding',
+  'lib0/decoding',
 ];
 
 export default defineConfig([

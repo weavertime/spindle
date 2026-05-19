@@ -6,3 +6,9 @@ export {
   serializeYDocToData,
   type YDocFields,
 } from './y-schema';
+
+export {
+  attachCollabToYDoc,
+  type CollabHandle,
+  type AttachCollabOptions,
+} from './binding';

@@ -16,6 +16,7 @@ import { DocumentEventEmitter } from './event-emitter';
 import { DocumentHistory } from './history';
 import { TextStylePoolImpl, ParagraphStylePoolImpl } from './style-pool';
 import { createParagraphFromText } from './blocks/paragraph';
+import { attachCollabToYDoc } from './collab/binding';
 
 function generateDocumentId(): string {
   return `doc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -67,6 +68,11 @@ export class DocumentImpl {
   private textStylePool: TextStylePoolImpl;
   private paragraphStylePool: ParagraphStylePoolImpl;
   private selection: TextSelection | null = null;
+  // Set when attachCollab is called. The Y.Doc inside the handle is the
+  // source of truth for body content while attached; local mutations
+  // (history snapshots, addBlock, etc.) keep working on this.document but
+  // the React editor binds to handle.xmlFragment via ySyncPlugin.
+  private collabHandle: import('./collab/binding').CollabHandle | null = null;
 
   constructor(id?: string, title?: string) {
     this.document = createDocument(title || 'Untitled Document');
@@ -426,6 +432,11 @@ export class DocumentImpl {
   }
 
   setData(data: DocumentData): void {
+    if (this.collabHandle) {
+      throw new Error(
+        'Cannot setData while collaboration is attached — detach first.',
+      );
+    }
     this.document = {
       id: data.id,
       title: data.title,
@@ -443,11 +454,57 @@ export class DocumentImpl {
 
     this.textStylePool.setFromData(data.textStylePool || {});
     this.paragraphStylePool.setFromData(data.paragraphStylePool || {});
-    
+
     this.history.clear();
     this.recordHistory('Loaded document');
-    
+
     this.emit('documentChange', { action: 'setData' });
+  }
+
+  // ============================================================================
+  // Collaboration
+  // ============================================================================
+
+  /**
+   * Attach a CollabProvider so this document's body content syncs with peers
+   * via Yjs. The returned handle exposes the Y.Doc + Y.XmlFragment + Awareness
+   * needed by the React editor's ySyncPlugin / yCursorPlugin. Idempotent
+   * guard: throws if already attached.
+   *
+   * v1 restrictions: documents must be single-section; setData is disallowed
+   * while attached; local DocumentHistory undo is shadowed by Yjs UndoManager
+   * once we wire that in (phase 1.6).
+   */
+  async attachCollab(
+    provider: import('@pagent-libs/shared').CollabProvider,
+    identity: import('@pagent-libs/shared').CollabIdentity,
+    options?: import('./collab/binding').AttachCollabOptions,
+  ): Promise<import('./collab/binding').CollabHandle> {
+    if (this.collabHandle) {
+      throw new Error('Collaboration is already attached to this document.');
+    }
+    const handle = await attachCollabToYDoc(
+      this.getData(),
+      provider,
+      identity,
+      options,
+    );
+    this.collabHandle = handle;
+    this.emit('documentChange', { action: 'attachCollab' });
+    return handle;
+  }
+
+  /** Return the live collab handle, or null if not in collab mode. */
+  getCollabHandle(): import('./collab/binding').CollabHandle | null {
+    return this.collabHandle;
+  }
+
+  /** Detach from the current collaboration session. */
+  detachCollab(): void {
+    if (!this.collabHandle) return;
+    this.collabHandle.detach();
+    this.collabHandle = null;
+    this.emit('documentChange', { action: 'detachCollab' });
   }
 }
 
