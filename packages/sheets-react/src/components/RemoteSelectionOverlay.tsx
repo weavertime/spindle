@@ -113,14 +113,36 @@ export function RemoteSelectionOverlay({
         zIndex: 5,
       }}
     >
+      {/* Inner clip area: rectangles + outlines never draw over the
+          row-number column or column-letter row when scrolled. */}
+      <div
+        style={{
+          position: 'absolute',
+          top: headerHeight,
+          left: headerWidth,
+          width: Math.max(0, width - headerWidth),
+          height: Math.max(0, height - headerHeight),
+          overflow: 'hidden',
+        }}
+      >
+        {visibles.map((peer) =>
+          renderPeerRects(peer, sheet, scrollTop, scrollLeft, headerWidth, headerHeight),
+        )}
+      </div>
+      {/* Name pills sit OUTSIDE the clip area so they can hang above the
+          frozen / header row without getting cropped. */}
       {visibles.map((peer) =>
-        renderPeer(peer, sheet, scrollTop, scrollLeft, headerWidth, headerHeight),
+        renderPeerLabel(peer, sheet, scrollTop, scrollLeft, headerWidth, headerHeight),
       )}
     </div>
   );
 }
 
-function renderPeer(
+/**
+ * Selection fills + active-cell outline. Coordinates are translated to be
+ * relative to the inner clip area (which starts at headerWidth, headerHeight).
+ */
+function renderPeerRects(
   peer: RemotePeer,
   sheet: Sheet,
   scrollTop: number,
@@ -129,7 +151,6 @@ function renderPeer(
   headerHeight: number,
 ): React.ReactNode {
   const color = peer.user.color;
-  const name = peer.user.name;
   const els: React.ReactNode[] = [];
 
   // Translucent fill for each range
@@ -142,8 +163,8 @@ function renderPeer(
         key={`r-${peer.clientId}-${i}`}
         style={{
           position: 'absolute',
-          left: rect.x,
-          top: rect.y,
+          left: rect.x - headerWidth,
+          top: rect.y - headerHeight,
           width: rect.w,
           height: rect.h,
           backgroundColor: color,
@@ -153,7 +174,6 @@ function renderPeer(
     );
   }
 
-  // Outlined active cell + name pill above it
   if (peer.cellSelection.activeCell) {
     const ac = peer.cellSelection.activeCell;
     const rect = cellRect(sheet, ac.row, ac.col, scrollTop, scrollLeft, headerWidth, headerHeight);
@@ -163,38 +183,64 @@ function renderPeer(
           key={`a-${peer.clientId}`}
           style={{
             position: 'absolute',
-            left: rect.x,
-            top: rect.y,
+            left: rect.x - headerWidth,
+            top: rect.y - headerHeight,
             width: rect.w,
             height: rect.h,
             border: `2px solid ${color}`,
             boxSizing: 'border-box',
           }}
         />,
-        <div
-          key={`l-${peer.clientId}`}
-          style={{
-            position: 'absolute',
-            left: rect.x,
-            top: rect.y - 18,
-            backgroundColor: color,
-            color: 'white',
-            padding: '1px 6px',
-            borderRadius: 3,
-            fontSize: 11,
-            fontWeight: 500,
-            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-            whiteSpace: 'nowrap',
-            lineHeight: 1.4,
-          }}
-        >
-          {name}
-        </div>,
       );
     }
   }
 
   return els;
+}
+
+/**
+ * Name pill above the active cell. Lives outside the clip area so it can
+ * draw on top of the header row (which is the natural visual treatment for
+ * remote-user labels). Hidden when the active cell is fully scrolled out
+ * of the data area.
+ */
+function renderPeerLabel(
+  peer: RemotePeer,
+  sheet: Sheet,
+  scrollTop: number,
+  scrollLeft: number,
+  headerWidth: number,
+  headerHeight: number,
+): React.ReactNode {
+  if (!peer.cellSelection.activeCell) return null;
+  const ac = peer.cellSelection.activeCell;
+  const rect = cellRect(sheet, ac.row, ac.col, scrollTop, scrollLeft, headerWidth, headerHeight);
+  if (!rect) return null;
+  // Hide if the cell's right edge is to the left of the data area or its
+  // bottom is above the data area — the cell is fully scrolled away.
+  if (rect.x + rect.w <= headerWidth) return null;
+  if (rect.y + rect.h <= headerHeight) return null;
+  return (
+    <div
+      key={`l-${peer.clientId}`}
+      style={{
+        position: 'absolute',
+        left: Math.max(headerWidth, rect.x),
+        top: rect.y - 18,
+        backgroundColor: peer.user.color,
+        color: 'white',
+        padding: '1px 6px',
+        borderRadius: 3,
+        fontSize: 11,
+        fontWeight: 500,
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        whiteSpace: 'nowrap',
+        lineHeight: 1.4,
+      }}
+    >
+      {peer.user.name}
+    </div>
+  );
 }
 
 // ============================================================================
