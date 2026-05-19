@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { WorkbookProvider, WorkbookCanvas } from '@pagent-libs/sheets';
-import { WorkbookImpl } from '@pagent-libs/core';
+import { WorkbookProvider, WorkbookCanvas } from '@pagent-libs/sheets-react';
+import { WorkbookImpl } from '@pagent-libs/sheets-core';
 import './App.css';
 
 function App() {

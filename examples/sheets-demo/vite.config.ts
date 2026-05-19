@@ -6,12 +6,12 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@pagent-libs/core': path.resolve(__dirname, '../../packages/core/src'),
-      '@pagent-libs/sheets': path.resolve(__dirname, '../../packages/sheets/src'),
+      '@pagent-libs/sheets-core': path.resolve(__dirname, '../../packages/sheets-core/src'),
+      '@pagent-libs/sheets-react': path.resolve(__dirname, '../../packages/sheets-react/src'),
+      '@pagent-libs/shared': path.resolve(__dirname, '../../packages/shared/src'),
     },
   },
   server: {
     port: 5175,
   },
 });
-
