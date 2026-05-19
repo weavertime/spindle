@@ -655,9 +655,11 @@ export const CanvasGrid = memo(function CanvasGrid({
               if (r === fillStart.row && c === fillStart.col) continue;
               
               if (sourceFormula) {
-                // Adjust formula for relative references
+                // Adjust formula for relative references (AST-aware rebasing)
                 const adjustedFormula = adjustFormula(
                   sourceFormula,
+                  workbook,
+                  undefined,
                   fillStart.row,
                   fillStart.col,
                   r,

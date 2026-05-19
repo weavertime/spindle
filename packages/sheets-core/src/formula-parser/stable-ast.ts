@@ -228,6 +228,127 @@ function renderRef(
 // Dependency extraction (returns stable graph keys "rowId:colId")
 // ============================================================================
 
+// ============================================================================
+// Copy/paste rebasing (used by fill, copy)
+// ============================================================================
+
+/**
+ * Produce a new stable AST suitable for pasting a formula that originated at
+ * (sourceRow, sourceCol) into a cell at (targetRow, targetCol).
+ *
+ * Absolute refs ($A$1) are preserved unchanged — they continue to identify
+ * the same cell. Relative refs are rebased by the source→target offset: if
+ * the original ref pointed at the cell at (srcRow + N), the new ref points
+ * at the cell at (tgtRow + N). This is the spreadsheet drag-fill convention.
+ *
+ * Replaces the old regex-based adjustFormula on A1 strings; the AST walk
+ * is correct under arbitrary row/column reorderings whereas the regex
+ * implicitly assumed numeric coords matched current indices.
+ */
+export function adjustStableAstForCopy(
+  node: StableFormulaNode,
+  resolver: SheetResolver,
+  currentSheet: Sheet,
+  sourceRow: number,
+  sourceCol: number,
+  targetRow: number,
+  targetCol: number,
+): StableFormulaNode {
+  const out: StableFormulaNode = { type: node.type };
+  if (node.value !== undefined) out.value = node.value;
+  if (node.functionName !== undefined) out.functionName = node.functionName;
+  if (node.operator !== undefined) out.operator = node.operator;
+  if (node.cellRef) {
+    out.cellRef = rebaseRef(
+      node.cellRef,
+      resolver,
+      currentSheet,
+      sourceRow,
+      sourceCol,
+      targetRow,
+      targetCol,
+    );
+  }
+  if (node.rangeRef) {
+    out.rangeRef = {
+      start: rebaseRef(
+        node.rangeRef.start,
+        resolver,
+        currentSheet,
+        sourceRow,
+        sourceCol,
+        targetRow,
+        targetCol,
+      ),
+      end: rebaseRef(
+        node.rangeRef.end,
+        resolver,
+        currentSheet,
+        sourceRow,
+        sourceCol,
+        targetRow,
+        targetCol,
+      ),
+    };
+  }
+  if (node.args) {
+    out.args = node.args.map((a) =>
+      adjustStableAstForCopy(a, resolver, currentSheet, sourceRow, sourceCol, targetRow, targetCol),
+    );
+  }
+  if (node.left) {
+    out.left = adjustStableAstForCopy(
+      node.left, resolver, currentSheet, sourceRow, sourceCol, targetRow, targetCol,
+    );
+  }
+  if (node.right) {
+    out.right = adjustStableAstForCopy(
+      node.right, resolver, currentSheet, sourceRow, sourceCol, targetRow, targetCol,
+    );
+  }
+  return out;
+}
+
+function rebaseRef(
+  ref: StableCellRef,
+  resolver: SheetResolver,
+  currentSheet: Sheet,
+  sourceRow: number,
+  sourceCol: number,
+  targetRow: number,
+  targetCol: number,
+): StableCellRef {
+  const sheet = ref.sheetName ? (resolver.getSheet(ref.sheetName) ?? currentSheet) : currentSheet;
+
+  let newRowId = ref.rowId;
+  let newColId = ref.colId;
+
+  if (!ref.rowAbsolute) {
+    const cur = sheet.getRowIndex(ref.rowId);
+    if (cur !== undefined) {
+      const offset = cur - sourceRow;
+      const newRow = Math.max(0, targetRow + offset);
+      newRowId = sheet.ensureRowId(newRow);
+    }
+  }
+  if (!ref.colAbsolute) {
+    const cur = sheet.getColIndex(ref.colId);
+    if (cur !== undefined) {
+      const offset = cur - sourceCol;
+      const newCol = Math.max(0, targetCol + offset);
+      newColId = sheet.ensureColId(newCol);
+    }
+  }
+
+  return {
+    rowId: newRowId,
+    colId: newColId,
+    rowAbsolute: ref.rowAbsolute,
+    colAbsolute: ref.colAbsolute,
+    sheetName: ref.sheetName,
+  };
+}
+
 /**
  * Walk the stable AST and collect dependency keys for the formula graph.
  * Cross-sheet refs are skipped — the in-sheet graph doesn't track them
