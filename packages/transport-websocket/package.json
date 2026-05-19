@@ -1,0 +1,49 @@
+{
+  "name": "@pagent-libs/transport-websocket",
+  "version": "0.1.0",
+  "description": "WebSocket-backed CollabProvider for pagent-libs collaboration",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pagentapp/pagent-libs.git",
+    "directory": "packages/transport-websocket"
+  },
+  "bugs": {
+    "url": "https://github.com/pagentapp/pagent-libs/issues"
+  },
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "type": "module",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "collaboration",
+    "websocket",
+    "yjs",
+    "real-time"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@pagent-libs/shared": "*"
+  },
+  "devDependencies": {
+    "@rollup/plugin-typescript": "^11.1.0",
+    "rollup": "^4.0.0",
+    "typescript": "^5.2.0"
+  }
+}
