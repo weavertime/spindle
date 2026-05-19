@@ -265,19 +265,35 @@ export interface WorkbookData {
 export interface SheetData {
   id: string;
   name: string;
-  cells: Array<{ key: string; cell: Cell }>; // key format: "row:col"
+  /**
+   * Cell entries. The key format depends on whether `rowOrder`/`colOrder`
+   * are present:
+   *   - With rowOrder/colOrder: key is `"{rowId}:{colId}"` (stable). This is
+   *     what `getData()` emits.
+   *   - Without: key is `"row:col"` (numeric). This legacy form is accepted
+   *     by `setData()` and is convenient for hand- or AI-authored JSON.
+   */
+  cells: Array<{ key: string; cell: Cell }>;
+  /**
+   * Stable row IDs at each numeric index, sparse. Optional on input — when
+   * absent, cell keys / config keys are interpreted as numeric and IDs are
+   * materialized during load. Always emitted by `getData()`.
+   */
+  rowOrder?: Array<[number, string]>;
+  colOrder?: Array<[number, string]>;
   config: {
     defaultRowHeight?: number;
     defaultColWidth?: number;
-    rowHeights?: Array<[number, number]>; // [row, height] pairs
-    colWidths?: Array<[number, number]>; // [col, width] pairs
-    hiddenRows?: number[];
-    hiddenCols?: number[];
+    /** When rowOrder/colOrder is present, keys are rowId/colId strings; otherwise numeric indices. */
+    rowHeights?: Array<[number | string, number]>;
+    colWidths?: Array<[number | string, number]>;
+    hiddenRows?: Array<number | string>;
+    hiddenCols?: Array<number | string>;
     frozenRows?: number;
     frozenCols?: number;
     showGridLines?: boolean;
     sortOrder?: SortOrder[];
-    filters?: Array<[number, ColumnFilter]>; // [column, filter] pairs
+    filters?: Array<[number | string, ColumnFilter]>;
   };
   rowCount: number;
   colCount: number;

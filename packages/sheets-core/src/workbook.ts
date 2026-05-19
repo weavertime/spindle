@@ -734,73 +734,55 @@ export class WorkbookImpl implements Workbook {
       formatPool[formatId] = format;
     }
 
-    // Serialize sheets
+    // Serialize sheets in the stable-ID wire format (phase 2a.6).
     const sheets: import('./types').SheetData[] = [];
     for (const sheet of this.sheets.values()) {
-      // Serialize cells. The wire format remains numeric "r:c" in 2a.2;
-      // the JSON shape switches to stable keys in 2a.6 alongside rowOrder/colOrder.
+      // Cells: emit stable keys directly. The accompanying rowOrder/colOrder
+      // entries below let consumers reconstruct numeric layout.
       const cells: Array<{ key: string; cell: import('./types').Cell }> = [];
       for (const [row, col, cell] of sheet.entries()) {
-        cells.push({ key: getCellKey(row, col), cell });
+        const rowId = sheet.getRowId(row);
+        const colId = sheet.getColId(col);
+        if (!rowId || !colId) continue; // unreachable: entries() only yields cells with IDs
+        cells.push({ key: `${rowId}:${colId}`, cell });
       }
 
-      // Serialize config — wire format is numeric (index-based) in 2a.3;
-      // translate stable IDs back to current indices, dropping any orphans
-      // whose IDs no longer appear in the order maps.
-      const rowHeightsOut: Array<[number, number]> = [];
-      if (sheet.config.rowHeights) {
-        for (const [rowId, h] of sheet.config.rowHeights) {
-          const row = sheet.getRowIndex(rowId);
-          if (row !== undefined) rowHeightsOut.push([row, h]);
-        }
-      }
-      const colWidthsOut: Array<[number, number]> = [];
-      if (sheet.config.colWidths) {
-        for (const [colId, w] of sheet.config.colWidths) {
-          const col = sheet.getColIndex(colId);
-          if (col !== undefined) colWidthsOut.push([col, w]);
-        }
-      }
-      const hiddenRowsOut: number[] = [];
-      if (sheet.config.hiddenRows) {
-        for (const rowId of sheet.config.hiddenRows) {
-          const row = sheet.getRowIndex(rowId);
-          if (row !== undefined) hiddenRowsOut.push(row);
-        }
-      }
-      const hiddenColsOut: number[] = [];
-      if (sheet.config.hiddenCols) {
-        for (const colId of sheet.config.hiddenCols) {
-          const col = sheet.getColIndex(colId);
-          if (col !== undefined) hiddenColsOut.push(col);
-        }
-      }
-      const filtersOut: Array<[number, import('./types').ColumnFilter]> = [];
-      if (sheet.config.filters) {
-        for (const [colId, filter] of sheet.config.filters) {
-          const col = sheet.getColIndex(colId);
-          if (col !== undefined) filtersOut.push([col, { ...filter, column: col }]);
-        }
-      }
+      const orderSnapshot = sheet.snapshotOrderMaps();
+      const rowOrder = Array.from(orderSnapshot.rowOrder.entries());
+      const colOrder = Array.from(orderSnapshot.colOrder.entries());
 
       const config = {
         defaultRowHeight: sheet.config.defaultRowHeight,
         defaultColWidth: sheet.config.defaultColWidth,
-        rowHeights: sheet.config.rowHeights ? rowHeightsOut : undefined,
-        colWidths: sheet.config.colWidths ? colWidthsOut : undefined,
-        hiddenRows: sheet.config.hiddenRows ? hiddenRowsOut : undefined,
-        hiddenCols: sheet.config.hiddenCols ? hiddenColsOut : undefined,
+        // Row/col config entries already use stable IDs internally — pass
+        // them through directly.
+        rowHeights: sheet.config.rowHeights
+          ? Array.from(sheet.config.rowHeights.entries()) as Array<[string, number]>
+          : undefined,
+        colWidths: sheet.config.colWidths
+          ? Array.from(sheet.config.colWidths.entries()) as Array<[string, number]>
+          : undefined,
+        hiddenRows: sheet.config.hiddenRows
+          ? Array.from(sheet.config.hiddenRows) as string[]
+          : undefined,
+        hiddenCols: sheet.config.hiddenCols
+          ? Array.from(sheet.config.hiddenCols) as string[]
+          : undefined,
         frozenRows: sheet.config.frozenRows,
         frozenCols: sheet.config.frozenCols,
         showGridLines: sheet.config.showGridLines,
         sortOrder: sheet.config.sortOrder,
-        filters: sheet.config.filters ? filtersOut : undefined,
+        filters: sheet.config.filters
+          ? Array.from(sheet.config.filters.entries()) as Array<[string, import('./types').ColumnFilter]>
+          : undefined,
       };
 
       sheets.push({
         id: sheet.id,
         name: sheet.name,
         cells,
+        rowOrder,
+        colOrder,
         config,
         rowCount: sheet.rowCount,
         colCount: sheet.colCount,
@@ -869,11 +851,17 @@ export class WorkbookImpl implements Workbook {
       }
     }
 
-    // Restore sheets. Wire format is numeric (index-based); internal storage
-    // is stable-ID-keyed. Translation requires the sheet to exist first.
+    // Restore sheets. Accept two wire formats:
+    //   1. Stable form  — rowOrder/colOrder present; cell keys are stable.
+    //      Produced by getData(). Pass-through with no translation.
+    //   2. Legacy form  — no rowOrder; cell keys are numeric "r:c". Convenient
+    //      for hand- or AI-authored JSON. We materialize stable IDs as we
+    //      load.
     for (const sheetData of data.sheets) {
+      const useStable = !!(sheetData.rowOrder || sheetData.colOrder);
+
       // 1. Create the sheet with only the config fields that don't need ID
-      //    translation. The rest are filled in after cells materialize IDs.
+      //    translation. The rest are filled in below.
       const sheet = new SheetImpl(sheetData.id, sheetData.name, {
         defaultRowHeight: sheetData.config.defaultRowHeight,
         defaultColWidth: sheetData.config.defaultColWidth,
@@ -885,7 +873,15 @@ export class WorkbookImpl implements Workbook {
       sheet.rowCount = sheetData.rowCount;
       sheet.colCount = sheetData.colCount;
 
-      // 2. Restore cells (creates row/col IDs as a side effect).
+      // 2. Populate the order maps. In stable form they're explicit; in
+      //    legacy form they get materialized below as cells load.
+      if (useStable) {
+        const rowOrder = new Map(sheetData.rowOrder ?? []);
+        const colOrder = new Map(sheetData.colOrder ?? []);
+        sheet.replaceOrderMaps(rowOrder, colOrder);
+      }
+
+      // 3. Restore cells.
       for (const { key, cell } of sheetData.cells) {
         const cellToStore = { ...cell };
         if ('format' in cellToStore && cellToStore.format && !cellToStore.formatId) {
@@ -894,42 +890,53 @@ export class WorkbookImpl implements Workbook {
           cellToStore.formatId = formatId;
           delete (cellToStore as Partial<Cell> & { format?: CellFormat }).format;
         }
-        const { row, col } = parseCellKey(key);
-        if (!Number.isFinite(row) || !Number.isFinite(col)) continue;
-        const stableKey = getStableCellKey(sheet.ensureRowId(row), sheet.ensureColId(col));
+
+        let stableKey: string;
+        if (useStable) {
+          stableKey = key; // already "rowId:colId"
+        } else {
+          const { row, col } = parseCellKey(key);
+          if (!Number.isFinite(row) || !Number.isFinite(col)) continue;
+          stableKey = getStableCellKey(sheet.ensureRowId(row), sheet.ensureColId(col));
+        }
         sheet.cells.set(stableKey, cellToStore);
       }
 
-      // 3. Restore ID-keyed config, translating numeric input → stable IDs.
-      //    Indices not yet seen get fresh IDs via ensureRowId/ensureColId.
+      // 4. Restore ID-keyed config — stable input pass-through; legacy
+      //    input gets ensureRowId/ensureColId.
       if (sheetData.config.rowHeights) {
         sheet.config.rowHeights = new Map();
-        for (const [row, h] of sheetData.config.rowHeights) {
-          sheet.config.rowHeights.set(sheet.ensureRowId(row), h);
+        for (const [key, h] of sheetData.config.rowHeights) {
+          const rowId = useStable ? (key as string) : sheet.ensureRowId(key as number);
+          sheet.config.rowHeights.set(rowId, h);
         }
       }
       if (sheetData.config.colWidths) {
         sheet.config.colWidths = new Map();
-        for (const [col, w] of sheetData.config.colWidths) {
-          sheet.config.colWidths.set(sheet.ensureColId(col), w);
+        for (const [key, w] of sheetData.config.colWidths) {
+          const colId = useStable ? (key as string) : sheet.ensureColId(key as number);
+          sheet.config.colWidths.set(colId, w);
         }
       }
       if (sheetData.config.hiddenRows) {
         sheet.config.hiddenRows = new Set();
-        for (const row of sheetData.config.hiddenRows) {
-          sheet.config.hiddenRows.add(sheet.ensureRowId(row));
+        for (const key of sheetData.config.hiddenRows) {
+          const rowId = useStable ? (key as string) : sheet.ensureRowId(key as number);
+          sheet.config.hiddenRows.add(rowId);
         }
       }
       if (sheetData.config.hiddenCols) {
         sheet.config.hiddenCols = new Set();
-        for (const col of sheetData.config.hiddenCols) {
-          sheet.config.hiddenCols.add(sheet.ensureColId(col));
+        for (const key of sheetData.config.hiddenCols) {
+          const colId = useStable ? (key as string) : sheet.ensureColId(key as number);
+          sheet.config.hiddenCols.add(colId);
         }
       }
       if (sheetData.config.filters) {
         sheet.config.filters = new Map();
-        for (const [col, filter] of sheetData.config.filters) {
-          sheet.config.filters.set(sheet.ensureColId(col), filter);
+        for (const [key, filter] of sheetData.config.filters) {
+          const colId = useStable ? (key as string) : sheet.ensureColId(key as number);
+          sheet.config.filters.set(colId, filter);
         }
       }
 
