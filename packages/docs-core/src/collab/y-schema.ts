@@ -15,12 +15,12 @@
 
 import * as Y from 'yjs';
 import {
-  prosemirrorJSONToYXmlFragment,
+  prosemirrorToYXmlFragment,
   yXmlFragmentToProseMirrorRootNode,
 } from 'y-prosemirror';
 import { docsSchema } from '../prosemirror/schema';
 import {
-  documentToProseMirror,
+  blocksToPmDoc,
   proseMirrorToDocument,
 } from '../prosemirror/sync';
 import type {
@@ -99,16 +99,12 @@ export function hydrateYDocFromData(ydoc: Y.Doc, data: DocumentData): void {
       fields.sectionsMeta.push([sectionMap]);
     }
 
-    // Content: hydrate the Y.XmlFragment from the ProseMirror JSON
-    // produced by the existing documentToProseMirror converter. After this
-    // call, ySyncPlugin will keep the fragment and editor state in sync.
-    const pmJSON = documentToProseMirror({
-      id: data.id,
-      title: data.title,
-      sections: data.sections,
-      defaultPageConfig: data.defaultPageConfig,
-    } as Document);
-    prosemirrorJSONToYXmlFragment(docsSchema, pmJSON, fields.content);
+    // Content: hydrate the Y.XmlFragment from a PM document built by
+    // blocksToPmDoc — which performs the list-item grouping pass that the
+    // raw documentToProseMirror converter skips (the latter emits an
+    // internal "__list_item__" sentinel meant for that grouping step).
+    const pmDoc = blocksToPmDoc(data.sections[0].blocks);
+    prosemirrorToYXmlFragment(pmDoc, fields.content);
   });
 }
 
