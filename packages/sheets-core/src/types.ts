@@ -125,10 +125,19 @@ export interface SheetConfig {
 export interface Sheet {
   id: string;
   name: string;
-  cells: Map<string, Cell>; // key: "r:c"
+  cells: Map<string, Cell>; // key: "rowId:colId" (stable IDs — translate via SheetImpl helpers)
   config: SheetConfig;
   rowCount: number;
   colCount: number;
+
+  // Stable-ID helpers (translate between numeric indices and stable rowId/colId)
+  getRowId(row: number): string | undefined;
+  getColId(col: number): string | undefined;
+  ensureRowId(row: number): string;
+  ensureColId(col: number): string;
+  getRowIndex(rowId: string): number | undefined;
+  getColIndex(colId: string): number | undefined;
+  stableKeyToIndices(key: string): { row: number; col: number } | undefined;
 
   getCell(row: number, col: number): Cell | undefined;
   setCell(row: number, col: number, cell: Partial<Cell>): void;
@@ -138,6 +147,7 @@ export interface Sheet {
   getRange(range: Range): Map<string, Cell>;
   setRange(range: Range, cells: Map<string, Cell> | Cell[][]): void;
   clearRange(range: Range): void;
+  entries(): IterableIterator<[number, number, Cell]>;
   getRowHeight(row: number): number;
   setRowHeight(row: number, height: number): void;
   getColWidth(col: number): number;
@@ -173,6 +183,10 @@ export interface Sheet {
   hasFilter(column: number): boolean;
   clearAllFilters(): void;
 
+  // Order-map plumbing (used by sort, history snapshot/restore, and the
+  // future CRDT binding). Cells are not touched by these calls.
+  replaceOrderMaps(rowOrder: Map<number, string>, colOrder: Map<number, string>): void;
+  snapshotOrderMaps(): { rowOrder: Map<number, string>; colOrder: Map<number, string> };
 }
 
 export interface Workbook {

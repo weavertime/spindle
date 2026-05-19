@@ -7,7 +7,7 @@ import { FormulaGraphImpl } from './formula-graph';
 import { StylePool } from './style-pool';
 import { FormatPool } from './format-pool';
 import { SortManager } from './features/sort';
-import { getCellKey, parseCellKey } from './utils/cell-key';
+import { getCellKey, getStableCellKey, parseCellKey } from './utils/cell-key';
 import { FormulaParser } from './formula-parser';
 import type { RangeReference } from './formula-parser';
 
@@ -21,7 +21,9 @@ interface WorkbookSnapshot {
 interface SheetSnapshot {
   id: string;
   name: string;
-  cells: Map<string, Cell>;
+  cells: Map<string, Cell>; // key: "rowId:colId"
+  rowOrder: Map<number, string>;
+  colOrder: Map<number, string>;
   config: Sheet['config'];
   rowCount: number;
   colCount: number;
@@ -121,6 +123,35 @@ export class WorkbookImpl implements Workbook {
     return sheet.getCell(row, col);
   }
 
+  /**
+   * Build the FormulaGraph key for a (row, col) on the given sheet,
+   * lazily materializing stable IDs if needed.
+   */
+  private graphKey(sheetId: string | undefined, row: number, col: number): string {
+    const sheet = this.getSheet(sheetId);
+    return getStableCellKey(sheet.ensureRowId(row), sheet.ensureColId(col));
+  }
+
+  /**
+   * Translate the parser's numeric-coord dependency keys ("r:c") into the
+   * stable-ID keys used by the FormulaGraph. Generates row/col IDs for
+   * referenced cells that don't yet have them — necessary so the graph
+   * has a stable handle for the dep even before the cell is written.
+   */
+  private dependenciesToStable(
+    sheetId: string | undefined,
+    deps: Set<string>,
+  ): Set<string> {
+    const sheet = this.getSheet(sheetId);
+    const result = new Set<string>();
+    for (const dep of deps) {
+      const { row, col } = parseCellKey(dep);
+      if (!Number.isFinite(row) || !Number.isFinite(col)) continue;
+      result.add(getStableCellKey(sheet.ensureRowId(row), sheet.ensureColId(col)));
+    }
+    return result;
+  }
+
   setCell(
     sheetId: string | undefined,
     row: number,
@@ -169,16 +200,16 @@ export class WorkbookImpl implements Workbook {
       }
     }
     
-    const cellKey = getCellKey(row, col);
+    const cellKey = this.graphKey(sheetId, row, col);
     const hadFormula = this.formulaGraph.nodes.has(cellKey);
-    
+
     // Remove formula if setting a direct value
     if (hadFormula) {
       this.formulaGraph.removeFormula(cellKey);
     }
-    
+
     this.setCell(sheetId, row, col, { value: value as string | number | boolean | null });
-    
+
     // Invalidate dependents of this cell
     if (hadFormula || this.getCell(sheetId, row, col)?.value !== undefined) {
       this.formulaGraph.invalidate(cellKey);
@@ -201,19 +232,20 @@ export class WorkbookImpl implements Workbook {
       }
     }
     
-    const cellKey = getCellKey(row, col);
-    
+    const cellKey = this.graphKey(sheetId, row, col);
+
     // Parse formula to get dependencies
     const parseResult = this.formulaParser.parse(formula, row, col);
-    
+
     if (parseResult.error) {
       // Store error in cell value
       this.setCell(sheetId, row, col, { formula, value: parseResult.error as CellValue });
       return;
     }
 
-    // Update formula graph with dependencies
-    this.formulaGraph.addFormula(cellKey, formula, parseResult.dependencies);
+    // Update formula graph with dependencies (translated to stable keys)
+    const stableDeps = this.dependenciesToStable(sheetId, parseResult.dependencies);
+    this.formulaGraph.addFormula(cellKey, formula, stableDeps);
     
     // Set cell with formula
     this.setCell(sheetId, row, col, { formula });
@@ -269,7 +301,7 @@ export class WorkbookImpl implements Workbook {
    */
   getCellCalculatedValue(sheetId: string | undefined, row: number, col: number): unknown {
     const cell = this.getCell(sheetId, row, col);
-    const cellKey = getCellKey(row, col);
+    const cellKey = this.graphKey(sheetId, row, col);
     
     // If cell has a formula, evaluate it
     if (cell?.formula) {
@@ -308,7 +340,7 @@ export class WorkbookImpl implements Workbook {
    * Evaluate a formula and store the result
    */
   private evaluateFormula(sheetId: string | undefined, row: number, col: number): unknown {
-    const cellKey = getCellKey(row, col);
+    const cellKey = this.graphKey(sheetId, row, col);
     const cell = this.getCell(sheetId, row, col);
     
     if (!cell?.formula) {
@@ -447,14 +479,16 @@ export class WorkbookImpl implements Workbook {
    */
   private recalculateDependents(cellKey: string, sheetId: string | undefined): void {
     const dependents = this.formulaGraph.getDependents(cellKey);
-    
+    const sheet = this.getSheet(sheetId);
+
     for (const dependentKey of dependents) {
       // Invalidate dependent
       this.formulaGraph.invalidate(dependentKey);
-      
-      // Recalculate dependent
-      const { row, col } = parseCellKey(dependentKey);
-      this.evaluateFormula(sheetId, row, col);
+
+      // Recalculate dependent (translate stable graph key back to current indices)
+      const indices = sheet.stableKeyToIndices(dependentKey);
+      if (!indices) continue;
+      this.evaluateFormula(sheetId, indices.row, indices.col);
     }
   }
 
@@ -463,14 +497,17 @@ export class WorkbookImpl implements Workbook {
    */
   private createSnapshot(): WorkbookSnapshot {
     const sheets = new Map<string, SheetSnapshot>();
-    
+
     for (const [sheetId, sheet] of this.sheets.entries()) {
-      // Deep clone cells
+      // Deep clone cells (stable keys are immutable strings; cells get shallow-cloned)
       const cells = new Map<string, Cell>();
       for (const [key, cell] of sheet.cells.entries()) {
         cells.set(key, { ...cell });
       }
-      
+
+      // Snapshot order maps (cloned so later mutations don't leak in)
+      const { rowOrder, colOrder } = sheet.snapshotOrderMaps();
+
       // Deep clone config
       const config = {
         ...sheet.config,
@@ -479,17 +516,19 @@ export class WorkbookImpl implements Workbook {
         hiddenRows: sheet.config.hiddenRows ? new Set(sheet.config.hiddenRows) : undefined,
         hiddenCols: sheet.config.hiddenCols ? new Set(sheet.config.hiddenCols) : undefined,
       };
-      
+
       sheets.set(sheetId, {
         id: sheet.id,
         name: sheet.name,
         cells,
+        rowOrder,
+        colOrder,
         config,
         rowCount: sheet.rowCount,
         colCount: sheet.colCount,
       });
     }
-    
+
     return {
       sheets,
       activeSheetId: this.activeSheetId,
@@ -509,40 +548,43 @@ export class WorkbookImpl implements Workbook {
       const sheet = new SheetImpl(sheetSnapshot.id, sheetSnapshot.name, sheetSnapshot.config);
       sheet.rowCount = sheetSnapshot.rowCount;
       sheet.colCount = sheetSnapshot.colCount;
-      
-      // Restore cells
+
+      // Restore order maps first so cell keys resolve to indices correctly.
+      sheet.replaceOrderMaps(sheetSnapshot.rowOrder, sheetSnapshot.colOrder);
+
+      // Restore cells (keys are already stable from the snapshot)
       for (const [key, cell] of sheetSnapshot.cells.entries()) {
         sheet.cells.set(key, { ...cell });
       }
-      
+
       this.sheets.set(sheetId, sheet);
     }
-    
+
     // Restore active sheet
     this.activeSheetId = snapshot.activeSheetId;
-    
+
     // Restore selection
     this.selection = { ...snapshot.selection };
-    
-    // Rebuild formula graph
+
+    // Rebuild formula graph (cells are stable-keyed; parse formulas against current indices)
     this.formulaGraph = new FormulaGraphImpl();
-    for (const [, sheet] of this.sheets.entries()) {
-      for (const [key, cell] of sheet.cells.entries()) {
+    for (const [sheetId, sheet] of this.sheets.entries()) {
+      for (const [row, col, cell] of sheet.entries()) {
         if (cell.formula) {
-          const { row, col } = parseCellKey(key);
           const parseResult = this.formulaParser.parse(cell.formula, row, col);
           if (!parseResult.error) {
-            this.formulaGraph.addFormula(key, cell.formula, parseResult.dependencies);
+            const cellKey = this.graphKey(sheetId, row, col);
+            const stableDeps = this.dependenciesToStable(sheetId, parseResult.dependencies);
+            this.formulaGraph.addFormula(cellKey, cell.formula, stableDeps);
           }
         }
       }
     }
-    
+
     // Recalculate all formulas
     for (const [sheetId, sheet] of this.sheets.entries()) {
-      for (const [key, cell] of sheet.cells.entries()) {
+      for (const [row, col, cell] of sheet.entries()) {
         if (cell.formula) {
-          const { row, col } = parseCellKey(key);
           this.evaluateFormula(sheetId, row, col);
         }
       }
@@ -659,10 +701,11 @@ export class WorkbookImpl implements Workbook {
     // Serialize sheets
     const sheets: import('./types').SheetData[] = [];
     for (const sheet of this.sheets.values()) {
-      // Serialize cells
+      // Serialize cells. The wire format remains numeric "r:c" in 2a.2;
+      // the JSON shape switches to stable keys in 2a.6 alongside rowOrder/colOrder.
       const cells: Array<{ key: string; cell: import('./types').Cell }> = [];
-      for (const [key, cell] of sheet.cells.entries()) {
-        cells.push({ key, cell });
+      for (const [row, col, cell] of sheet.entries()) {
+        cells.push({ key: getCellKey(row, col), cell });
       }
 
       // Serialize config (convert Maps/Sets to arrays)
@@ -774,20 +817,23 @@ export class WorkbookImpl implements Workbook {
       sheet.rowCount = sheetData.rowCount;
       sheet.colCount = sheetData.colCount;
 
-      // Restore cells (convert format to formatId if needed)
+      // Restore cells. Wire format is still numeric "r:c" in 2a.2 — translate
+      // to stable keys at the boundary by materializing row/col IDs.
       for (const { key, cell } of sheetData.cells) {
         const cellToStore = { ...cell };
 
         // Handle format conversion for backward compatibility
         if ('format' in cellToStore && cellToStore.format && !cellToStore.formatId) {
-          // Clean and pool the format
           const cleanedFormat = this.cleanFormat(cellToStore.format as CellFormat);
           const formatId = this.formatPool.getOrCreate(cleanedFormat);
           cellToStore.formatId = formatId;
           delete (cellToStore as Partial<Cell> & { format?: CellFormat }).format;
         }
 
-        sheet.cells.set(key, cellToStore);
+        const { row, col } = parseCellKey(key);
+        if (!Number.isFinite(row) || !Number.isFinite(col)) continue;
+        const stableKey = getStableCellKey(sheet.ensureRowId(row), sheet.ensureColId(col));
+        sheet.cells.set(stableKey, cellToStore);
       }
 
       this.sheets.set(sheetData.id, sheet);
@@ -879,12 +925,13 @@ export class WorkbookImpl implements Workbook {
    */
   private rebuildFormulaGraph(): void {
     for (const [sheetId, sheet] of this.sheets.entries()) {
-      for (const [key, cell] of sheet.cells.entries()) {
+      for (const [row, col, cell] of sheet.entries()) {
         if (cell.formula) {
-          const { row, col } = parseCellKey(key);
           const parseResult = this.formulaParser.parse(cell.formula, row, col);
           if (!parseResult.error) {
-            this.formulaGraph.addFormula(key, cell.formula, parseResult.dependencies);
+            const cellKey = this.graphKey(sheetId, row, col);
+            const stableDeps = this.dependenciesToStable(sheetId, parseResult.dependencies);
+            this.formulaGraph.addFormula(cellKey, cell.formula, stableDeps);
             // Evaluate the formula
             this.evaluateFormula(sheetId, row, col);
           }

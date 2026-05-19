@@ -9,8 +9,7 @@ export function exportToCSV(workbook: WorkbookImpl, sheetId?: string): string {
   let maxRow = 0;
   let maxCol = 0;
 
-  for (const [key] of sheet.cells) {
-    const [row, col] = key.split(':').map(Number);
+  for (const [row, col] of sheet.entries()) {
     maxRow = Math.max(maxRow, row);
     maxCol = Math.max(maxCol, col);
   }

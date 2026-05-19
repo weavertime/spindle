@@ -1,24 +1,34 @@
-// Sheet model with sparse cell storage
+// Sheet model with sparse cell storage keyed by stable row/column IDs.
+//
+// Storage invariants:
+//   - `cells` is keyed by `${rowId}:${colId}` (stable IDs from utils/id).
+//   - `rowOrder`/`colOrder` are sparse: only touched indices have an entry.
+//   - Untouched indices are "virtual"; getCell returns undefined for them.
+//   - insertRows/deleteRows/insertCols/deleteCols only mutate the order maps.
+//     Cells stay attached to their stable IDs across inserts and sorts; the
+//     numeric index a cell appears at changes, but its identity does not.
 
 import type { Sheet, SheetConfig, Cell, Range, SortOrder } from './types';
-import { getCellKey, parseCellKey } from './utils/cell-key';
+import { getStableCellKey, parseStableCellKey } from './utils/cell-key';
 import { generateId } from './utils/id';
 import { getRangeCells } from './utils/range';
 
 export class SheetImpl implements Sheet {
   id: string;
   name: string;
-  cells: Map<string, Cell> = new Map();
+  cells: Map<string, Cell> = new Map(); // key: "rowId:colId"
   config: SheetConfig;
   rowCount: number;
   colCount: number;
 
-  // Stable IDs for rows and columns. Sparse: only rows/cols that have been
-  // touched (cell set, height/width customized, hidden, etc.) get an entry.
-  // Untouched indices are virtual until something attaches to them.
-  // Phase 2a.1: populated but not yet consumed by storage paths.
+  // Sparse index → stable ID maps. Only filled for indices that have been
+  // explicitly touched (cell set, row/col operation, etc.).
   protected rowOrder: Map<number, string> = new Map();
   protected colOrder: Map<number, string> = new Map();
+  // Reverse maps for O(1) stable→index lookup. Kept in sync with the
+  // forward maps.
+  protected rowIdToIndex: Map<string, number> = new Map();
+  protected colIdToIndex: Map<string, number> = new Map();
 
   constructor(id: string, name: string, config: Partial<SheetConfig> = {}) {
     this.id = id;
@@ -34,64 +44,83 @@ export class SheetImpl implements Sheet {
   }
 
   // ============================================
-  // Stable ID helpers (Phase 2a.1)
+  // Stable ID helpers
   // ============================================
 
-  /** Return the stable rowId at the given index, or undefined if untouched. */
   getRowId(row: number): string | undefined {
     return this.rowOrder.get(row);
   }
 
-  /** Return the stable colId at the given index, or undefined if untouched. */
   getColId(col: number): string | undefined {
     return this.colOrder.get(col);
   }
 
-  /** Return the stable rowId at the given index, generating one if absent. */
   ensureRowId(row: number): string {
     let id = this.rowOrder.get(row);
     if (!id) {
       id = generateId();
       this.rowOrder.set(row, id);
+      this.rowIdToIndex.set(id, row);
     }
     return id;
   }
 
-  /** Return the stable colId at the given index, generating one if absent. */
   ensureColId(col: number): string {
     let id = this.colOrder.get(col);
     if (!id) {
       id = generateId();
       this.colOrder.set(col, id);
+      this.colIdToIndex.set(id, col);
     }
     return id;
   }
 
+  getRowIndex(rowId: string): number | undefined {
+    return this.rowIdToIndex.get(rowId);
+  }
+
+  getColIndex(colId: string): number | undefined {
+    return this.colIdToIndex.get(colId);
+  }
+
+  /** Translate a stable cell key into (row, col) indices, if both halves are known. */
+  stableKeyToIndices(key: string): { row: number; col: number } | undefined {
+    const { rowId, colId } = parseStableCellKey(key);
+    const row = this.rowIdToIndex.get(rowId);
+    const col = this.colIdToIndex.get(colId);
+    if (row === undefined || col === undefined) return undefined;
+    return { row, col };
+  }
+
+  // ============================================
+  // Cell access (public API stays index-based)
+  // ============================================
+
   getCell(row: number, col: number): Cell | undefined {
-    const key = getCellKey(row, col);
-    return this.cells.get(key);
+    const rowId = this.rowOrder.get(row);
+    const colId = this.colOrder.get(col);
+    if (!rowId || !colId) return undefined;
+    return this.cells.get(getStableCellKey(rowId, colId));
   }
 
   setCell(row: number, col: number, cell: Partial<Cell>): void {
-    const key = getCellKey(row, col);
+    const rowId = this.ensureRowId(row);
+    const colId = this.ensureColId(col);
+    const key = getStableCellKey(rowId, colId);
     const existing = this.cells.get(key);
 
     if (existing) {
-      // Merge with existing cell
       this.cells.set(key, { ...existing, ...cell });
     } else {
-      // Create new cell
-      this.cells.set(key, {
-        value: cell.value ?? null,
-        ...cell,
-      });
+      this.cells.set(key, { value: cell.value ?? null, ...cell });
     }
   }
 
-
   deleteCell(row: number, col: number): void {
-    const key = getCellKey(row, col);
-    this.cells.delete(key);
+    const rowId = this.rowOrder.get(row);
+    const colId = this.colOrder.get(col);
+    if (!rowId || !colId) return;
+    this.cells.delete(getStableCellKey(rowId, colId));
   }
 
   getCellValue(row: number, col: number): unknown {
@@ -110,7 +139,11 @@ export class SheetImpl implements Sheet {
     for (const { row, col } of cells) {
       const cell = this.getCell(row, col);
       if (cell) {
-        result.set(getCellKey(row, col), cell);
+        const rowId = this.rowOrder.get(row);
+        const colId = this.colOrder.get(col);
+        if (rowId && colId) {
+          result.set(getStableCellKey(rowId, colId), cell);
+        }
       }
     }
 
@@ -119,17 +152,19 @@ export class SheetImpl implements Sheet {
 
   setRange(range: Range, cells: Map<string, Cell> | Cell[][]): void {
     if (cells instanceof Map) {
-      // Map of cellKey -> Cell
+      // Keys here are stable; translate back to indices via this sheet's reverse maps.
       for (const [key, cell] of cells) {
-        const { row, col } = parseCellKey(key);
-        this.setCell(row, col, cell);
+        const indices = this.stableKeyToIndices(key);
+        if (indices) {
+          this.setCell(indices.row, indices.col, cell);
+        }
       }
     } else {
-      // 2D array
       const rangeCells = getRangeCells(range);
-      for (let i = 0; i < rangeCells.length && i < cells.flat().length; i++) {
+      const flat = cells.flat();
+      for (let i = 0; i < rangeCells.length && i < flat.length; i++) {
         const { row, col } = rangeCells[i];
-        const cell = cells.flat()[i];
+        const cell = flat[i];
         if (cell) {
           this.setCell(row, col, cell);
         }
@@ -141,6 +176,19 @@ export class SheetImpl implements Sheet {
     const cells = getRangeCells(range);
     for (const { row, col } of cells) {
       this.deleteCell(row, col);
+    }
+  }
+
+  /**
+   * Iterate non-empty cells as (row, col, cell) triples, using current
+   * row/column indices. Cells whose stable IDs are no longer in the order
+   * maps (e.g. after deleteRows) are skipped.
+   */
+  *entries(): IterableIterator<[number, number, Cell]> {
+    for (const [key, cell] of this.cells) {
+      const indices = this.stableKeyToIndices(key);
+      if (!indices) continue;
+      yield [indices.row, indices.col, cell];
     }
   }
 
@@ -166,118 +214,121 @@ export class SheetImpl implements Sheet {
     this.config.colWidths.set(col, width);
   }
 
+  // ============================================
+  // Insert / delete (mutate order maps only)
+  // ============================================
+
   insertRows(startRow: number, count: number): void {
-    // Shift existing cells down
-    const cellsToMove: Array<{ key: string; cell: Cell; newRow: number }> = [];
-
-    for (const [key, cell] of this.cells) {
-      const { row } = parseCellKey(key);
-      if (row >= startRow) {
-        cellsToMove.push({ key, cell, newRow: row + count });
-      }
-    }
-
-    // Remove old cells
-    for (const { key } of cellsToMove) {
-      this.cells.delete(key);
-    }
-
-    // Add cells at new positions
-    for (const { cell, newRow, key } of cellsToMove) {
-      const { col } = parseCellKey(key);
-      this.setCell(newRow, col, cell);
-    }
-
+    this.shiftOrder(this.rowOrder, this.rowIdToIndex, startRow, count);
     this.rowCount += count;
   }
 
   deleteRows(startRow: number, count: number): void {
-    // Delete cells in range
-    for (let row = startRow; row < startRow + count; row++) {
-      for (let col = 0; col < this.colCount; col++) {
-        this.deleteCell(row, col);
-      }
-    }
-
-    // Shift cells up
-    const cellsToMove: Array<{ key: string; cell: Cell; newRow: number }> = [];
-
-    for (const [key, cell] of this.cells) {
-      const { row } = parseCellKey(key);
-      if (row > startRow + count - 1) {
-        cellsToMove.push({ key, cell, newRow: row - count });
-      }
-    }
-
-    // Remove old cells
-    for (const { key } of cellsToMove) {
-      this.cells.delete(key);
-    }
-
-    // Add cells at new positions
-    for (const { cell, newRow, key } of cellsToMove) {
-      const { col } = parseCellKey(key);
-      this.setCell(newRow, col, cell);
-    }
-
+    this.removeOrderRange(this.rowOrder, this.rowIdToIndex, startRow, count, /*isRow*/ true);
+    this.shiftOrder(this.rowOrder, this.rowIdToIndex, startRow + count, -count, startRow);
     this.rowCount = Math.max(0, this.rowCount - count);
   }
 
   insertCols(startCol: number, count: number): void {
-    // Shift existing cells right
-    const cellsToMove: Array<{ key: string; cell: Cell; newCol: number }> = [];
-
-    for (const [key, cell] of this.cells) {
-      const { col } = parseCellKey(key);
-      if (col >= startCol) {
-        cellsToMove.push({ key, cell, newCol: col + count });
-      }
-    }
-
-    // Remove old cells
-    for (const { key } of cellsToMove) {
-      this.cells.delete(key);
-    }
-
-    // Add cells at new positions
-    for (const { cell, newCol, key } of cellsToMove) {
-      const { row } = parseCellKey(key);
-      this.setCell(row, newCol, cell);
-    }
-
+    this.shiftOrder(this.colOrder, this.colIdToIndex, startCol, count);
     this.colCount += count;
   }
 
   deleteCols(startCol: number, count: number): void {
-    // Delete cells in range
-    for (let col = startCol; col < startCol + count; col++) {
-      for (let row = 0; row < this.rowCount; row++) {
-        this.deleteCell(row, col);
-      }
-    }
-
-    // Shift cells left
-    const cellsToMove: Array<{ key: string; cell: Cell; newCol: number }> = [];
-
-    for (const [key, cell] of this.cells) {
-      const { col } = parseCellKey(key);
-      if (col > startCol + count - 1) {
-        cellsToMove.push({ key, cell, newCol: col - count });
-      }
-    }
-
-    // Remove old cells
-    for (const { key } of cellsToMove) {
-      this.cells.delete(key);
-    }
-
-    // Add cells at new positions
-    for (const { cell, newCol, key } of cellsToMove) {
-      const { row } = parseCellKey(key);
-      this.setCell(row, newCol, cell);
-    }
-
+    this.removeOrderRange(this.colOrder, this.colIdToIndex, startCol, count, /*isRow*/ false);
+    this.shiftOrder(this.colOrder, this.colIdToIndex, startCol + count, -count, startCol);
     this.colCount = Math.max(0, this.colCount - count);
+  }
+
+  /** Shift every order entry with index >= threshold by `delta`. */
+  private shiftOrder(
+    order: Map<number, string>,
+    reverse: Map<string, number>,
+    threshold: number,
+    delta: number,
+    /** When shifting down (delta<0), only entries strictly >= floor move. */
+    floor: number = threshold,
+  ): void {
+    if (delta === 0) return;
+    const toMove: Array<[number, string]> = [];
+    for (const [idx, id] of order) {
+      if (idx >= threshold) toMove.push([idx, id]);
+    }
+    // Sort to avoid clobbering: shifting up → descending; shifting down → ascending.
+    toMove.sort(([a], [b]) => (delta > 0 ? b - a : a - b));
+    for (const [idx, id] of toMove) {
+      order.delete(idx);
+      reverse.delete(id);
+    }
+    for (const [idx, id] of toMove) {
+      const newIdx = idx + delta;
+      if (newIdx < floor) continue; // shouldn't happen, but guard
+      order.set(newIdx, id);
+      reverse.set(id, newIdx);
+    }
+  }
+
+  /**
+   * Drop order entries in [start, start+count) and any cells attached to
+   * those IDs. Also drop matching config entries (height/width/hidden).
+   */
+  private removeOrderRange(
+    order: Map<number, string>,
+    reverse: Map<string, number>,
+    start: number,
+    count: number,
+    isRow: boolean,
+  ): void {
+    const removedIds = new Set<string>();
+    for (const [idx, id] of order) {
+      if (idx >= start && idx < start + count) {
+        removedIds.add(id);
+      }
+    }
+    if (removedIds.size === 0) {
+      // Still need to drop index-keyed config entries even if no cells exist.
+      this.dropIndexConfig(start, count, isRow);
+      return;
+    }
+
+    // Delete cells whose row half (or col half) is in removedIds.
+    for (const key of [...this.cells.keys()]) {
+      const { rowId, colId } = parseStableCellKey(key);
+      if (isRow ? removedIds.has(rowId) : removedIds.has(colId)) {
+        this.cells.delete(key);
+      }
+    }
+
+    for (const id of removedIds) {
+      const idx = reverse.get(id);
+      if (idx !== undefined) order.delete(idx);
+      reverse.delete(id);
+    }
+
+    this.dropIndexConfig(start, count, isRow);
+  }
+
+  /** Drop index-keyed config entries in the deleted range (heights/widths/hidden/filters). */
+  private dropIndexConfig(start: number, count: number, isRow: boolean): void {
+    const end = start + count;
+    if (isRow) {
+      if (this.config.rowHeights) {
+        for (let r = start; r < end; r++) this.config.rowHeights.delete(r);
+      }
+      if (this.config.hiddenRows) {
+        for (let r = start; r < end; r++) this.config.hiddenRows.delete(r);
+      }
+    } else {
+      if (this.config.colWidths) {
+        for (let c = start; c < end; c++) this.config.colWidths.delete(c);
+      }
+      if (this.config.hiddenCols) {
+        for (let c = start; c < end; c++) this.config.hiddenCols.delete(c);
+      }
+      if (this.config.filters) {
+        for (let c = start; c < end; c++) this.config.filters.delete(c);
+      }
+    }
   }
 
   isRowHidden(row: number): boolean {
@@ -324,7 +375,7 @@ export class SheetImpl implements Sheet {
       if (hiddenCols.has(c)) {
         before.push(c);
       } else {
-        break; // Stop at first visible column
+        break;
       }
     }
 
@@ -332,14 +383,13 @@ export class SheetImpl implements Sheet {
       if (hiddenCols.has(c)) {
         after.push(c);
       } else {
-        break; // Stop at first visible column
+        break;
       }
     }
 
     return { before, after };
   }
 
-  // Find hidden rows adjacent to a given row (above and below)
   getHiddenRowsAdjacent(row: number): { above: number[]; below: number[] } {
     const hiddenRows = this.config.hiddenRows;
     if (!hiddenRows || hiddenRows.size === 0) {
@@ -353,7 +403,7 @@ export class SheetImpl implements Sheet {
       if (hiddenRows.has(r)) {
         above.push(r);
       } else {
-        break; // Stop at first visible row
+        break;
       }
     }
 
@@ -361,14 +411,13 @@ export class SheetImpl implements Sheet {
       if (hiddenRows.has(r)) {
         below.push(r);
       } else {
-        break; // Stop at first visible row
+        break;
       }
     }
 
     return { above, below };
   }
 
-  // Show all hidden columns in a range
   showColsInRange(startCol: number, endCol: number): void {
     if (!this.config.hiddenCols) return;
     const minCol = Math.min(startCol, endCol);
@@ -378,7 +427,6 @@ export class SheetImpl implements Sheet {
     }
   }
 
-  // Show all hidden rows in a range
   showRowsInRange(startRow: number, endRow: number): void {
     if (!this.config.hiddenRows) return;
     const minRow = Math.min(startRow, endRow);
@@ -392,17 +440,10 @@ export class SheetImpl implements Sheet {
   // Freeze Panes Methods
   // ============================================
 
-  /**
-   * Get the number of frozen rows
-   */
   getFrozenRows(): number {
     return this.config.frozenRows ?? 0;
   }
 
-  /**
-   * Set the number of frozen rows
-   * @param count Number of rows to freeze (0 to unfreeze rows)
-   */
   setFrozenRows(count: number): void {
     if (count < 0) {
       throw new Error('Frozen row count cannot be negative');
@@ -413,17 +454,10 @@ export class SheetImpl implements Sheet {
     this.config.frozenRows = count > 0 ? count : undefined;
   }
 
-  /**
-   * Get the number of frozen columns
-   */
   getFrozenCols(): number {
     return this.config.frozenCols ?? 0;
   }
 
-  /**
-   * Set the number of frozen columns
-   * @param count Number of columns to freeze (0 to unfreeze columns)
-   */
   setFrozenCols(count: number): void {
     if (count < 0) {
       throw new Error('Frozen column count cannot be negative');
@@ -434,27 +468,16 @@ export class SheetImpl implements Sheet {
     this.config.frozenCols = count > 0 ? count : undefined;
   }
 
-  /**
-   * Freeze rows and columns at the specified position
-   * @param rows Number of rows to freeze
-   * @param cols Number of columns to freeze
-   */
   setFreeze(rows: number, cols: number): void {
     this.setFrozenRows(rows);
     this.setFrozenCols(cols);
   }
 
-  /**
-   * Clear all freeze panes (unfreeze both rows and columns)
-   */
   clearFreeze(): void {
     this.config.frozenRows = undefined;
     this.config.frozenCols = undefined;
   }
 
-  /**
-   * Check if freeze panes are active
-   */
   hasFrozenPanes(): boolean {
     return (this.config.frozenRows ?? 0) > 0 || (this.config.frozenCols ?? 0) > 0;
   }
@@ -463,32 +486,18 @@ export class SheetImpl implements Sheet {
   // Sorting Methods
   // ============================================
 
-  /**
-   * Set the sort order for the sheet
-   * @param sortOrder Array of sort criteria
-   */
   setSortOrder(sortOrder: SortOrder[]): void {
     this.config.sortOrder = [...sortOrder];
   }
 
-  /**
-   * Get the current sort order
-   * @returns Current sort order array
-   */
   getSortOrder(): SortOrder[] {
     return this.config.sortOrder ?? [];
   }
 
-  /**
-   * Clear all sorting
-   */
   clearSort(): void {
     this.config.sortOrder = undefined;
   }
 
-  /**
-   * Check if the sheet has any sorting applied
-   */
   hasSort(): boolean {
     return (this.config.sortOrder?.length ?? 0) > 0;
   }
@@ -497,11 +506,6 @@ export class SheetImpl implements Sheet {
   // Filtering Methods
   // ============================================
 
-  /**
-   * Set a filter for a column
-   * @param column Column index
-   * @param filter Filter configuration
-   */
   setFilter(column: number, filter: import('./types').ColumnFilter): void {
     if (!this.config.filters) {
       this.config.filters = new Map();
@@ -509,36 +513,44 @@ export class SheetImpl implements Sheet {
     this.config.filters.set(column, filter);
   }
 
-  /**
-   * Clear filter for a specific column
-   * @param column Column index
-   */
   clearFilter(column: number): void {
     this.config.filters?.delete(column);
   }
 
-  /**
-   * Get all active filters
-   * @returns Map of column -> filter
-   */
   getFilters(): Map<number, import('./types').ColumnFilter> {
     return this.config.filters ?? new Map();
   }
 
-  /**
-   * Check if a column has an active filter
-   * @param column Column index
-   * @returns true if column has a filter
-   */
   hasFilter(column: number): boolean {
     return this.config.filters?.has(column) ?? false;
   }
 
-  /**
-   * Clear all filters from the sheet
-   */
   clearAllFilters(): void {
     this.config.filters = undefined;
   }
-}
 
+  // ============================================
+  // Permute / replace order (used by sort and history restore)
+  // ============================================
+
+  /** Replace rowOrder/colOrder + reverse maps wholesale. Cells are untouched. */
+  replaceOrderMaps(
+    rowOrder: Map<number, string>,
+    colOrder: Map<number, string>,
+  ): void {
+    this.rowOrder = new Map(rowOrder);
+    this.colOrder = new Map(colOrder);
+    this.rowIdToIndex = new Map();
+    this.colIdToIndex = new Map();
+    for (const [idx, id] of this.rowOrder) this.rowIdToIndex.set(id, idx);
+    for (const [idx, id] of this.colOrder) this.colIdToIndex.set(id, idx);
+  }
+
+  /** Snapshot the current order maps (for history). */
+  snapshotOrderMaps(): { rowOrder: Map<number, string>; colOrder: Map<number, string> } {
+    return {
+      rowOrder: new Map(this.rowOrder),
+      colOrder: new Map(this.colOrder),
+    };
+  }
+}
