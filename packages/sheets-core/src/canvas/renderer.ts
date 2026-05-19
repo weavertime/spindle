@@ -1021,6 +1021,16 @@ export class CanvasRenderer {
   getViewport(): Viewport {
     return { ...this.viewport };
   }
+
+  /** Width of the row-number column on the left (in CSS pixels). */
+  getHeaderWidth(): number {
+    return this.headerWidth;
+  }
+
+  /** Height of the column-letter row on top (in CSS pixels). */
+  getHeaderHeight(): number {
+    return this.headerHeight;
+  }
   
   /**
    * Get the hit tester

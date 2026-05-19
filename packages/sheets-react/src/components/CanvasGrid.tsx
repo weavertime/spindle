@@ -11,6 +11,7 @@ import {
 import type { Selection, Range, Cell } from '@pagent-libs/sheets-core';
 import { extractFormulaRanges, columnIndexToLabel, adjustFormula, type FormulaRange } from '@pagent-libs/sheets-core';
 import { FilterManager, excelDateToJS, formatJSDate } from '@pagent-libs/sheets-core';
+import { RemoteSelectionOverlay } from './RemoteSelectionOverlay';
 
 export type ContextMenuType =
   | { type: 'cell'; cell: CellPosition; x: number; y: number }
@@ -1276,6 +1277,18 @@ export const CanvasGrid = memo(function CanvasGrid({
         onDoubleClick={handleDoubleClick}
         onKeyDown={handleKeyDown}
         onContextMenu={handleContextMenuEvent}
+      />
+      <RemoteSelectionOverlay
+        workbook={workbook}
+        sheet={sheet}
+        activeCell={activeCell ?? null}
+        selection={selection}
+        scrollTop={scrollTop}
+        scrollLeft={scrollLeft}
+        headerWidth={colWidth}
+        headerHeight={headerHeight}
+        width={width}
+        height={height}
       />
     </div>
   );
