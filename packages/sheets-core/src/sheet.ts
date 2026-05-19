@@ -193,25 +193,29 @@ export class SheetImpl implements Sheet {
   }
 
   getRowHeight(row: number): number {
-    return this.config.rowHeights?.get(row) ?? this.config.defaultRowHeight ?? 20;
+    const rowId = this.rowOrder.get(row);
+    const height = rowId ? this.config.rowHeights?.get(rowId) : undefined;
+    return height ?? this.config.defaultRowHeight ?? 20;
   }
 
   setRowHeight(row: number, height: number): void {
     if (!this.config.rowHeights) {
       this.config.rowHeights = new Map();
     }
-    this.config.rowHeights.set(row, height);
+    this.config.rowHeights.set(this.ensureRowId(row), height);
   }
 
   getColWidth(col: number): number {
-    return this.config.colWidths?.get(col) ?? this.config.defaultColWidth ?? 100;
+    const colId = this.colOrder.get(col);
+    const width = colId ? this.config.colWidths?.get(colId) : undefined;
+    return width ?? this.config.defaultColWidth ?? 100;
   }
 
   setColWidth(col: number, width: number): void {
     if (!this.config.colWidths) {
       this.config.colWidths = new Map();
     }
-    this.config.colWidths.set(col, width);
+    this.config.colWidths.set(this.ensureColId(col), width);
   }
 
   // ============================================
@@ -285,86 +289,75 @@ export class SheetImpl implements Sheet {
         removedIds.add(id);
       }
     }
-    if (removedIds.size === 0) {
-      // Still need to drop index-keyed config entries even if no cells exist.
-      this.dropIndexConfig(start, count, isRow);
-      return;
-    }
+    if (removedIds.size > 0) {
+      // Delete cells whose row half (or col half) is in removedIds.
+      for (const key of [...this.cells.keys()]) {
+        const { rowId, colId } = parseStableCellKey(key);
+        if (isRow ? removedIds.has(rowId) : removedIds.has(colId)) {
+          this.cells.delete(key);
+        }
+      }
 
-    // Delete cells whose row half (or col half) is in removedIds.
-    for (const key of [...this.cells.keys()]) {
-      const { rowId, colId } = parseStableCellKey(key);
-      if (isRow ? removedIds.has(rowId) : removedIds.has(colId)) {
-        this.cells.delete(key);
+      for (const id of removedIds) {
+        const idx = reverse.get(id);
+        if (idx !== undefined) order.delete(idx);
+        reverse.delete(id);
       }
     }
 
-    for (const id of removedIds) {
-      const idx = reverse.get(id);
-      if (idx !== undefined) order.delete(idx);
-      reverse.delete(id);
-    }
-
-    this.dropIndexConfig(start, count, isRow);
+    this.dropConfigForIds(removedIds, isRow);
   }
 
-  /** Drop index-keyed config entries in the deleted range (heights/widths/hidden/filters). */
-  private dropIndexConfig(start: number, count: number, isRow: boolean): void {
-    const end = start + count;
+  /** Drop stable-ID-keyed config entries for the given row or column IDs. */
+  private dropConfigForIds(ids: Set<string>, isRow: boolean): void {
+    if (ids.size === 0) return;
     if (isRow) {
-      if (this.config.rowHeights) {
-        for (let r = start; r < end; r++) this.config.rowHeights.delete(r);
-      }
-      if (this.config.hiddenRows) {
-        for (let r = start; r < end; r++) this.config.hiddenRows.delete(r);
-      }
+      if (this.config.rowHeights) for (const id of ids) this.config.rowHeights.delete(id);
+      if (this.config.hiddenRows) for (const id of ids) this.config.hiddenRows.delete(id);
     } else {
-      if (this.config.colWidths) {
-        for (let c = start; c < end; c++) this.config.colWidths.delete(c);
-      }
-      if (this.config.hiddenCols) {
-        for (let c = start; c < end; c++) this.config.hiddenCols.delete(c);
-      }
-      if (this.config.filters) {
-        for (let c = start; c < end; c++) this.config.filters.delete(c);
-      }
+      if (this.config.colWidths) for (const id of ids) this.config.colWidths.delete(id);
+      if (this.config.hiddenCols) for (const id of ids) this.config.hiddenCols.delete(id);
+      if (this.config.filters) for (const id of ids) this.config.filters.delete(id);
     }
   }
 
   isRowHidden(row: number): boolean {
-    return this.config.hiddenRows?.has(row) ?? false;
+    const rowId = this.rowOrder.get(row);
+    return rowId ? (this.config.hiddenRows?.has(rowId) ?? false) : false;
   }
 
   hideRow(row: number): void {
     if (!this.config.hiddenRows) {
       this.config.hiddenRows = new Set();
     }
-    this.config.hiddenRows.add(row);
+    this.config.hiddenRows.add(this.ensureRowId(row));
   }
 
   showRow(row: number): void {
-    this.config.hiddenRows?.delete(row);
+    const rowId = this.rowOrder.get(row);
+    if (rowId) this.config.hiddenRows?.delete(rowId);
   }
 
   isColHidden(col: number): boolean {
-    return this.config.hiddenCols?.has(col) ?? false;
+    const colId = this.colOrder.get(col);
+    return colId ? (this.config.hiddenCols?.has(colId) ?? false) : false;
   }
 
   hideCol(col: number): void {
     if (!this.config.hiddenCols) {
       this.config.hiddenCols = new Set();
     }
-    this.config.hiddenCols.add(col);
+    this.config.hiddenCols.add(this.ensureColId(col));
   }
 
   showCol(col: number): void {
-    this.config.hiddenCols?.delete(col);
+    const colId = this.colOrder.get(col);
+    if (colId) this.config.hiddenCols?.delete(colId);
   }
 
   // Find hidden columns adjacent to a given column (before and after)
   getHiddenColsAdjacent(col: number): { before: number[]; after: number[] } {
-    const hiddenCols = this.config.hiddenCols;
-    if (!hiddenCols || hiddenCols.size === 0) {
+    if (!this.config.hiddenCols || this.config.hiddenCols.size === 0) {
       return { before: [], after: [] };
     }
 
@@ -372,27 +365,20 @@ export class SheetImpl implements Sheet {
     const after: number[] = [];
 
     for (let c = col - 1; c >= 0; c--) {
-      if (hiddenCols.has(c)) {
-        before.push(c);
-      } else {
-        break;
-      }
+      if (this.isColHidden(c)) before.push(c);
+      else break;
     }
 
     for (let c = col + 1; c < this.colCount; c++) {
-      if (hiddenCols.has(c)) {
-        after.push(c);
-      } else {
-        break;
-      }
+      if (this.isColHidden(c)) after.push(c);
+      else break;
     }
 
     return { before, after };
   }
 
   getHiddenRowsAdjacent(row: number): { above: number[]; below: number[] } {
-    const hiddenRows = this.config.hiddenRows;
-    if (!hiddenRows || hiddenRows.size === 0) {
+    if (!this.config.hiddenRows || this.config.hiddenRows.size === 0) {
       return { above: [], below: [] };
     }
 
@@ -400,19 +386,13 @@ export class SheetImpl implements Sheet {
     const below: number[] = [];
 
     for (let r = row - 1; r >= 0; r--) {
-      if (hiddenRows.has(r)) {
-        above.push(r);
-      } else {
-        break;
-      }
+      if (this.isRowHidden(r)) above.push(r);
+      else break;
     }
 
     for (let r = row + 1; r < this.rowCount; r++) {
-      if (hiddenRows.has(r)) {
-        below.push(r);
-      } else {
-        break;
-      }
+      if (this.isRowHidden(r)) below.push(r);
+      else break;
     }
 
     return { above, below };
@@ -423,7 +403,8 @@ export class SheetImpl implements Sheet {
     const minCol = Math.min(startCol, endCol);
     const maxCol = Math.max(startCol, endCol);
     for (let c = minCol; c <= maxCol; c++) {
-      this.config.hiddenCols.delete(c);
+      const colId = this.colOrder.get(c);
+      if (colId) this.config.hiddenCols.delete(colId);
     }
   }
 
@@ -432,7 +413,8 @@ export class SheetImpl implements Sheet {
     const minRow = Math.min(startRow, endRow);
     const maxRow = Math.max(startRow, endRow);
     for (let r = minRow; r <= maxRow; r++) {
-      this.config.hiddenRows.delete(r);
+      const rowId = this.rowOrder.get(r);
+      if (rowId) this.config.hiddenRows.delete(rowId);
     }
   }
 
@@ -510,19 +492,34 @@ export class SheetImpl implements Sheet {
     if (!this.config.filters) {
       this.config.filters = new Map();
     }
-    this.config.filters.set(column, filter);
+    this.config.filters.set(this.ensureColId(column), filter);
   }
 
   clearFilter(column: number): void {
-    this.config.filters?.delete(column);
+    const colId = this.colOrder.get(column);
+    if (colId) this.config.filters?.delete(colId);
   }
 
+  /**
+   * Return filters as a Map keyed by current numeric column index, translating
+   * stable colIds back through colOrder. The numeric `column` field inside each
+   * ColumnFilter is overwritten to match its current index so downstream
+   * consumers don't have to re-translate.
+   */
   getFilters(): Map<number, import('./types').ColumnFilter> {
-    return this.config.filters ?? new Map();
+    if (!this.config.filters) return new Map();
+    const out = new Map<number, import('./types').ColumnFilter>();
+    for (const [colId, filter] of this.config.filters) {
+      const col = this.colIdToIndex.get(colId);
+      if (col === undefined) continue;
+      out.set(col, { ...filter, column: col });
+    }
+    return out;
   }
 
   hasFilter(column: number): boolean {
-    return this.config.filters?.has(column) ?? false;
+    const colId = this.colOrder.get(column);
+    return colId ? (this.config.filters?.has(colId) ?? false) : false;
   }
 
   clearAllFilters(): void {

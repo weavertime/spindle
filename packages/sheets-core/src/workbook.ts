@@ -708,19 +708,57 @@ export class WorkbookImpl implements Workbook {
         cells.push({ key: getCellKey(row, col), cell });
       }
 
-      // Serialize config (convert Maps/Sets to arrays)
+      // Serialize config — wire format is numeric (index-based) in 2a.3;
+      // translate stable IDs back to current indices, dropping any orphans
+      // whose IDs no longer appear in the order maps.
+      const rowHeightsOut: Array<[number, number]> = [];
+      if (sheet.config.rowHeights) {
+        for (const [rowId, h] of sheet.config.rowHeights) {
+          const row = sheet.getRowIndex(rowId);
+          if (row !== undefined) rowHeightsOut.push([row, h]);
+        }
+      }
+      const colWidthsOut: Array<[number, number]> = [];
+      if (sheet.config.colWidths) {
+        for (const [colId, w] of sheet.config.colWidths) {
+          const col = sheet.getColIndex(colId);
+          if (col !== undefined) colWidthsOut.push([col, w]);
+        }
+      }
+      const hiddenRowsOut: number[] = [];
+      if (sheet.config.hiddenRows) {
+        for (const rowId of sheet.config.hiddenRows) {
+          const row = sheet.getRowIndex(rowId);
+          if (row !== undefined) hiddenRowsOut.push(row);
+        }
+      }
+      const hiddenColsOut: number[] = [];
+      if (sheet.config.hiddenCols) {
+        for (const colId of sheet.config.hiddenCols) {
+          const col = sheet.getColIndex(colId);
+          if (col !== undefined) hiddenColsOut.push(col);
+        }
+      }
+      const filtersOut: Array<[number, import('./types').ColumnFilter]> = [];
+      if (sheet.config.filters) {
+        for (const [colId, filter] of sheet.config.filters) {
+          const col = sheet.getColIndex(colId);
+          if (col !== undefined) filtersOut.push([col, { ...filter, column: col }]);
+        }
+      }
+
       const config = {
         defaultRowHeight: sheet.config.defaultRowHeight,
         defaultColWidth: sheet.config.defaultColWidth,
-        rowHeights: sheet.config.rowHeights ? Array.from(sheet.config.rowHeights.entries()) : undefined,
-        colWidths: sheet.config.colWidths ? Array.from(sheet.config.colWidths.entries()) : undefined,
-        hiddenRows: sheet.config.hiddenRows ? Array.from(sheet.config.hiddenRows) : undefined,
-        hiddenCols: sheet.config.hiddenCols ? Array.from(sheet.config.hiddenCols) : undefined,
+        rowHeights: sheet.config.rowHeights ? rowHeightsOut : undefined,
+        colWidths: sheet.config.colWidths ? colWidthsOut : undefined,
+        hiddenRows: sheet.config.hiddenRows ? hiddenRowsOut : undefined,
+        hiddenCols: sheet.config.hiddenCols ? hiddenColsOut : undefined,
         frozenRows: sheet.config.frozenRows,
         frozenCols: sheet.config.frozenCols,
         showGridLines: sheet.config.showGridLines,
         sortOrder: sheet.config.sortOrder,
-        filters: sheet.config.filters ? Array.from(sheet.config.filters.entries()) : undefined,
+        filters: sheet.config.filters ? filtersOut : undefined,
       };
 
       sheets.push({
@@ -795,45 +833,68 @@ export class WorkbookImpl implements Workbook {
       }
     }
 
-    // Restore sheets
+    // Restore sheets. Wire format is numeric (index-based); internal storage
+    // is stable-ID-keyed. Translation requires the sheet to exist first.
     for (const sheetData of data.sheets) {
-      // Convert config arrays back to Maps/Sets
-      const config = {
+      // 1. Create the sheet with only the config fields that don't need ID
+      //    translation. The rest are filled in after cells materialize IDs.
+      const sheet = new SheetImpl(sheetData.id, sheetData.name, {
         defaultRowHeight: sheetData.config.defaultRowHeight,
         defaultColWidth: sheetData.config.defaultColWidth,
-        rowHeights: sheetData.config.rowHeights ? new Map(sheetData.config.rowHeights) : undefined,
-        colWidths: sheetData.config.colWidths ? new Map(sheetData.config.colWidths) : undefined,
-        hiddenRows: sheetData.config.hiddenRows ? new Set(sheetData.config.hiddenRows) : undefined,
-        hiddenCols: sheetData.config.hiddenCols ? new Set(sheetData.config.hiddenCols) : undefined,
+        showGridLines: sheetData.config.showGridLines,
         frozenRows: sheetData.config.frozenRows,
         frozenCols: sheetData.config.frozenCols,
-        showGridLines: sheetData.config.showGridLines,
         sortOrder: sheetData.config.sortOrder,
-        filters: sheetData.config.filters ? new Map(sheetData.config.filters) : undefined,
-      };
-
-      // Create sheet
-      const sheet = new SheetImpl(sheetData.id, sheetData.name, config);
+      });
       sheet.rowCount = sheetData.rowCount;
       sheet.colCount = sheetData.colCount;
 
-      // Restore cells. Wire format is still numeric "r:c" in 2a.2 — translate
-      // to stable keys at the boundary by materializing row/col IDs.
+      // 2. Restore cells (creates row/col IDs as a side effect).
       for (const { key, cell } of sheetData.cells) {
         const cellToStore = { ...cell };
-
-        // Handle format conversion for backward compatibility
         if ('format' in cellToStore && cellToStore.format && !cellToStore.formatId) {
           const cleanedFormat = this.cleanFormat(cellToStore.format as CellFormat);
           const formatId = this.formatPool.getOrCreate(cleanedFormat);
           cellToStore.formatId = formatId;
           delete (cellToStore as Partial<Cell> & { format?: CellFormat }).format;
         }
-
         const { row, col } = parseCellKey(key);
         if (!Number.isFinite(row) || !Number.isFinite(col)) continue;
         const stableKey = getStableCellKey(sheet.ensureRowId(row), sheet.ensureColId(col));
         sheet.cells.set(stableKey, cellToStore);
+      }
+
+      // 3. Restore ID-keyed config, translating numeric input → stable IDs.
+      //    Indices not yet seen get fresh IDs via ensureRowId/ensureColId.
+      if (sheetData.config.rowHeights) {
+        sheet.config.rowHeights = new Map();
+        for (const [row, h] of sheetData.config.rowHeights) {
+          sheet.config.rowHeights.set(sheet.ensureRowId(row), h);
+        }
+      }
+      if (sheetData.config.colWidths) {
+        sheet.config.colWidths = new Map();
+        for (const [col, w] of sheetData.config.colWidths) {
+          sheet.config.colWidths.set(sheet.ensureColId(col), w);
+        }
+      }
+      if (sheetData.config.hiddenRows) {
+        sheet.config.hiddenRows = new Set();
+        for (const row of sheetData.config.hiddenRows) {
+          sheet.config.hiddenRows.add(sheet.ensureRowId(row));
+        }
+      }
+      if (sheetData.config.hiddenCols) {
+        sheet.config.hiddenCols = new Set();
+        for (const col of sheetData.config.hiddenCols) {
+          sheet.config.hiddenCols.add(sheet.ensureColId(col));
+        }
+      }
+      if (sheetData.config.filters) {
+        sheet.config.filters = new Map();
+        for (const [col, filter] of sheetData.config.filters) {
+          sheet.config.filters.set(sheet.ensureColId(col), filter);
+        }
       }
 
       this.sheets.set(sheetData.id, sheet);

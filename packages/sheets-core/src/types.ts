@@ -111,15 +111,17 @@ export type FilterCriteria =
 export interface SheetConfig {
   defaultRowHeight?: number;
   defaultColWidth?: number;
-  rowHeights?: Map<number, number>;
-  colWidths?: Map<number, number>;
-  hiddenRows?: Set<number>;
-  hiddenCols?: Set<number>;
-  frozenRows?: number;
-  frozenCols?: number;
+  // Row/column config keyed by stable rowId/colId (not numeric index).
+  // Translate at the public API surface via SheetImpl.getRowId / getColId.
+  rowHeights?: Map<string, number>; // rowId -> height
+  colWidths?: Map<string, number>;  // colId -> width
+  hiddenRows?: Set<string>;          // set of rowIds
+  hiddenCols?: Set<string>;          // set of colIds
+  frozenRows?: number;               // count; index-based by definition
+  frozenCols?: number;               // count; index-based by definition
   showGridLines?: boolean;
-  sortOrder?: SortOrder[]; // Multi-column sort order
-  filters?: Map<number, ColumnFilter>; // column -> filter
+  sortOrder?: SortOrder[];           // criteria still reference numeric columns (revisit in v2)
+  filters?: Map<string, ColumnFilter>; // colId -> filter
 }
 
 export interface Sheet {
