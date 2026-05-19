@@ -1296,6 +1296,15 @@ export class WorkbookImpl implements Workbook {
    * setData but signals collab origin so consumers can disambiguate.
    */
   _reloadFromCollab(data: import('./types').WorkbookData): void {
+    // eslint-disable-next-line no-console
+    console.log('[collab] _reloadFromCollab', {
+      sheets: data.sheets.map(s => ({
+        id: s.id,
+        frozenRows: s.config.frozenRows,
+        frozenCols: s.config.frozenCols,
+        rowCount: s.rowCount,
+      })),
+    });
     // Suspend history recording AND collab mirroring during the reload —
     // remote edits should not collide with local undo/redo stacks, and
     // mirror calls would echo every remote write back over the wire.
@@ -1446,6 +1455,12 @@ export class WorkbookImpl implements Workbook {
 
     const orderSnapshot = sheet.snapshotOrderMaps();
 
+    // eslint-disable-next-line no-console
+    console.log('[collab] mirror struct', sheetId, {
+      frozenRows: sheet.config.frozenRows,
+      frozenCols: sheet.config.frozenCols,
+      rowCount: sheet.rowCount,
+    });
     ydoc.transact(() => {
       // rowOrder: Y.Map<rowId, idx>. Rebuild wholesale (clear + repopulate).
       for (const k of Array.from(t.rowOrder.keys())) t.rowOrder.delete(k);
