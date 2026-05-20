@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { WorkbookProvider, WorkbookCanvas } from '@pagent-libs/sheets-react';
 import { WorkbookImpl } from '@pagent-libs/sheets-core';
-import { InMemoryProvider, type CollabIdentity, type CollabProvider } from '@pagent-libs/shared';
+import { InMemoryProvider, type CollabIdentity, type CollabStatus } from '@pagent-libs/shared';
 import { WebSocketProvider } from '@pagent-libs/transport-websocket';
 import './App.css';
 
@@ -208,16 +208,23 @@ function WsDemo({
 }) {
   const [wb, setWb] = useState<WorkbookImpl | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<CollabStatus>('connecting');
 
   useEffect(() => {
     let cancelled = false;
-    let provider: CollabProvider | null = null;
+    let provider: WebSocketProvider | null = null;
     let workbook: WorkbookImpl | null = null;
     (async () => {
       try {
         workbook = makeWorkbookFromSample('collab-workbook', 'Shared Workbook');
         provider = new WebSocketProvider({ url: config.url });
-        await workbook.attachCollab(provider, config.identity, { roomId: config.roomId });
+        provider.onStatusChange((s) => {
+          if (!cancelled) setStatus(s);
+        });
+        await workbook.attachCollab(provider, config.identity, {
+          roomId: config.roomId,
+          persistenceKey: `sheets-demo:${config.roomId}`,
+        });
         if (cancelled) {
           workbook.detachCollab();
           return;
@@ -237,8 +244,21 @@ function WsDemo({
   if (!wb) return <div style={{ padding: 16 }}>Connecting to {config.url}…</div>;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ padding: '4px 12px', background: config.identity.color, color: 'white', fontWeight: 500 }}>
-        {config.identity.displayName} · room {config.roomId}
+      <div
+        style={{
+          padding: '4px 12px',
+          background: config.identity.color,
+          color: 'white',
+          fontWeight: 500,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <StatusDot status={status} />
+        <span>
+          {config.identity.displayName} · room {config.roomId} · {status}
+        </span>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         <WorkbookProvider workbook={wb}>
@@ -246,6 +266,23 @@ function WsDemo({
         </WorkbookProvider>
       </div>
     </div>
+  );
+}
+
+function StatusDot({ status }: { status: CollabStatus }) {
+  const color =
+    status === 'connected' ? '#2ecc71' : status === 'connecting' ? '#f1c40f' : '#e74c3c';
+  return (
+    <span
+      style={{
+        width: 9,
+        height: 9,
+        borderRadius: '50%',
+        background: color,
+        display: 'inline-block',
+        boxShadow: '0 0 0 2px rgba(255,255,255,0.4)',
+      }}
+    />
   );
 }
 

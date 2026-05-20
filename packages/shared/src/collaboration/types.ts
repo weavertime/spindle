@@ -12,6 +12,16 @@ export type CollabChannel = 'doc' | 'awareness';
 
 export type CollabMessageHandler = (payload: Uint8Array, from?: string) => void;
 
+/**
+ * Transport connection status.
+ *   - 'connecting' — opening the connection or retrying after a drop
+ *   - 'connected'  — live, payloads flow
+ *   - 'offline'    — no connection; edits apply locally and sync on reconnect
+ */
+export type CollabStatus = 'connecting' | 'connected' | 'offline';
+
+export type CollabStatusHandler = (status: CollabStatus) => void;
+
 export interface CollabProvider {
   /** Join a collaboration room. Resolves once the transport is ready. */
   connect(roomId: string): Promise<void>;
@@ -27,6 +37,18 @@ export interface CollabProvider {
    * Returns an unsubscribe function.
    */
   onMessage(channel: CollabChannel, handler: CollabMessageHandler): () => void;
+
+  /**
+   * Optional: current connection status. Transports without a meaningful
+   * notion of connectivity (e.g. an in-process provider) may omit this.
+   */
+  getStatus?(): CollabStatus;
+
+  /**
+   * Optional: subscribe to connection-status changes. Returns an
+   * unsubscribe function. Omitted by transports that don't report status.
+   */
+  onStatusChange?(handler: CollabStatusHandler): () => void;
 }
 
 /**

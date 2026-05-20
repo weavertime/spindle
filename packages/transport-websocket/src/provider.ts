@@ -10,6 +10,8 @@ import type {
   CollabChannel,
   CollabMessageHandler,
   CollabProvider,
+  CollabStatus,
+  CollabStatusHandler,
 } from '@pagent-libs/shared';
 
 const CHANNEL_DOC = 0;
@@ -59,6 +61,9 @@ export class WebSocketProvider implements CollabProvider {
   /** Promise resolver for the in-flight connect(). */
   private connectResolve: (() => void) | null = null;
   private connectReject: ((err: unknown) => void) | null = null;
+  /** Connection status + subscribers. */
+  private status: CollabStatus = 'offline';
+  private statusHandlers: Set<CollabStatusHandler> = new Set();
 
   constructor(options: WebSocketProviderOptions) {
     this.url = options.url.replace(/\/+$/, '');
@@ -105,6 +110,7 @@ export class WebSocketProvider implements CollabProvider {
       this.socket = null;
     }
     this.pendingOutbound = [];
+    this.setStatus('offline');
   }
 
   send(channel: CollabChannel, payload: Uint8Array): void {
@@ -131,7 +137,31 @@ export class WebSocketProvider implements CollabProvider {
     };
   }
 
+  getStatus(): CollabStatus {
+    return this.status;
+  }
+
+  onStatusChange(handler: CollabStatusHandler): () => void {
+    this.statusHandlers.add(handler);
+    return () => {
+      this.statusHandlers.delete(handler);
+    };
+  }
+
   // --- Internals ----------------------------------------------------------
+
+  private setStatus(status: CollabStatus): void {
+    if (this.status === status) return;
+    this.status = status;
+    for (const h of this.statusHandlers) {
+      try {
+        h(status);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[WebSocketProvider] status handler threw:', err);
+      }
+    }
+  }
 
   private openSocket(): void {
     if (!this.roomId) return;
@@ -139,9 +169,11 @@ export class WebSocketProvider implements CollabProvider {
     const ws = new this.Ctor(url);
     ws.binaryType = 'arraybuffer';
     this.socket = ws;
+    this.setStatus('connecting');
 
     ws.onopen = () => {
       this.reconnectAttempt = 0;
+      this.setStatus('connected');
       // Flush any messages queued while the socket was opening.
       for (const m of this.pendingOutbound) {
         try {
@@ -196,15 +228,22 @@ export class WebSocketProvider implements CollabProvider {
 
     ws.onclose = () => {
       this.socket = null;
-      if (this.intentionallyClosed) return;
+      if (this.intentionallyClosed) {
+        this.setStatus('offline');
+        return;
+      }
       if (this.connectReject) {
         // The very first open never succeeded.
         const rej = this.connectReject;
         this.connectResolve = null;
         this.connectReject = null;
+        this.setStatus('offline');
         rej(new Error(`WebSocketProvider: failed to connect to ${url}`));
         return;
       }
+      // Lost an established connection — show offline, then scheduleReconnect
+      // flips us back to 'connecting' on its next openSocket().
+      this.setStatus('offline');
       this.scheduleReconnect();
     };
   }
