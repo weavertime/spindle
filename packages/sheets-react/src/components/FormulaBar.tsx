@@ -75,24 +75,24 @@ export const FormulaBar = memo(function FormulaBar({
         display: 'flex',
         alignItems: 'center',
         height: '32px',
-        borderBottom: '1px solid #e8eaed',
-        backgroundColor: '#ffffff',
-        padding: '0 12px',
-        gap: '10px',
+        backgroundColor: 'transparent',
+        padding: '0 14px',
+        gap: '8px',
+        fontFamily: '"Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
       }}
     >
       <div
         className="cell-reference"
         style={{
-          minWidth: '70px',
+          minWidth: '72px',
           fontSize: '12px',
-          fontWeight: 500,
-          color: '#5f6368',
+          fontWeight: 600,
+          color: '#475569',
           textAlign: 'center',
-          padding: '6px 10px',
-          backgroundColor: '#f8f9fa',
-          border: '1px solid #e8eaed',
-          borderRadius: '4px',
+          padding: '5px 10px',
+          backgroundColor: 'rgba(255, 255, 255, 0.75)',
+          border: '1px solid rgba(15, 23, 42, 0.1)',
+          borderRadius: '8px',
         }}
       >
         {cellReference}
@@ -103,17 +103,17 @@ export const FormulaBar = memo(function FormulaBar({
           flex: 1,
           display: 'flex',
           alignItems: 'center',
-          border: '1px solid #e8eaed',
-          borderRadius: '4px',
-          padding: '0 8px',
-          backgroundColor: '#ffffff',
-          transition: 'border-color 0.15s ease',
+          border: '1px solid rgba(15, 23, 42, 0.1)',
+          borderRadius: '8px',
+          padding: '0 10px',
+          backgroundColor: 'rgba(255, 255, 255, 0.8)',
+          transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
         }}
       >
         <span
           style={{
             fontSize: '14px',
-            color: '#5f6368',
+            color: '#94a3b8',
             marginRight: '6px',
             fontWeight: 500,
           }}
@@ -127,11 +127,15 @@ export const FormulaBar = memo(function FormulaBar({
           onChange={handleInputChange}
           onFocus={(e) => {
             handleInputFocus();
-            e.currentTarget.parentElement!.style.borderColor = '#1a73e8';
+            const parent = e.currentTarget.parentElement!;
+            parent.style.borderColor = '#6366f1';
+            parent.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.12)';
           }}
           onBlur={(e) => {
             handleInputBlur();
-            e.currentTarget.parentElement!.style.borderColor = '#e8eaed';
+            const parent = e.currentTarget.parentElement!;
+            parent.style.borderColor = 'rgba(15, 23, 42, 0.1)';
+            parent.style.boxShadow = 'none';
           }}
           onKeyDown={handleInputKeyDown}
           placeholder="Enter formula or value"
@@ -142,7 +146,8 @@ export const FormulaBar = memo(function FormulaBar({
             fontSize: '13px',
             padding: '4px 0',
             backgroundColor: 'transparent',
-            color: '#202124',
+            color: '#1e293b',
+            fontFamily: 'inherit',
           }}
         />
       </div>
