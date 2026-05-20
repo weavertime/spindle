@@ -1,14 +1,17 @@
 import React, { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { EditorState, Transaction } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
-import { 
-  docsSchema, 
-  createPlugins, 
+import { ySyncPlugin, yCursorPlugin } from 'y-prosemirror';
+import { ensureCollabCursorStyles } from '../core/collab-cursor-styles';
+import {
+  docsSchema,
+  createPlugins,
   createCommands,
   activeMarksPluginKey,
   type DocsCommands,
   type ActiveState,
 } from '@pagent-libs/docs-core';
+import type { CollabHandle } from '@pagent-libs/docs-core/collab';
 
 // ProseMirror CSS (basic styles)
 const proseMirrorStyles = `
@@ -135,6 +138,13 @@ export interface ProseMirrorEditorProps {
   placeholder?: string;
   editable?: boolean;
   autoFocus?: boolean;
+  /**
+   * If present, the editor binds to the collab handle's Y.XmlFragment via
+   * ySyncPlugin instead of initializing from `initialContent`. The handle
+   * becomes the source of truth for body content; local edits propagate to
+   * peers and remote edits land in the editor view.
+   */
+  collabHandle?: CollabHandle | null;
 }
 
 export interface ProseMirrorEditorRef {
@@ -163,6 +173,7 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorRef, ProseMirrorEdi
       placeholder = 'Type something...',
       editable = true,
       autoFocus = false,
+      collabHandle = null,
     },
     ref
   ) {
@@ -184,36 +195,53 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorRef, ProseMirrorEdi
     // Initialize editor
     useEffect(() => {
       if (!editorRef.current) return;
-      
-      // Create initial document
-      let doc;
-      try {
-        doc = initialContent
-          ? docsSchema.nodeFromJSON(initialContent)
-          : docsSchema.node('doc', null, [docsSchema.node('paragraph')]);
-      } catch (e) {
-        console.error('Failed to parse initial content:', e);
-        doc = docsSchema.node('doc', null, [docsSchema.node('paragraph')]);
+
+      // Two initialization paths:
+      //   - Collab: ySyncPlugin owns the doc; it's seeded from the Y.XmlFragment
+      //     on the handle. initialContent is ignored — the Y.Doc is the truth.
+      //   - Local: build a PM doc from initialContent (or an empty paragraph).
+      const plugins = createPlugins(docsSchema);
+      let stateConfig: Parameters<typeof EditorState.create>[0];
+      if (collabHandle) {
+        ensureCollabCursorStyles();
+        plugins.unshift(
+          ySyncPlugin(collabHandle.xmlFragment),
+          yCursorPlugin(collabHandle.awareness),
+        );
+        stateConfig = { schema: docsSchema, plugins };
+      } else {
+        let doc;
+        try {
+          doc = initialContent
+            ? docsSchema.nodeFromJSON(initialContent)
+            : docsSchema.node('doc', null, [docsSchema.node('paragraph')]);
+        } catch (e) {
+          console.error('Failed to parse initial content:', e);
+          doc = docsSchema.node('doc', null, [docsSchema.node('paragraph')]);
+        }
+        stateConfig = { doc, plugins };
       }
+
+      const state = EditorState.create(stateConfig);
       
-      // Create editor state
-      const state = EditorState.create({
-        doc,
-        plugins: createPlugins(docsSchema),
-      });
-      
-      // Create editor view
-      const view = new EditorView(editorRef.current, {
+      // `let view` + `view ?? this` fallback avoids a temporal-dead-zone
+      // crash when ySyncPlugin dispatches its first sync transaction inside
+      // the EditorView constructor — at that moment the outer `view` binding
+      // hasn't been assigned yet.
+      let view: EditorView | undefined;
+      view = new EditorView(editorRef.current, {
         state,
         editable: () => editable,
         dispatchTransaction(transaction: Transaction) {
-          const newState = view.state.apply(transaction);
-          view.updateState(newState);
-          
+          // eslint-disable-next-line @typescript-eslint/no-this-alias
+          const v = view ?? (this as unknown as EditorView);
+          const newState = v.state.apply(transaction);
+          v.updateState(newState);
+
           if (transaction.docChanged && onChange) {
             onChange(newState);
           }
-          
+
           if ((transaction.selectionSet || transaction.docChanged) && onSelectionChange) {
             const activeMarks = activeMarksPluginKey.getState(newState) as ActiveMarks;
             onSelectionChange(newState, activeMarks);
@@ -244,7 +272,11 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorRef, ProseMirrorEdi
         view.destroy();
         viewRef.current = null;
       };
-    }, []); // Only run once on mount
+      // collabHandle in the deps so swapping in/out of collab mode rebuilds
+      // the editor with the right plugin stack. eslint-disable-next-line:
+      // initialContent intentionally excluded — it's seed data, not reactive.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [collabHandle]);
     
     // Update editable state
     useEffect(() => {

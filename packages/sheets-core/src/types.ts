@@ -64,7 +64,20 @@ export interface CellFormat {
 
 export interface Cell {
   value: CellValue;
+  /**
+   * Display string for the formula (A1 notation). When `formulaAst` is also
+   * present, the AST is the source of truth and `formula` is a cache that
+   * gets regenerated on every evaluation. A cell with only `formula` and no
+   * `formulaAst` (e.g. set via legacy paths) is upgraded to a stable AST on
+   * first evaluation.
+   */
   formula?: string;
+  /**
+   * Stable-ID formula AST. Source of truth for the formula's structure; refs
+   * point at rowId/colId so they survive insert/delete/sort. Imported lazily
+   * to avoid pulling formula-parser types into every consumer of Cell.
+   */
+  formulaAst?: import('./formula-parser/stable-ast').StableFormulaNode;
   styleId?: string; // Reference to shared style in StylePool
   formatId?: string; // Reference to shared format in FormatPool
   comment?: string;
@@ -111,24 +124,35 @@ export type FilterCriteria =
 export interface SheetConfig {
   defaultRowHeight?: number;
   defaultColWidth?: number;
-  rowHeights?: Map<number, number>;
-  colWidths?: Map<number, number>;
-  hiddenRows?: Set<number>;
-  hiddenCols?: Set<number>;
-  frozenRows?: number;
-  frozenCols?: number;
+  // Row/column config keyed by stable rowId/colId (not numeric index).
+  // Translate at the public API surface via SheetImpl.getRowId / getColId.
+  rowHeights?: Map<string, number>; // rowId -> height
+  colWidths?: Map<string, number>;  // colId -> width
+  hiddenRows?: Set<string>;          // set of rowIds
+  hiddenCols?: Set<string>;          // set of colIds
+  frozenRows?: number;               // count; index-based by definition
+  frozenCols?: number;               // count; index-based by definition
   showGridLines?: boolean;
-  sortOrder?: SortOrder[]; // Multi-column sort order
-  filters?: Map<number, ColumnFilter>; // column -> filter
+  sortOrder?: SortOrder[];           // criteria still reference numeric columns (revisit in v2)
+  filters?: Map<string, ColumnFilter>; // colId -> filter
 }
 
 export interface Sheet {
   id: string;
   name: string;
-  cells: Map<string, Cell>; // key: "r:c"
+  cells: Map<string, Cell>; // key: "rowId:colId" (stable IDs — translate via SheetImpl helpers)
   config: SheetConfig;
   rowCount: number;
   colCount: number;
+
+  // Stable-ID helpers (translate between numeric indices and stable rowId/colId)
+  getRowId(row: number): string | undefined;
+  getColId(col: number): string | undefined;
+  ensureRowId(row: number): string;
+  ensureColId(col: number): string;
+  getRowIndex(rowId: string): number | undefined;
+  getColIndex(colId: string): number | undefined;
+  stableKeyToIndices(key: string): { row: number; col: number } | undefined;
 
   getCell(row: number, col: number): Cell | undefined;
   setCell(row: number, col: number, cell: Partial<Cell>): void;
@@ -138,6 +162,7 @@ export interface Sheet {
   getRange(range: Range): Map<string, Cell>;
   setRange(range: Range, cells: Map<string, Cell> | Cell[][]): void;
   clearRange(range: Range): void;
+  entries(): IterableIterator<[number, number, Cell]>;
   getRowHeight(row: number): number;
   setRowHeight(row: number, height: number): void;
   getColWidth(col: number): number;
@@ -173,6 +198,10 @@ export interface Sheet {
   hasFilter(column: number): boolean;
   clearAllFilters(): void;
 
+  // Order-map plumbing (used by sort, history snapshot/restore, and the
+  // future CRDT binding). Cells are not touched by these calls.
+  replaceOrderMaps(rowOrder: Map<number, string>, colOrder: Map<number, string>): void;
+  snapshotOrderMaps(): { rowOrder: Map<number, string>; colOrder: Map<number, string> };
 }
 
 export interface Workbook {
@@ -236,19 +265,35 @@ export interface WorkbookData {
 export interface SheetData {
   id: string;
   name: string;
-  cells: Array<{ key: string; cell: Cell }>; // key format: "row:col"
+  /**
+   * Cell entries. The key format depends on whether `rowOrder`/`colOrder`
+   * are present:
+   *   - With rowOrder/colOrder: key is `"{rowId}:{colId}"` (stable). This is
+   *     what `getData()` emits.
+   *   - Without: key is `"row:col"` (numeric). This legacy form is accepted
+   *     by `setData()` and is convenient for hand- or AI-authored JSON.
+   */
+  cells: Array<{ key: string; cell: Cell }>;
+  /**
+   * Stable row IDs at each numeric index, sparse. Optional on input — when
+   * absent, cell keys / config keys are interpreted as numeric and IDs are
+   * materialized during load. Always emitted by `getData()`.
+   */
+  rowOrder?: Array<[number, string]>;
+  colOrder?: Array<[number, string]>;
   config: {
     defaultRowHeight?: number;
     defaultColWidth?: number;
-    rowHeights?: Array<[number, number]>; // [row, height] pairs
-    colWidths?: Array<[number, number]>; // [col, width] pairs
-    hiddenRows?: number[];
-    hiddenCols?: number[];
+    /** When rowOrder/colOrder is present, keys are rowId/colId strings; otherwise numeric indices. */
+    rowHeights?: Array<[number | string, number]>;
+    colWidths?: Array<[number | string, number]>;
+    hiddenRows?: Array<number | string>;
+    hiddenCols?: Array<number | string>;
     frozenRows?: number;
     frozenCols?: number;
     showGridLines?: boolean;
     sortOrder?: SortOrder[];
-    filters?: Array<[number, ColumnFilter]>; // [column, filter] pairs
+    filters?: Array<[number | string, ColumnFilter]>;
   };
   rowCount: number;
   colCount: number;

@@ -7,9 +7,24 @@ import { FormulaGraphImpl } from './formula-graph';
 import { StylePool } from './style-pool';
 import { FormatPool } from './format-pool';
 import { SortManager } from './features/sort';
-import { getCellKey, parseCellKey } from './utils/cell-key';
+import { getCellKey, getStableCellKey, parseCellKey } from './utils/cell-key';
 import { FormulaParser } from './formula-parser';
-import type { RangeReference } from './formula-parser';
+import type { RangeReference, StableFormulaNode, SheetResolver } from './formula-parser';
+import * as Y from 'yjs';
+import { attachCollabToWorkbook } from './collab/binding';
+import type { CollabHandle, AttachCollabOptions } from './collab/binding';
+import {
+  getWorkbookYTypes,
+  getSheetYTypes,
+  ensureSheetYMap,
+} from './collab/y-schema';
+import {
+  toStableAst,
+  fromStableAst,
+  renderStableAst,
+  collectStableDependencies,
+  StableRefDeletedError,
+} from './formula-parser/stable-ast';
 
 // Snapshot for undo/redo
 interface WorkbookSnapshot {
@@ -21,7 +36,9 @@ interface WorkbookSnapshot {
 interface SheetSnapshot {
   id: string;
   name: string;
-  cells: Map<string, Cell>;
+  cells: Map<string, Cell>; // key: "rowId:colId"
+  rowOrder: Map<number, string>;
+  colOrder: Map<number, string>;
   config: Sheet['config'];
   rowCount: number;
   colCount: number;
@@ -51,6 +68,13 @@ export class WorkbookImpl implements Workbook {
   private isUndoing = false; // Flag to prevent recording history during undo/redo
   private isRedoing = false;
   private isBatching = false; // Flag to track if we're in a batch operation
+  // Set by attachCollab; consulted in places that need to know whether the
+  // workbook is currently sourcing state from a Y.Doc.
+  private collabHandle: CollabHandle | null = null;
+  // True while _reloadFromCollab is rebuilding internal state from a remote
+  // Y.Doc update. Mirror calls in mutation methods short-circuit when set,
+  // otherwise we'd echo every remote write back over the wire.
+  private isApplyingRemoteChange = false;
 
   constructor(id: string, name: string) {
     this.id = id;
@@ -67,6 +91,8 @@ export class WorkbookImpl implements Workbook {
     const id = `sheet_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const sheet = new SheetImpl(id, name);
     this.sheets.set(id, sheet);
+    this.attachStructureListenerIfNeeded(sheet);
+    this.mirrorSheetAdd(id, name, sheet);
     this.events.emit('sheetAdd', { sheetId: id, name });
     return sheet;
   }
@@ -77,9 +103,10 @@ export class WorkbookImpl implements Workbook {
     }
     this.sheets.delete(sheetId);
     if (this.activeSheetId === sheetId) {
-      // Switch to first available sheet
+      // Switch to first available sheet (local view state).
       this.activeSheetId = Array.from(this.sheets.keys())[0];
     }
+    this.mirrorSheetDelete(sheetId);
     this.events.emit('sheetDelete', { sheetId });
   }
 
@@ -97,6 +124,7 @@ export class WorkbookImpl implements Workbook {
       throw new Error(`Sheet not found: ${sheetId}`);
     }
     this.activeSheetId = sheetId;
+    // No mirror: which sheet a user is viewing is per-user view state.
     this.events.emit('sheetChange', { sheetId });
   }
 
@@ -104,6 +132,7 @@ export class WorkbookImpl implements Workbook {
     const sheet = this.getSheet(sheetId);
     const oldName = sheet.name;
     sheet.name = newName;
+    this.mirrorSheetRename(sheetId, newName);
     this.events.emit('sheetRename', { sheetId, oldName, newName });
   }
 
@@ -119,6 +148,29 @@ export class WorkbookImpl implements Workbook {
   getCell(sheetId: string | undefined, row: number, col: number): Cell | undefined {
     const sheet = this.getSheet(sheetId);
     return sheet.getCell(row, col);
+  }
+
+  /**
+   * Build the FormulaGraph key for a (row, col) on the given sheet,
+   * lazily materializing stable IDs if needed.
+   */
+  private graphKey(sheetId: string | undefined, row: number, col: number): string {
+    const sheet = this.getSheet(sheetId);
+    return getStableCellKey(sheet.ensureRowId(row), sheet.ensureColId(col));
+  }
+
+  /**
+   * Resolver passed to the stable-AST converters so cross-sheet refs can
+   * look up the target sheet's order maps.
+   */
+  private buildSheetResolver(): SheetResolver {
+    return {
+      getSheet: (name?: string): Sheet | undefined => {
+        if (!name) return undefined;
+        const id = this.getSheetIdByName(name);
+        return id ? this.sheets.get(id) : undefined;
+      },
+    };
   }
 
   setCell(
@@ -151,6 +203,8 @@ export class WorkbookImpl implements Workbook {
     const sheet = this.getSheet(sheetId);
     sheet.setCell(row, col, cell);
 
+    this.mirrorCellWrite(sheet.id, row, col);
+
     this.events.emit('cellChange', {
       sheetId: sheet.id,
       row,
@@ -169,16 +223,16 @@ export class WorkbookImpl implements Workbook {
       }
     }
     
-    const cellKey = getCellKey(row, col);
+    const cellKey = this.graphKey(sheetId, row, col);
     const hadFormula = this.formulaGraph.nodes.has(cellKey);
-    
+
     // Remove formula if setting a direct value
     if (hadFormula) {
       this.formulaGraph.removeFormula(cellKey);
     }
-    
+
     this.setCell(sheetId, row, col, { value: value as string | number | boolean | null });
-    
+
     // Invalidate dependents of this cell
     if (hadFormula || this.getCell(sheetId, row, col)?.value !== undefined) {
       this.formulaGraph.invalidate(cellKey);
@@ -201,26 +255,30 @@ export class WorkbookImpl implements Workbook {
       }
     }
     
-    const cellKey = getCellKey(row, col);
-    
-    // Parse formula to get dependencies
+    const cellKey = this.graphKey(sheetId, row, col);
+    const sheet = this.getSheet(sheetId);
+
+    // Parse to numeric AST, then convert to stable AST (the source of truth).
     const parseResult = this.formulaParser.parse(formula, row, col);
-    
+
     if (parseResult.error) {
-      // Store error in cell value
       this.setCell(sheetId, row, col, { formula, value: parseResult.error as CellValue });
       return;
     }
 
-    // Update formula graph with dependencies
-    this.formulaGraph.addFormula(cellKey, formula, parseResult.dependencies);
-    
-    // Set cell with formula
-    this.setCell(sheetId, row, col, { formula });
-    
+    const resolver = this.buildSheetResolver();
+    const formulaAst = toStableAst(parseResult.ast, resolver, sheet, row, col);
+    const stableDeps = collectStableDependencies(formulaAst, sheet);
+
+    this.formulaGraph.addFormula(cellKey, formula, stableDeps);
+
+    // Store both AST (truth) and input string (display cache; gets refreshed
+    // from the AST on every evaluation).
+    this.setCell(sheetId, row, col, { formula, formulaAst });
+
     // Evaluate and store result
     this.evaluateFormula(sheetId, row, col);
-    
+
     // Recalculate dependents
     this.recalculateDependents(cellKey, sheetId);
   }
@@ -269,7 +327,7 @@ export class WorkbookImpl implements Workbook {
    */
   getCellCalculatedValue(sheetId: string | undefined, row: number, col: number): unknown {
     const cell = this.getCell(sheetId, row, col);
-    const cellKey = getCellKey(row, col);
+    const cellKey = this.graphKey(sheetId, row, col);
     
     // If cell has a formula, evaluate it
     if (cell?.formula) {
@@ -308,7 +366,7 @@ export class WorkbookImpl implements Workbook {
    * Evaluate a formula and store the result
    */
   private evaluateFormula(sheetId: string | undefined, row: number, col: number): unknown {
-    const cellKey = getCellKey(row, col);
+    const cellKey = this.graphKey(sheetId, row, col);
     const cell = this.getCell(sheetId, row, col);
     
     if (!cell?.formula) {
@@ -327,45 +385,70 @@ export class WorkbookImpl implements Workbook {
     this.evaluatingCells.add(cellKey);
 
     try {
-      // Parse formula (parser resolves relative references during parsing)
-      const parseResult = this.formulaParser.parse(cell.formula, row, col);
-      
-      if (parseResult.error) {
-        this.evaluatingCells.delete(cellKey);
-        this.formulaGraph.markClean(cellKey, parseResult.error as CellValue);
-        this.setCell(sheetId, row, col, { value: parseResult.error as CellValue });
-        return parseResult.error;
+      const sheet = this.getSheet(sheetId);
+      const resolver = this.buildSheetResolver();
+
+      // Source of truth is cell.formulaAst (stable). If only the legacy
+      // string is present, parse it and upgrade in place.
+      let stableAst: StableFormulaNode | undefined = cell.formulaAst;
+      if (!stableAst) {
+        const parsed = this.formulaParser.parse(cell.formula, row, col);
+        if (parsed.error) {
+          this.evaluatingCells.delete(cellKey);
+          this.formulaGraph.markClean(cellKey, parsed.error as CellValue);
+          this.setCell(sheetId, row, col, { value: parsed.error as CellValue });
+          return parsed.error;
+        }
+        stableAst = toStableAst(parsed.ast, resolver, sheet, row, col);
+        // Persist the upgraded AST so future evaluations skip the re-parse.
+        this.setCell(sheetId, row, col, { formulaAst: stableAst });
       }
 
-      // Create evaluation context with current formula cell position captured in closure
+      // Convert stable refs back to numeric for the evaluator. Any ref whose
+      // target row/col ID has been deleted bubbles up as a #REF! error.
+      let numericAst;
+      try {
+        numericAst = fromStableAst(stableAst, resolver, sheet, row, col);
+      } catch (e) {
+        if (e instanceof StableRefDeletedError) {
+          this.evaluatingCells.delete(cellKey);
+          this.formulaGraph.markClean(cellKey, '#REF!' as CellValue);
+          this.setCell(sheetId, row, col, {
+            value: '#REF!' as CellValue,
+            formula: renderStableAst(stableAst, resolver, sheet),
+          });
+          return '#REF!';
+        }
+        throw e;
+      }
+
+      // Refresh the display string from the AST so the user sees A1
+      // notation that tracks structural edits (insert/delete/sort).
+      const refreshedFormula = renderStableAst(stableAst, resolver, sheet);
+
       const evaluationContext = {
         getCellValue: (r: number, c: number, sId?: string, sheetName?: string) => {
-          // Resolve sheet name to sheet ID if provided
           let targetSheetId = sId ?? sheetId;
           if (sheetName) {
             const resolvedSheetId = this.getSheetIdByName(sheetName);
             if (resolvedSheetId) {
               targetSheetId = resolvedSheetId;
             } else {
-              // Sheet not found - return error
               return '#REF!';
             }
           }
           return this.getCellCalculatedValue(targetSheetId, r, c);
         },
         getRangeValues: (range: RangeReference, sId?: string, sheetName?: string) => {
-          // Resolve sheet name to sheet ID if provided
           let targetSheetId = sId ?? sheetId;
           if (sheetName) {
             const resolvedSheetId = this.getSheetIdByName(sheetName);
             if (resolvedSheetId) {
               targetSheetId = resolvedSheetId;
             } else {
-              // Sheet not found - return empty array
               return [];
             }
           }
-          // Use captured row/col from the formula cell being evaluated
           return this.getRangeValues(targetSheetId, range, row, col);
         },
         getSheetIdByName: (sheetName: string) => {
@@ -373,8 +456,7 @@ export class WorkbookImpl implements Workbook {
         },
       };
 
-      // Evaluate formula
-      const result = this.formulaParser.evaluate(parseResult.ast, evaluationContext, row, col);
+      const result = this.formulaParser.evaluate(numericAst, evaluationContext, row, col);
       
       // Handle division by zero
       if (typeof result === 'number' && !isFinite(result)) {
@@ -385,17 +467,20 @@ export class WorkbookImpl implements Workbook {
         return error;
       }
 
-      // Store result
+      // Store result with the refreshed display string. Keep formula AST.
       const cellValue = result as CellValue;
       this.evaluatingCells.delete(cellKey);
       this.formulaGraph.markClean(cellKey, cellValue);
-      
-      // Update cell value (but keep formula)
+
       const currentCell = this.getCell(sheetId, row, col);
       if (currentCell) {
-        this.setCell(sheetId, row, col, { ...currentCell, value: cellValue });
+        this.setCell(sheetId, row, col, {
+          ...currentCell,
+          value: cellValue,
+          formula: refreshedFormula,
+        });
       }
-      
+
       return result;
     } catch (error) {
       this.evaluatingCells.delete(cellKey);
@@ -447,14 +532,16 @@ export class WorkbookImpl implements Workbook {
    */
   private recalculateDependents(cellKey: string, sheetId: string | undefined): void {
     const dependents = this.formulaGraph.getDependents(cellKey);
-    
+    const sheet = this.getSheet(sheetId);
+
     for (const dependentKey of dependents) {
       // Invalidate dependent
       this.formulaGraph.invalidate(dependentKey);
-      
-      // Recalculate dependent
-      const { row, col } = parseCellKey(dependentKey);
-      this.evaluateFormula(sheetId, row, col);
+
+      // Recalculate dependent (translate stable graph key back to current indices)
+      const indices = sheet.stableKeyToIndices(dependentKey);
+      if (!indices) continue;
+      this.evaluateFormula(sheetId, indices.row, indices.col);
     }
   }
 
@@ -463,14 +550,17 @@ export class WorkbookImpl implements Workbook {
    */
   private createSnapshot(): WorkbookSnapshot {
     const sheets = new Map<string, SheetSnapshot>();
-    
+
     for (const [sheetId, sheet] of this.sheets.entries()) {
-      // Deep clone cells
+      // Deep clone cells (stable keys are immutable strings; cells get shallow-cloned)
       const cells = new Map<string, Cell>();
       for (const [key, cell] of sheet.cells.entries()) {
         cells.set(key, { ...cell });
       }
-      
+
+      // Snapshot order maps (cloned so later mutations don't leak in)
+      const { rowOrder, colOrder } = sheet.snapshotOrderMaps();
+
       // Deep clone config
       const config = {
         ...sheet.config,
@@ -479,17 +569,19 @@ export class WorkbookImpl implements Workbook {
         hiddenRows: sheet.config.hiddenRows ? new Set(sheet.config.hiddenRows) : undefined,
         hiddenCols: sheet.config.hiddenCols ? new Set(sheet.config.hiddenCols) : undefined,
       };
-      
+
       sheets.set(sheetId, {
         id: sheet.id,
         name: sheet.name,
         cells,
+        rowOrder,
+        colOrder,
         config,
         rowCount: sheet.rowCount,
         colCount: sheet.colCount,
       });
     }
-    
+
     return {
       sheets,
       activeSheetId: this.activeSheetId,
@@ -509,40 +601,48 @@ export class WorkbookImpl implements Workbook {
       const sheet = new SheetImpl(sheetSnapshot.id, sheetSnapshot.name, sheetSnapshot.config);
       sheet.rowCount = sheetSnapshot.rowCount;
       sheet.colCount = sheetSnapshot.colCount;
-      
-      // Restore cells
+
+      // Restore order maps first so cell keys resolve to indices correctly.
+      sheet.replaceOrderMaps(sheetSnapshot.rowOrder, sheetSnapshot.colOrder);
+
+      // Restore cells (keys are already stable from the snapshot)
       for (const [key, cell] of sheetSnapshot.cells.entries()) {
         sheet.cells.set(key, { ...cell });
       }
-      
+
       this.sheets.set(sheetId, sheet);
     }
-    
+
     // Restore active sheet
     this.activeSheetId = snapshot.activeSheetId;
-    
+
     // Restore selection
     this.selection = { ...snapshot.selection };
-    
-    // Rebuild formula graph
+
+    // Rebuild formula graph. Prefer existing stable AST; parse + upgrade if absent.
     this.formulaGraph = new FormulaGraphImpl();
-    for (const [, sheet] of this.sheets.entries()) {
-      for (const [key, cell] of sheet.cells.entries()) {
-        if (cell.formula) {
-          const { row, col } = parseCellKey(key);
-          const parseResult = this.formulaParser.parse(cell.formula, row, col);
-          if (!parseResult.error) {
-            this.formulaGraph.addFormula(key, cell.formula, parseResult.dependencies);
-          }
+    const resolver = this.buildSheetResolver();
+    for (const [sheetId, sheet] of this.sheets.entries()) {
+      for (const [row, col, cell] of sheet.entries()) {
+        if (!cell.formula && !cell.formulaAst) continue;
+        let ast = cell.formulaAst;
+        if (!ast && cell.formula) {
+          const parsed = this.formulaParser.parse(cell.formula, row, col);
+          if (parsed.error) continue;
+          ast = toStableAst(parsed.ast, resolver, sheet, row, col);
+          cell.formulaAst = ast;
         }
+        if (!ast) continue;
+        const cellKey = this.graphKey(sheetId, row, col);
+        const deps = collectStableDependencies(ast, sheet);
+        this.formulaGraph.addFormula(cellKey, cell.formula ?? '', deps);
       }
     }
-    
+
     // Recalculate all formulas
     for (const [sheetId, sheet] of this.sheets.entries()) {
-      for (const [key, cell] of sheet.cells.entries()) {
+      for (const [row, col, cell] of sheet.entries()) {
         if (cell.formula) {
-          const { row, col } = parseCellKey(key);
           this.evaluateFormula(sheetId, row, col);
         }
       }
@@ -561,15 +661,19 @@ export class WorkbookImpl implements Workbook {
     if (this.isUndoing || this.isRedoing) {
       return; // Don't record history during undo/redo operations
     }
-    
+    // Collab mode uses Y.UndoManager (in the collab handle) to track local
+    // mutations through Y operations — those broadcast naturally. Skip the
+    // snapshot stack entirely so it doesn't double-undo or diverge.
+    if (this.collabHandle) return;
+
     const snapshot = this.createSnapshot();
     this.undoStack.push(snapshot);
-    
+
     // Limit history size
     if (this.undoStack.length > this.maxHistorySize) {
       this.undoStack.shift();
     }
-    
+
     // Clear redo stack when new action is performed
     this.redoStack = [];
   }
@@ -578,14 +682,21 @@ export class WorkbookImpl implements Workbook {
    * Undo the last operation
    */
   undo(): boolean {
+    if (this.collabHandle) {
+      // Route through Y.UndoManager — its inverse op flows through ydoc
+      // .on('update') with origin === undoManager, which the binding's
+      // dispatcher broadcasts AND reloads the local workbook from Y.
+      const stackItem = this.collabHandle.undoManager.undo();
+      return stackItem !== null;
+    }
     if (this.undoStack.length === 0) {
       return false;
     }
-    
+
     // Save current state to redo stack
     const currentSnapshot = this.createSnapshot();
     this.redoStack.push(currentSnapshot);
-    
+
     // Restore previous state
     const previousSnapshot = this.undoStack.pop()!;
     this.isUndoing = true;
@@ -594,7 +705,7 @@ export class WorkbookImpl implements Workbook {
     } finally {
       this.isUndoing = false;
     }
-    
+
     return true;
   }
 
@@ -602,14 +713,18 @@ export class WorkbookImpl implements Workbook {
    * Redo the last undone operation
    */
   redo(): boolean {
+    if (this.collabHandle) {
+      const stackItem = this.collabHandle.undoManager.redo();
+      return stackItem !== null;
+    }
     if (this.redoStack.length === 0) {
       return false;
     }
-    
+
     // Save current state to undo stack
     const currentSnapshot = this.createSnapshot();
     this.undoStack.push(currentSnapshot);
-    
+
     // Restore next state
     const nextSnapshot = this.redoStack.pop()!;
     this.isRedoing = true;
@@ -618,7 +733,7 @@ export class WorkbookImpl implements Workbook {
     } finally {
       this.isRedoing = false;
     }
-    
+
     return true;
   }
 
@@ -626,6 +741,7 @@ export class WorkbookImpl implements Workbook {
    * Check if undo is available
    */
   canUndo(): boolean {
+    if (this.collabHandle) return this.collabHandle.undoManager.canUndo();
     return this.undoStack.length > 0;
   }
 
@@ -633,6 +749,7 @@ export class WorkbookImpl implements Workbook {
    * Check if redo is available
    */
   canRedo(): boolean {
+    if (this.collabHandle) return this.collabHandle.undoManager.canRedo();
     return this.redoStack.length > 0;
   }
 
@@ -656,34 +773,55 @@ export class WorkbookImpl implements Workbook {
       formatPool[formatId] = format;
     }
 
-    // Serialize sheets
+    // Serialize sheets in the stable-ID wire format (phase 2a.6).
     const sheets: import('./types').SheetData[] = [];
     for (const sheet of this.sheets.values()) {
-      // Serialize cells
+      // Cells: emit stable keys directly. The accompanying rowOrder/colOrder
+      // entries below let consumers reconstruct numeric layout.
       const cells: Array<{ key: string; cell: import('./types').Cell }> = [];
-      for (const [key, cell] of sheet.cells.entries()) {
-        cells.push({ key, cell });
+      for (const [row, col, cell] of sheet.entries()) {
+        const rowId = sheet.getRowId(row);
+        const colId = sheet.getColId(col);
+        if (!rowId || !colId) continue; // unreachable: entries() only yields cells with IDs
+        cells.push({ key: `${rowId}:${colId}`, cell });
       }
 
-      // Serialize config (convert Maps/Sets to arrays)
+      const orderSnapshot = sheet.snapshotOrderMaps();
+      const rowOrder = Array.from(orderSnapshot.rowOrder.entries());
+      const colOrder = Array.from(orderSnapshot.colOrder.entries());
+
       const config = {
         defaultRowHeight: sheet.config.defaultRowHeight,
         defaultColWidth: sheet.config.defaultColWidth,
-        rowHeights: sheet.config.rowHeights ? Array.from(sheet.config.rowHeights.entries()) : undefined,
-        colWidths: sheet.config.colWidths ? Array.from(sheet.config.colWidths.entries()) : undefined,
-        hiddenRows: sheet.config.hiddenRows ? Array.from(sheet.config.hiddenRows) : undefined,
-        hiddenCols: sheet.config.hiddenCols ? Array.from(sheet.config.hiddenCols) : undefined,
+        // Row/col config entries already use stable IDs internally — pass
+        // them through directly.
+        rowHeights: sheet.config.rowHeights
+          ? Array.from(sheet.config.rowHeights.entries()) as Array<[string, number]>
+          : undefined,
+        colWidths: sheet.config.colWidths
+          ? Array.from(sheet.config.colWidths.entries()) as Array<[string, number]>
+          : undefined,
+        hiddenRows: sheet.config.hiddenRows
+          ? Array.from(sheet.config.hiddenRows) as string[]
+          : undefined,
+        hiddenCols: sheet.config.hiddenCols
+          ? Array.from(sheet.config.hiddenCols) as string[]
+          : undefined,
         frozenRows: sheet.config.frozenRows,
         frozenCols: sheet.config.frozenCols,
         showGridLines: sheet.config.showGridLines,
         sortOrder: sheet.config.sortOrder,
-        filters: sheet.config.filters ? Array.from(sheet.config.filters.entries()) : undefined,
+        filters: sheet.config.filters
+          ? Array.from(sheet.config.filters.entries()) as Array<[string, import('./types').ColumnFilter]>
+          : undefined,
       };
 
       sheets.push({
         id: sheet.id,
         name: sheet.name,
         cells,
+        rowOrder,
+        colOrder,
         config,
         rowCount: sheet.rowCount,
         colCount: sheet.colCount,
@@ -752,45 +890,114 @@ export class WorkbookImpl implements Workbook {
       }
     }
 
-    // Restore sheets
+    // Restore sheets. Accept two wire formats:
+    //   1. Stable form  — rowOrder/colOrder present; cell keys are stable.
+    //      Produced by getData(). Pass-through with no translation.
+    //   2. Legacy form  — no rowOrder; cell keys are numeric "r:c". Convenient
+    //      for hand- or AI-authored JSON. We materialize stable IDs as we
+    //      load.
     for (const sheetData of data.sheets) {
-      // Convert config arrays back to Maps/Sets
-      const config = {
+      const useStable = !!(sheetData.rowOrder || sheetData.colOrder);
+
+      // 1. Create the sheet with only the config fields that don't need ID
+      //    translation. The rest are filled in below.
+      const sheet = new SheetImpl(sheetData.id, sheetData.name, {
         defaultRowHeight: sheetData.config.defaultRowHeight,
         defaultColWidth: sheetData.config.defaultColWidth,
-        rowHeights: sheetData.config.rowHeights ? new Map(sheetData.config.rowHeights) : undefined,
-        colWidths: sheetData.config.colWidths ? new Map(sheetData.config.colWidths) : undefined,
-        hiddenRows: sheetData.config.hiddenRows ? new Set(sheetData.config.hiddenRows) : undefined,
-        hiddenCols: sheetData.config.hiddenCols ? new Set(sheetData.config.hiddenCols) : undefined,
+        showGridLines: sheetData.config.showGridLines,
         frozenRows: sheetData.config.frozenRows,
         frozenCols: sheetData.config.frozenCols,
-        showGridLines: sheetData.config.showGridLines,
         sortOrder: sheetData.config.sortOrder,
-        filters: sheetData.config.filters ? new Map(sheetData.config.filters) : undefined,
-      };
-
-      // Create sheet
-      const sheet = new SheetImpl(sheetData.id, sheetData.name, config);
+      });
       sheet.rowCount = sheetData.rowCount;
       sheet.colCount = sheetData.colCount;
 
-      // Restore cells (convert format to formatId if needed)
+      // 2. Populate the order maps. In stable form they're explicit; in
+      //    legacy form they get materialized below as cells load.
+      if (useStable) {
+        const rowOrder = new Map(sheetData.rowOrder ?? []);
+        const colOrder = new Map(sheetData.colOrder ?? []);
+        sheet.replaceOrderMaps(rowOrder, colOrder);
+      }
+
+      // 3. Restore cells.
       for (const { key, cell } of sheetData.cells) {
         const cellToStore = { ...cell };
-
-        // Handle format conversion for backward compatibility
         if ('format' in cellToStore && cellToStore.format && !cellToStore.formatId) {
-          // Clean and pool the format
           const cleanedFormat = this.cleanFormat(cellToStore.format as CellFormat);
           const formatId = this.formatPool.getOrCreate(cleanedFormat);
           cellToStore.formatId = formatId;
           delete (cellToStore as Partial<Cell> & { format?: CellFormat }).format;
         }
 
-        sheet.cells.set(key, cellToStore);
+        let stableKey: string;
+        if (useStable) {
+          stableKey = key; // already "rowId:colId"
+        } else {
+          const { row, col } = parseCellKey(key);
+          if (!Number.isFinite(row) || !Number.isFinite(col)) continue;
+          stableKey = getStableCellKey(sheet.ensureRowId(row), sheet.ensureColId(col));
+        }
+        sheet.cells.set(stableKey, cellToStore);
+      }
+
+      // 4. Restore ID-keyed config — stable input pass-through; legacy
+      //    input gets ensureRowId/ensureColId.
+      if (sheetData.config.rowHeights) {
+        sheet.config.rowHeights = new Map();
+        for (const [key, h] of sheetData.config.rowHeights) {
+          const rowId = useStable ? (key as string) : sheet.ensureRowId(key as number);
+          sheet.config.rowHeights.set(rowId, h);
+        }
+      }
+      if (sheetData.config.colWidths) {
+        sheet.config.colWidths = new Map();
+        for (const [key, w] of sheetData.config.colWidths) {
+          const colId = useStable ? (key as string) : sheet.ensureColId(key as number);
+          sheet.config.colWidths.set(colId, w);
+        }
+      }
+      if (sheetData.config.hiddenRows) {
+        sheet.config.hiddenRows = new Set();
+        for (const key of sheetData.config.hiddenRows) {
+          const rowId = useStable ? (key as string) : sheet.ensureRowId(key as number);
+          sheet.config.hiddenRows.add(rowId);
+        }
+      }
+      if (sheetData.config.hiddenCols) {
+        sheet.config.hiddenCols = new Set();
+        for (const key of sheetData.config.hiddenCols) {
+          const colId = useStable ? (key as string) : sheet.ensureColId(key as number);
+          sheet.config.hiddenCols.add(colId);
+        }
+      }
+      if (sheetData.config.filters) {
+        sheet.config.filters = new Map();
+        for (const [key, filter] of sheetData.config.filters) {
+          const colId = useStable ? (key as string) : sheet.ensureColId(key as number);
+          sheet.config.filters.set(colId, filter);
+        }
       }
 
       this.sheets.set(sheetData.id, sheet);
+    }
+
+    // Defensive: activeSheetId must resolve to a real sheet. A collab race
+    // (e.g. a sheet-delete update arriving before the meta update) could
+    // otherwise leave it dangling and crash getSheet().
+    if (!this.sheets.has(this.activeSheetId)) {
+      const first = this.sheets.keys().next().value;
+      if (first) this.activeSheetId = first;
+    }
+
+    // Re-attach collab structure listeners. setData replaces every
+    // SheetImpl instance, so the listeners installed at attachCollab time
+    // are gone — without this, a peer's structural mutations stop
+    // mirroring after the first remote update it receives.
+    if (this.collabHandle) {
+      for (const sheet of this.sheets.values()) {
+        this.attachStructureListenerIfNeeded(sheet as SheetImpl);
+      }
     }
 
     // Rebuild formula graph and evaluate formulas
@@ -878,17 +1085,22 @@ export class WorkbookImpl implements Workbook {
    * Rebuild formula graph from current cells and evaluate all formulas
    */
   private rebuildFormulaGraph(): void {
+    const resolver = this.buildSheetResolver();
     for (const [sheetId, sheet] of this.sheets.entries()) {
-      for (const [key, cell] of sheet.cells.entries()) {
-        if (cell.formula) {
-          const { row, col } = parseCellKey(key);
-          const parseResult = this.formulaParser.parse(cell.formula, row, col);
-          if (!parseResult.error) {
-            this.formulaGraph.addFormula(key, cell.formula, parseResult.dependencies);
-            // Evaluate the formula
-            this.evaluateFormula(sheetId, row, col);
-          }
+      for (const [row, col, cell] of sheet.entries()) {
+        if (!cell.formula && !cell.formulaAst) continue;
+        let ast = cell.formulaAst;
+        if (!ast && cell.formula) {
+          const parsed = this.formulaParser.parse(cell.formula, row, col);
+          if (parsed.error) continue;
+          ast = toStableAst(parsed.ast, resolver, sheet, row, col);
+          cell.formulaAst = ast;
         }
+        if (!ast) continue;
+        const cellKey = this.graphKey(sheetId, row, col);
+        const deps = collectStableDependencies(ast, sheet);
+        this.formulaGraph.addFormula(cellKey, cell.formula ?? '', deps);
+        this.evaluateFormula(sheetId, row, col);
       }
     }
   }
@@ -1027,5 +1239,274 @@ export class WorkbookImpl implements Workbook {
     }
   }
 
+  // ============================================
+  // Collaboration
+  // ============================================
+
+  /**
+   * Attach a CollabProvider so this workbook's cells, structure, and styles
+   * sync with peers via Yjs. The returned handle exposes the Y.Doc and
+   * Awareness; the React layer reads it via getCollabHandle() to overlay
+   * remote cell selections.
+   *
+   * Idempotent guard: throws if already attached.
+   */
+  async attachCollab(
+    provider: import('@pagent-libs/shared').CollabProvider,
+    identity: import('@pagent-libs/shared').CollabIdentity,
+    options?: AttachCollabOptions,
+  ): Promise<CollabHandle> {
+    if (this.collabHandle) {
+      throw new Error('Collaboration is already attached to this workbook.');
+    }
+    const handle = await attachCollabToWorkbook(
+      this.getData(),
+      this,
+      provider,
+      identity,
+      options,
+    );
+    this.collabHandle = handle;
+    // Wire structure-change listeners on every existing sheet so structural
+    // mutations (insert rows/cols, height/width, hide, freeze, filter, sort)
+    // flow into the Y.Doc. Sheets added later go through addSheet which calls
+    // attachStructureListenerIfNeeded.
+    for (const sheet of this.sheets.values()) {
+      this.attachStructureListenerIfNeeded(sheet as SheetImpl);
+    }
+    this.events.emit('workbookChange', { action: 'attachCollab' });
+    return handle;
+  }
+
+  /** Return the live collab handle, or null if not in collab mode. */
+  getCollabHandle(): CollabHandle | null {
+    return this.collabHandle;
+  }
+
+  /** Detach from the current collaboration session. */
+  detachCollab(): void {
+    if (!this.collabHandle) return;
+    for (const sheet of this.sheets.values()) {
+      (sheet as SheetImpl).__setStructureChangeListener(undefined);
+    }
+    this.collabHandle.detach();
+    this.collabHandle = null;
+    this.events.emit('workbookChange', { action: 'detachCollab' });
+  }
+
+  /**
+   * Install our mirror handler as `sheet`'s structure-change listener iff
+   * collab is currently attached. Called from attachCollab (for existing
+   * sheets) and addSheet (for new ones).
+   */
+  private attachStructureListenerIfNeeded(sheet: SheetImpl): void {
+    if (!this.collabHandle) return;
+    sheet.__setStructureChangeListener(() => {
+      this.mirrorSheetStructure(sheet.id);
+    });
+  }
+
+  /**
+   * @internal Used by the collab binding to apply a remote-driven
+   * WorkbookData reload without tripping any guard rails that would
+   * otherwise reject setData while collab is attached. Behaves like
+   * setData but signals collab origin so consumers can disambiguate.
+   */
+  _reloadFromCollab(data: import('./types').WorkbookData): void {
+    // Suspend history recording AND collab mirroring during the reload —
+    // remote edits should not collide with local undo/redo stacks, and
+    // mirror calls would echo every remote write back over the wire.
+    const wasUndoing = this.isUndoing;
+    this.isUndoing = true;
+    this.isApplyingRemoteChange = true;
+    try {
+      this.setData(data);
+    } finally {
+      this.isUndoing = wasUndoing;
+      this.isApplyingRemoteChange = false;
+    }
+  }
+
+  // ============================================
+  // Collab mirroring helpers (write local mutations into the Y.Doc)
+  // ============================================
+
+  /**
+   * Echo a cell write at (row, col) into the workbook's Y.Doc so peers
+   * receive the change. No-op when collab is detached or we're currently
+   * applying a remote update.
+   *
+   * Mirrors the cell value + the rowId/colId positions, so a brand-new
+   * row or column (not present at hydration time) lands on the peer side
+   * with its display index intact.
+   */
+  private mirrorCellWrite(sheetId: string, row: number, col: number): void {
+    if (!this.collabHandle || this.isApplyingRemoteChange) return;
+    const sheet = this.sheets.get(sheetId) as SheetImpl | undefined;
+    if (!sheet) return;
+    const cell = sheet.getCell(row, col);
+    if (!cell) return;
+
+    const rowId = sheet.ensureRowId(row);
+    const colId = sheet.ensureColId(col);
+    const stableKey = getStableCellKey(rowId, colId);
+
+    const ydoc = this.collabHandle.ydoc;
+    const yTypes = getWorkbookYTypes(ydoc);
+    const ySheetMap = yTypes.sheets.get(sheetId);
+    if (!ySheetMap) return;
+    const t = getSheetYTypes(ySheetMap);
+    if (!t.cells || !t.rowOrder || !t.colOrder) return;
+
+    ydoc.transact(() => {
+      // Ensure rowOrder/colOrder entries exist for these IDs at the right index.
+      if (t.rowOrder.get(rowId) !== row) t.rowOrder.set(rowId, row);
+      if (t.colOrder.get(colId) !== col) t.colOrder.set(colId, col);
+
+      t.cells.set(stableKey, { ...cell });
+
+      // Pool sync — if the cell references a style/format we haven't
+      // mirrored yet, push it now so peers don't render with stale ids.
+      if (cell.styleId) {
+        const style = this.stylePool.get(cell.styleId);
+        if (style && !yTypes.stylePool.has(cell.styleId)) {
+          yTypes.stylePool.set(cell.styleId, { ...style });
+        }
+      }
+      if (cell.formatId) {
+        const format = this.formatPool.get(cell.formatId);
+        if (format && !yTypes.formatPool.has(cell.formatId)) {
+          yTypes.formatPool.set(cell.formatId, { ...format });
+        }
+      }
+    });
+  }
+
+  /** Echo a new sheet into the Y.Doc. */
+  private mirrorSheetAdd(sheetId: string, name: string, sheet: SheetImpl): void {
+    if (!this.collabHandle || this.isApplyingRemoteChange) return;
+    const ydoc = this.collabHandle.ydoc;
+    const yTypes = getWorkbookYTypes(ydoc);
+    ydoc.transact(() => {
+      const ySheetMap = ensureSheetYMap(yTypes.sheets, sheetId);
+      // Seed minimal meta + counts (now safe; sheetMap is integrated).
+      const meta = ySheetMap.get('meta') as Y.Map<unknown>;
+      meta.set('id', sheetId);
+      meta.set('name', name);
+      meta.set('rowCount', sheet.rowCount);
+      meta.set('colCount', sheet.colCount);
+      // Append to sheetIds order if not already present
+      const ids = yTypes.sheetIds.toArray();
+      if (!ids.includes(sheetId)) {
+        yTypes.sheetIds.push([sheetId]);
+      }
+    });
+  }
+
+  /**
+   * Echo a sheet deletion. activeSheetId is NOT touched — it's per-user
+   * view state; a peer that was viewing the deleted sheet snaps to the
+   * first sheet via the defensive fallback in setData.
+   */
+  private mirrorSheetDelete(sheetId: string): void {
+    if (!this.collabHandle || this.isApplyingRemoteChange) return;
+    const ydoc = this.collabHandle.ydoc;
+    const yTypes = getWorkbookYTypes(ydoc);
+    ydoc.transact(() => {
+      yTypes.sheets.delete(sheetId);
+      // Remove from sheetIds order
+      const ids = yTypes.sheetIds.toArray();
+      const idx = ids.indexOf(sheetId);
+      if (idx !== -1) yTypes.sheetIds.delete(idx, 1);
+    });
+  }
+
+  /** Echo a sheet rename. */
+  private mirrorSheetRename(sheetId: string, newName: string): void {
+    if (!this.collabHandle || this.isApplyingRemoteChange) return;
+    const ydoc = this.collabHandle.ydoc;
+    const yTypes = getWorkbookYTypes(ydoc);
+    const ySheetMap = yTypes.sheets.get(sheetId);
+    if (!ySheetMap) return;
+    const meta = ySheetMap.get('meta') as Y.Map<unknown> | undefined;
+    if (!meta) return;
+    ydoc.transact(() => {
+      meta.set('name', newName);
+    });
+  }
+
+
+  /**
+   * Re-sync a sheet's full structure to the Y.Doc: order maps, dimension
+   * maps (heights/widths), hidden sets, filters, sort order, frozen counts,
+   * row/col counts. Cells are NOT touched here — they flow via
+   * mirrorCellWrite per setCell. Called by the SheetImpl structure-change
+   * listener after any structural mutation.
+   */
+  private mirrorSheetStructure(sheetId: string): void {
+    if (!this.collabHandle || this.isApplyingRemoteChange) return;
+    const sheet = this.sheets.get(sheetId) as SheetImpl | undefined;
+    if (!sheet) return;
+    const ydoc = this.collabHandle.ydoc;
+    const yTypes = getWorkbookYTypes(ydoc);
+    const ySheetMap = yTypes.sheets.get(sheetId);
+    if (!ySheetMap) return;
+    const t = getSheetYTypes(ySheetMap);
+
+    const orderSnapshot = sheet.snapshotOrderMaps();
+
+    ydoc.transact(() => {
+      // rowOrder: Y.Map<rowId, idx>. Rebuild wholesale (clear + repopulate).
+      for (const k of Array.from(t.rowOrder.keys())) t.rowOrder.delete(k);
+      for (const [idx, id] of orderSnapshot.rowOrder) t.rowOrder.set(id, idx);
+
+      for (const k of Array.from(t.colOrder.keys())) t.colOrder.delete(k);
+      for (const [idx, id] of orderSnapshot.colOrder) t.colOrder.set(id, idx);
+
+      // Drop cells whose row/col id was deleted from the order maps.
+      const validRowIds = new Set(orderSnapshot.rowOrder.values());
+      const validColIds = new Set(orderSnapshot.colOrder.values());
+      const orphans: string[] = [];
+      for (const key of t.cells.keys()) {
+        const sep = key.indexOf(':');
+        const rowId = key.slice(0, sep);
+        const colId = key.slice(sep + 1);
+        if (!validRowIds.has(rowId) || !validColIds.has(colId)) orphans.push(key);
+      }
+      for (const k of orphans) t.cells.delete(k);
+
+      // Dimension maps + hidden sets + filters: rebuild from sheet config.
+      syncMapToY(t.rowHeights, sheet.config.rowHeights);
+      syncMapToY(t.colWidths, sheet.config.colWidths);
+      syncSetToYMap(t.hiddenRows, sheet.config.hiddenRows);
+      syncSetToYMap(t.hiddenCols, sheet.config.hiddenCols);
+      syncMapToY(t.filters, sheet.config.filters);
+
+      // Meta updates.
+      t.meta.set('rowCount', sheet.rowCount);
+      t.meta.set('colCount', sheet.colCount);
+      setOrDelete(t.meta, 'frozenRows', sheet.config.frozenRows);
+      setOrDelete(t.meta, 'frozenCols', sheet.config.frozenCols);
+      setOrDelete(t.meta, 'showGridLines', sheet.config.showGridLines);
+      setOrDelete(t.meta, 'sortOrder', sheet.config.sortOrder);
+    });
+  }
+}
+
+function syncMapToY<V>(yMap: Y.Map<V>, sheetMap: Map<string, V> | undefined): void {
+  for (const k of Array.from(yMap.keys())) yMap.delete(k);
+  if (!sheetMap) return;
+  for (const [k, v] of sheetMap) yMap.set(k, v);
+}
+
+function syncSetToYMap(yMap: Y.Map<true>, sheetSet: Set<string> | undefined): void {
+  for (const k of Array.from(yMap.keys())) yMap.delete(k);
+  if (!sheetSet) return;
+  for (const k of sheetSet) yMap.set(k, true);
+}
+
+function setOrDelete(yMap: Y.Map<unknown>, key: string, value: unknown): void {
+  if (value === undefined) yMap.delete(key);
+  else yMap.set(key, value);
 }
 

@@ -1,7 +1,43 @@
 import { useState, useEffect } from 'react';
 import { DocumentProvider, DocumentEditor } from '@pagent-libs/docs-react';
 import { DocumentImpl, type DocumentData, type HeaderFooterContent } from '@pagent-libs/docs-core';
+import { InMemoryProvider, type CollabIdentity, type CollabStatus } from '@pagent-libs/shared';
+import { WebSocketProvider } from '@pagent-libs/transport-websocket';
 import './App.css';
+
+// ============================================================================
+// Cross-tab WebSocket demo helpers
+// ============================================================================
+
+const COLORS = ['#ff6b6b', '#4ecdc4', '#ffd93d', '#6c5ce7', '#a8e6cf', '#ff8c42', '#54a0ff', '#48dbfb'];
+const ADJECTIVES = ['Quick', 'Calm', 'Brave', 'Sharp', 'Bright', 'Eager', 'Lucky', 'Witty'];
+const NOUNS = ['Otter', 'Lynx', 'Owl', 'Fox', 'Heron', 'Bear', 'Hare', 'Crane'];
+
+interface WsConfig {
+  url: string;
+  roomId: string;
+  identity: CollabIdentity;
+}
+
+function parseWsConfig(): WsConfig | null {
+  const params = new URLSearchParams(window.location.search);
+  const url = params.get('ws');
+  if (!url) return null;
+  const roomId = params.get('room') ?? 'docs-demo';
+  const userName =
+    params.get('user') ??
+    `${ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)]} ${NOUNS[Math.floor(Math.random() * NOUNS.length)]}`;
+  const userColor = params.get('color') ?? COLORS[Math.floor(Math.random() * COLORS.length)];
+  return {
+    url,
+    roomId,
+    identity: {
+      userId: `user_${Math.random().toString(36).slice(2, 8)}`,
+      displayName: userName,
+      color: userColor,
+    },
+  };
+}
 
 // Sample header configuration with document title
 const sampleHeader: HeaderFooterContent = {
@@ -308,7 +344,213 @@ const sampleDocumentData: DocumentData = {
   updatedAt: new Date().toISOString(),
 };
 
+// Phase 1.6 smoke-test panel. Spins up two DocumentImpl instances on the same
+// page, each with its own InMemoryProvider connected to a shared roomId, and
+// renders them side-by-side. Edits in one editor should converge into the
+// other; remote cursors should render with the peer's color/name.
+function CollabDemo({
+  initialData,
+  paneWidth,
+  paneHeight,
+}: {
+  initialData: DocumentData;
+  paneWidth: number;
+  paneHeight: number;
+}) {
+  const [docs, setDocs] = useState<[DocumentImpl, DocumentImpl] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let docA: DocumentImpl | null = null;
+    let docB: DocumentImpl | null = null;
+
+    (async () => {
+      try {
+        docA = new DocumentImpl();
+        docB = new DocumentImpl();
+        // Both docs start from identical content; Yjs will merge the
+        // identical state into a no-op when SyncStep1 / SyncStep2 round-trip.
+        docA.setData(initialData);
+        docB.setData(initialData);
+
+        const providerA = new InMemoryProvider();
+        const providerB = new InMemoryProvider();
+
+        const identityA: CollabIdentity = {
+          userId: 'user_a',
+          displayName: 'Alice',
+          color: '#ff6b6b',
+        };
+        const identityB: CollabIdentity = {
+          userId: 'user_b',
+          displayName: 'Bob',
+          color: '#4ecdc4',
+        };
+
+        await Promise.all([
+          docA.attachCollab(providerA, identityA),
+          docB.attachCollab(providerB, identityB),
+        ]);
+
+        if (cancelled) {
+          docA.detachCollab();
+          docB.detachCollab();
+          return;
+        }
+        setDocs([docA, docB]);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      try { docA?.detachCollab(); } catch { /* ignore */ }
+      try { docB?.detachCollab(); } catch { /* ignore */ }
+    };
+  }, [initialData]);
+
+  if (error) return <div style={{ padding: 16, color: 'crimson' }}>Error: {error}</div>;
+  if (!docs) return <div style={{ padding: 16 }}>Connecting collab peers…</div>;
+
+  const paneStyle: React.CSSProperties = {
+    flex: 1,
+    minWidth: 0,
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    borderRight: '1px solid #e0e0e0',
+  };
+
+  return (
+    <div style={{ display: 'flex', height: '100%', width: '100%' }}>
+      <div style={paneStyle}>
+        <div style={{ padding: '4px 12px', background: '#ff6b6b', color: 'white', fontWeight: 500 }}>
+          Alice
+        </div>
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <DocumentProvider document={docs[0]}>
+            <DocumentEditor width={paneWidth} height={paneHeight} showToolbar={true} showRuler={false} />
+          </DocumentProvider>
+        </div>
+      </div>
+      <div style={{ ...paneStyle, borderRight: 'none' }}>
+        <div style={{ padding: '4px 12px', background: '#4ecdc4', color: 'white', fontWeight: 500 }}>
+          Bob
+        </div>
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <DocumentProvider document={docs[1]}>
+            <DocumentEditor width={paneWidth} height={paneHeight} showToolbar={true} showRuler={false} />
+          </DocumentProvider>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Single-tab WebSocket collab mode. Activated by ?ws=ws://host/path in
+ * the URL. Each open tab is one peer; multiple tabs (or browsers, or
+ * machines) on the same ?ws=…&room=… all share state via the relay
+ * server at /examples/collab-server.
+ */
+function WsDemo({
+  initialData,
+  width,
+  height,
+  config,
+}: {
+  initialData: DocumentData;
+  width: number;
+  height: number;
+  config: WsConfig;
+}) {
+  const [doc, setDoc] = useState<DocumentImpl | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<CollabStatus>('connecting');
+
+  useEffect(() => {
+    let cancelled = false;
+    let provider: WebSocketProvider | null = null;
+    let document: DocumentImpl | null = null;
+    (async () => {
+      try {
+        document = new DocumentImpl();
+        document.setData(initialData);
+        provider = new WebSocketProvider({ url: config.url });
+        provider.onStatusChange((s) => {
+          if (!cancelled) setStatus(s);
+        });
+        await document.attachCollab(provider, config.identity, {
+          roomId: config.roomId,
+          persistenceKey: `docs-demo:${config.roomId}`,
+        });
+        if (cancelled) {
+          document.detachCollab();
+          return;
+        }
+        setDoc(document);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => {
+      cancelled = true;
+      try { document?.detachCollab(); } catch { /* ignore */ }
+    };
+  }, [initialData, config.url, config.roomId, config.identity]);
+
+  if (error) return <div style={{ padding: 16, color: 'crimson' }}>WS error: {error}</div>;
+  if (!doc) return <div style={{ padding: 16 }}>Connecting to {config.url}…</div>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div
+        style={{
+          padding: '4px 12px',
+          background: config.identity.color,
+          color: 'white',
+          fontWeight: 500,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <StatusDot status={status} />
+        <span>
+          {config.identity.displayName} · room {config.roomId} · {status}
+        </span>
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <DocumentProvider document={doc}>
+          <DocumentEditor width={width} height={height - 28} showToolbar={true} showRuler={true} />
+        </DocumentProvider>
+      </div>
+    </div>
+  );
+}
+
+function StatusDot({ status }: { status: CollabStatus }) {
+  const color =
+    status === 'connected' ? '#2ecc71' : status === 'connecting' ? '#f1c40f' : '#e74c3c';
+  return (
+    <span
+      style={{
+        width: 9,
+        height: 9,
+        borderRadius: '50%',
+        background: color,
+        display: 'inline-block',
+        boxShadow: '0 0 0 2px rgba(255,255,255,0.4)',
+      }}
+    />
+  );
+}
+
 function App() {
+  const [collabMode, setCollabMode] = useState(false);
+  const [wsConfig] = useState<WsConfig | null>(() => parseWsConfig());
+
   const [document] = useState(() => {
     // Create a new document and load the sample data
     const doc = new DocumentImpl();
@@ -380,17 +622,35 @@ function App() {
           <button className="header-button" onClick={handleSave}>
             Save to Console
           </button>
+          <button className="header-button" onClick={() => setCollabMode((v) => !v)}>
+            {collabMode ? 'Single editor' : 'Collab demo'}
+          </button>
         </div>
       </header>
       <main className="app-main">
-        <DocumentProvider document={document}>
-          <DocumentEditor 
-            width={dimensions.width} 
+        {wsConfig ? (
+          <WsDemo
+            initialData={sampleDocumentData}
+            width={dimensions.width}
             height={dimensions.height}
-            showToolbar={true}
-            showRuler={true}
+            config={wsConfig}
           />
-        </DocumentProvider>
+        ) : collabMode ? (
+          <CollabDemo
+            initialData={sampleDocumentData}
+            paneWidth={Math.floor(dimensions.width / 2) - 1}
+            paneHeight={dimensions.height - 28 /* peer header strip */}
+          />
+        ) : (
+          <DocumentProvider document={document}>
+            <DocumentEditor
+              width={dimensions.width}
+              height={dimensions.height}
+              showToolbar={true}
+              showRuler={true}
+            />
+          </DocumentProvider>
+        )}
       </main>
     </div>
   );

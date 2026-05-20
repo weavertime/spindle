@@ -1,7 +1,6 @@
 // Filter functionality for spreadsheet sheets
 
 import type { ColumnFilter, FilterCriteria, Sheet } from '../types';
-import { getCellKey } from '../utils/cell-key';
 
 /**
  * Manages filtering operations for a spreadsheet sheet
@@ -46,7 +45,7 @@ export class FilterManager {
       let isVisible = true;
 
       for (const [, filter] of filters) {
-        const cell = sheet.cells.get(getCellKey(row, filter.column));
+        const cell = sheet.getCell(row, filter.column);
         const cellValue = cell?.value ?? null;
 
         if (!this.matchesFilter(cellValue, filter.criteria)) {
@@ -150,7 +149,7 @@ export class FilterManager {
     const endRow = dataRange?.endRow ?? this.detectDataEndRow(sheet);
 
     for (let row = startRow; row <= endRow; row++) {
-      const cell = sheet.cells.get(getCellKey(row, column));
+      const cell = sheet.getCell(row, column);
       if (cell?.value !== null && cell?.value !== undefined) {
         uniqueValues.add(cell.value as string | number);
       }
@@ -163,10 +162,9 @@ export class FilterManager {
    * Detect the first row that contains data (skip empty rows at the top)
    */
   private static detectDataStartRow(sheet: Sheet): number {
-    // Start from row 0, find first non-empty row
     for (let row = 0; row < sheet.rowCount; row++) {
       for (let col = 0; col < sheet.colCount; col++) {
-        const cell = sheet.cells.get(getCellKey(row, col));
+        const cell = sheet.getCell(row, col);
         if (cell && (cell.value !== null || cell.formula)) {
           return row;
         }
@@ -179,10 +177,9 @@ export class FilterManager {
    * Detect the last row that contains data (skip empty rows at the bottom)
    */
   private static detectDataEndRow(sheet: Sheet): number {
-    // Start from the bottom, find last non-empty row
     for (let row = sheet.rowCount - 1; row >= 0; row--) {
       for (let col = 0; col < sheet.colCount; col++) {
-        const cell = sheet.cells.get(getCellKey(row, col));
+        const cell = sheet.getCell(row, col);
         if (cell && (cell.value !== null || cell.formula)) {
           return row;
         }

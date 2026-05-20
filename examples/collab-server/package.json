@@ -1,0 +1,20 @@
+{
+  "name": "pagent-collab-server",
+  "version": "0.1.0",
+  "description": "Minimal WebSocket relay server for pagent-libs collaboration",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "dev": "tsx watch src/server.ts"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/ws": "^8.5.0",
+    "tsx": "^4.6.0",
+    "typescript": "^5.2.0"
+  }
+}

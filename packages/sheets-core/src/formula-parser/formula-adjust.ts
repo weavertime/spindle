@@ -1,129 +1,63 @@
-// Utility functions for adjusting formulas when copying/filling cells
+// Adjust a formula's relative references for drag-fill / copy-paste.
+//
+// Replaces the old regex-based string rewriter. The new path:
+//   formula text → parser → numeric AST → stable AST (against source pos)
+//                → rebase relative refs by source→target offset → render
+//
+// Because the rebasing walks a stable AST, relative refs follow cells
+// through arbitrary row/column reorderings — the regex version implicitly
+// assumed numeric A1 coords always matched current visual indices.
 
-import { parseCellReference, columnIndexToLabel } from './cell-reference';
+import type { WorkbookImpl } from '../workbook';
+import { FormulaParser } from './parser';
+import {
+  adjustStableAstForCopy,
+  renderStableAst,
+  toStableAst,
+  type SheetResolver,
+} from './stable-ast';
+
+const parser = new FormulaParser();
 
 /**
- * Adjusts a formula when copying from source cell to target cell.
- * Increments relative references (without $) and keeps absolute references (with $) unchanged.
- * 
- * @param formula The original formula string
- * @param sourceRow Source cell row (0-based)
- * @param sourceCol Source cell column (0-based)
- * @param targetRow Target cell row (0-based)
- * @param targetCol Target cell column (0-based)
- * @returns Adjusted formula string
+ * Rebase a formula string when filling/copying from a source cell to a target
+ * cell on the same sheet. Absolute refs ($A$1) stay; relative refs shift by
+ * (target - source).
  */
 export function adjustFormula(
   formula: string,
+  workbook: WorkbookImpl,
+  sheetId: string | undefined,
   sourceRow: number,
   sourceCol: number,
   targetRow: number,
-  targetCol: number
+  targetCol: number,
 ): string {
-  if (!formula.startsWith('=')) {
-    // Not a formula, return as-is
-    return formula;
-  }
+  if (!formula.startsWith('=')) return formula;
+  if (sourceRow === targetRow && sourceCol === targetCol) return formula;
 
-  const rowOffset = targetRow - sourceRow;
-  const colOffset = targetCol - sourceCol;
+  const sheet = workbook.getSheet(sheetId);
 
-  if (rowOffset === 0 && colOffset === 0) {
-    // Same cell, no adjustment needed
-    return formula;
-  }
+  const parsed = parser.parse(formula, sourceRow, sourceCol);
+  if (parsed.error) return formula;
 
-  // Remove leading = for processing
-  const expression = formula.slice(1);
+  const resolver: SheetResolver = {
+    getSheet: (name?: string) => {
+      if (!name) return undefined;
+      const id = workbook.getSheetIdByName(name);
+      return id ? workbook.getSheet(id) : undefined;
+    },
+  };
 
-  // Adjust cell references in the formula
-  // Match patterns like A1, $A1, A$1, $A$1, and ranges like A1:B10, $A$1:$B$10
-  const adjustedExpression = expression.replace(
-    /(\$?[A-Z]+\$?\d+)(?::(\$?[A-Z]+\$?\d+))?/g,
-    (match, startRef, endRef) => {
-      const startCellRef = parseCellReference(startRef);
-      if (!startCellRef) return match;
-
-      // For relative references, parseCellReference returns the absolute position (e.g., A1 = row 0, col 0)
-      // We need to calculate the offset from the source cell, then apply it to the target cell
-      let newStartRow: number;
-      let newStartCol: number;
-
-      if (startCellRef.rowAbsolute) {
-        // Absolute row: keep the same row
-        newStartRow = startCellRef.row;
-      } else {
-        // Relative row: calculate offset from source and apply to target
-        // The referenced cell's absolute row is startCellRef.row
-        // The offset from source is: startCellRef.row - sourceRow
-        // Apply same offset to target: targetRow + (startCellRef.row - sourceRow)
-        newStartRow = targetRow + (startCellRef.row - sourceRow);
-        if (newStartRow < 0) newStartRow = 0;
-      }
-
-      if (startCellRef.colAbsolute) {
-        // Absolute column: keep the same column
-        newStartCol = startCellRef.col;
-      } else {
-        // Relative column: calculate offset from source and apply to target
-        // The referenced cell's absolute col is startCellRef.col
-        // The offset from source is: startCellRef.col - sourceCol
-        // Apply same offset to target: targetCol + (startCellRef.col - sourceCol)
-        newStartCol = targetCol + (startCellRef.col - sourceCol);
-        if (newStartCol < 0) newStartCol = 0;
-      }
-
-      const startColLabel = columnIndexToLabel(newStartCol);
-      const startRowLabel = (newStartRow + 1).toString();
-
-      let startResult = '';
-      if (startCellRef.colAbsolute) startResult += '$';
-      startResult += startColLabel;
-      if (startCellRef.rowAbsolute) startResult += '$';
-      startResult += startRowLabel;
-
-      // If it's a range, adjust the end cell too
-      if (endRef) {
-        const endCellRef = parseCellReference(endRef);
-        if (!endCellRef) return match;
-
-        let newEndRow: number;
-        let newEndCol: number;
-
-        if (endCellRef.rowAbsolute) {
-          // Absolute row: keep the same row
-          newEndRow = endCellRef.row;
-        } else {
-          // Relative row: calculate offset from source and apply to target
-          newEndRow = targetRow + (endCellRef.row - sourceRow);
-          if (newEndRow < 0) newEndRow = 0;
-        }
-
-        if (endCellRef.colAbsolute) {
-          // Absolute column: keep the same column
-          newEndCol = endCellRef.col;
-        } else {
-          // Relative column: calculate offset from source and apply to target
-          newEndCol = targetCol + (endCellRef.col - sourceCol);
-          if (newEndCol < 0) newEndCol = 0;
-        }
-
-        const endColLabel = columnIndexToLabel(newEndCol);
-        const endRowLabel = (newEndRow + 1).toString();
-
-        let endResult = '';
-        if (endCellRef.colAbsolute) endResult += '$';
-        endResult += endColLabel;
-        if (endCellRef.rowAbsolute) endResult += '$';
-        endResult += endRowLabel;
-
-        return `${startResult}:${endResult}`;
-      }
-
-      return startResult;
-    }
+  const stable = toStableAst(parsed.ast, resolver, sheet, sourceRow, sourceCol);
+  const rebased = adjustStableAstForCopy(
+    stable,
+    resolver,
+    sheet,
+    sourceRow,
+    sourceCol,
+    targetRow,
+    targetCol,
   );
-
-  return '=' + adjustedExpression;
+  return renderStableAst(rebased, resolver, sheet);
 }
-

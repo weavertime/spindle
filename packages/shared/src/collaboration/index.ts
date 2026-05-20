@@ -1,5 +1,4 @@
 // Collaboration package exports
 
 export * from './types';
-export * from './firebase-provider';
-
+export * from './in-memory-provider';

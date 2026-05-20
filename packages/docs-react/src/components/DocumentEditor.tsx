@@ -304,6 +304,7 @@ export const DocumentEditor = memo(function DocumentEditor({
           documentTitle={documentTitle}
           onHeaderChange={handleHeaderChange}
           onFooterChange={handleFooterChange}
+          collabHandle={docModel.getCollabHandle()}
         />
       </div>
       

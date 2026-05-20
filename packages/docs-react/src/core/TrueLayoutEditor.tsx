@@ -26,6 +26,9 @@ import { EditorState, Transaction } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { Node as PmNode } from 'prosemirror-model';
 import { docsSchema, createPlugins, blocksToPmDoc, proseMirrorToDocument, Block } from '@pagent-libs/docs-core';
+import type { CollabHandle } from '@pagent-libs/docs-core/collab';
+import { ySyncPlugin, yCursorPlugin } from 'y-prosemirror';
+import { ensureCollabCursorStyles } from './collab-cursor-styles';
 
 import { FlowBlock } from './flow-blocks';
 import { proseMirrorToFlowBlocks, createBlockPositionMap } from './pm-to-blocks';
@@ -34,6 +37,7 @@ import { computeTrueLayout, DocumentLayout, PageConfig } from './true-layout-eng
 import { DomPainter, HeaderFooterContent } from './dom-painter';
 import { InputBridge, createInputBridge, CellSelection } from './input-bridge';
 import { SelectionOverlayManager, getSelectionOverlayStyles } from './selection-overlay';
+import { RemoteCursorOverlay } from './remote-cursor-overlay';
 import { TableInteractionManager, createTableInteractionManager } from './table-interactions';
 import { ImageInteractionManager, createImageInteractionManager } from './image-interactions';
 import { HeaderFooterEditor } from '../components/HeaderFooterEditor';
@@ -92,6 +96,14 @@ export interface TrueLayoutEditorProps {
   onFooterChange?: (content: HeaderFooterContent) => void;
   /** Whether headers/footers are editable (default: true when editable is true) */
   headerFooterEditable?: boolean;
+  /**
+   * If present, the editor binds the hidden ProseMirror state to the Y.Doc's
+   * Y.XmlFragment via ySyncPlugin. Local edits propagate to peers and remote
+   * edits land in the editor through normal PM transactions, so the layout
+   * engine sees them just like local typing. initialBlocks is ignored when
+   * collabHandle is present — the Y.Doc is the source of truth.
+   */
+  collabHandle?: CollabHandle | null;
 }
 
 export interface TrueLayoutEditorHandle {
@@ -138,6 +150,7 @@ export const TrueLayoutEditor = forwardRef<TrueLayoutEditorHandle, TrueLayoutEdi
       onHeaderChange,
       onFooterChange,
       headerFooterEditable,
+      collabHandle = null,
     },
     ref
   ) {
@@ -171,6 +184,7 @@ export const TrueLayoutEditor = forwardRef<TrueLayoutEditorHandle, TrueLayoutEdi
     const painterRef = useRef<DomPainter | null>(null);
     const inputBridgeRef = useRef<InputBridge | null>(null);
     const selectionOverlayRef = useRef<SelectionOverlayManager | null>(null);
+    const remoteCursorOverlayRef = useRef<RemoteCursorOverlay | null>(null);
     const tableInteractionRef = useRef<TableInteractionManager | null>(null);
     const imageInteractionRef = useRef<ImageInteractionManager | null>(null);
     const blocksRef = useRef<FlowBlock[]>([]);
@@ -297,35 +311,81 @@ export const TrueLayoutEditor = forwardRef<TrueLayoutEditorHandle, TrueLayoutEdi
           selectionOverlayRef.current.setScrollContainer(viewportRef.current);
         }
       }
-      
+
       return () => {
         selectionOverlayRef.current?.destroy();
         selectionOverlayRef.current = null;
       };
     }, []);
+
+    // Initialize remote-cursor overlay when collab is attached.
+    useEffect(() => {
+      if (!collabHandle) return;
+      if (!overlayRef.current || !selectionOverlayRef.current) return;
+      const overlay = new RemoteCursorOverlay(
+        collabHandle.awareness,
+        selectionOverlayRef.current,
+      );
+      overlay.initialize(overlayRef.current);
+      if (editorView) overlay.setEditorView(editorView);
+      remoteCursorOverlayRef.current = overlay;
+      return () => {
+        overlay.destroy();
+        remoteCursorOverlayRef.current = null;
+      };
+      // editorView is set after the PM editor mounts; we re-bind below.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [collabHandle]);
+
+    // Hand the live EditorView to the remote overlay once PM is up.
+    useEffect(() => {
+      remoteCursorOverlayRef.current?.setEditorView(editorView);
+    }, [editorView]);
     
     // Initialize ProseMirror - only ONCE on mount
     useEffect(() => {
       // Skip if already initialized or no container
-      if (editorInitializedRef.current || !hiddenEditorRef.current || !initialDocRef.current) return;
+      if (editorInitializedRef.current || !hiddenEditorRef.current) return;
+      // initialDocRef is only required for non-collab init; ySyncPlugin
+      // seeds the editor from the Y.XmlFragment instead.
+      if (!collabHandle && !initialDocRef.current) return;
       editorInitializedRef.current = true;
+
+      const plugins = createPlugins(docsSchema);
+      let state: EditorState;
+      if (collabHandle) {
+        ensureCollabCursorStyles();
+        plugins.unshift(
+          ySyncPlugin(collabHandle.xmlFragment),
+          yCursorPlugin(collabHandle.awareness),
+        );
+        state = EditorState.create({ schema: docsSchema, plugins });
+      } else {
+        state = EditorState.create({
+          doc: initialDocRef.current!,
+          plugins,
+        });
+      }
       
-      const state = EditorState.create({
-        doc: initialDocRef.current,
-        plugins: createPlugins(docsSchema),
-      });
-      
-      const view = new EditorView(hiddenEditorRef.current, {
+      // `let view` (not const) avoids the temporal-dead-zone trap when
+      // ySyncPlugin dispatches a synchronous transaction inside the
+      // EditorView constructor — at that moment the outer `view` binding
+      // hasn't been assigned yet. The `view ?? this` fallback uses the
+      // EditorView that ProseMirror binds to `this` inside dispatchTransaction.
+      let view: EditorView | undefined;
+      view = new EditorView(hiddenEditorRef.current, {
         state,
         editable: () => editable,
         dispatchTransaction(transaction: Transaction) {
-          const newState = view.state.apply(transaction);
-          view.updateState(newState);
-          
+          // eslint-disable-next-line @typescript-eslint/no-this-alias
+          const v = (view ?? (this as unknown as EditorView));
+          const newState = v.state.apply(transaction);
+          v.updateState(newState);
+
           if (transaction.docChanged) {
             // Trigger re-layout - this will also update selection overlay
             requestAnimationFrame(() => {
-              performLayout(newState.doc, view);
+              if (view) performLayout(newState.doc, view);
             });
             
             // Notify parent of doc change (use ref to avoid stale closure)
@@ -344,8 +404,8 @@ export const TrueLayoutEditor = forwardRef<TrueLayoutEditorHandle, TrueLayoutEdi
             // Only update selection overlay if doc didn't change (layout handles it otherwise)
             // Check for immediate flag (used during drag for responsiveness)
             const isImmediate = transaction.getMeta('immediateSelection') === true;
-            selectionOverlayRef.current?.setFocused(view.hasFocus());
-            selectionOverlayRef.current?.updateSelection(newState, view, isImmediate);
+            selectionOverlayRef.current?.setFocused(v.hasFocus());
+            selectionOverlayRef.current?.updateSelection(newState, v, isImmediate);
             onSelectionChangeRef.current?.(newState);
             
             // Update active page index - only check if we actually have the callback
@@ -494,6 +554,10 @@ export const TrueLayoutEditor = forwardRef<TrueLayoutEditorHandle, TrueLayoutEdi
       selectionOverlayRef.current?.updateLayout(newLayout, blocks, measures, doc);
       selectionOverlayRef.current?.setFocused(view.hasFocus());
       selectionOverlayRef.current?.updateSelection(view.state, view, true);  // immediate=true
+
+      // 8. Refresh remote-cursor overlay so peer carets/selections re-place on
+      //    the freshly painted pages.
+      remoteCursorOverlayRef.current?.refresh();
     }, [pageConfig, zoom, pageGap, minLinesAtBreak]);
     
     // Keep performLayoutRef in sync to avoid stale closures

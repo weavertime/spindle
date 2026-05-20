@@ -11,6 +11,15 @@ Pagent-Libs is a suite of high-performance productivity components for React, pr
 | `@pagent-libs/sheets-core` | Framework-agnostic spreadsheet engine |
 | `@pagent-libs/sheets-react` | React spreadsheet with canvas rendering |
 | `@pagent-libs/shared` | Shared utilities and types |
+| `@pagent-libs/transport-websocket` | WebSocket `CollabProvider` for real-time collaboration |
+
+---
+
+## 🤝 Real-Time Collaboration
+
+Documents and spreadsheets sync live between users via Yjs CRDTs.
+
+- **[Collaboration Guide](collaboration.md)** — `attachCollab`, transports, offline persistence, connection status, and an end-to-end encryption recipe
 
 ---
 
