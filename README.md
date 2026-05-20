@@ -225,6 +225,45 @@ export default MyDocumentEditor;
 - ✅ Images (block and inline)
 - ✅ Undo/redo history
 
+**Collaboration:**
+- ✅ Real-time multi-user editing for both docs and sheets (Yjs CRDT)
+- ✅ Live remote cursors, selections, and presence
+- ✅ Pluggable transport — ships an in-memory and a WebSocket provider
+- ✅ Offline persistence (IndexedDB) — edits survive refresh/offline
+- ✅ Encryption-ready — opaque byte payloads wrap cleanly for E2EE
+
+## 🤝 Real-Time Collaboration
+
+Both documents and spreadsheets sync live between users. The library owns
+a Yjs CRDT internally; you supply a transport (`CollabProvider`) and call
+`attachCollab`:
+
+```ts
+import { WorkbookImpl } from '@pagent-libs/sheets-core';
+import { WebSocketProvider } from '@pagent-libs/transport-websocket';
+
+const workbook = new WorkbookImpl('wb_1', 'Quarterly Plan');
+workbook.setData(savedJson);
+
+const provider = new WebSocketProvider({ url: 'wss://collab.example.com' });
+
+await workbook.attachCollab(
+  provider,
+  { userId: 'u_42', displayName: 'Bharat', color: '#4ecdc4' },
+  { roomId: 'quarterly-plan', persistenceKey: 'wb:quarterly-plan' },
+);
+```
+
+Documents work identically (`document.attachCollab(...)`). The React
+editors render remote cursors and selections automatically — no extra
+wiring. Because `CollabProvider` payloads are opaque byte arrays,
+end-to-end encryption is a simple wrapping layer.
+
+See the **[Collaboration Guide](./documentation/collaboration.md)** for
+transports, offline persistence, connection status, and a complete E2EE
+recipe. A reference relay server lives in
+[`examples/collab-server`](./examples/collab-server/).
+
 ## Development
 
 Help is highly appreciated in improving performance, adding features and also porting to other frontend frameworks.
