@@ -983,6 +983,24 @@ export class WorkbookImpl implements Workbook {
       this.sheets.set(sheetData.id, sheet);
     }
 
+    // Defensive: activeSheetId must resolve to a real sheet. A collab race
+    // (e.g. a sheet-delete update arriving before the meta update) could
+    // otherwise leave it dangling and crash getSheet().
+    if (!this.sheets.has(this.activeSheetId)) {
+      const first = this.sheets.keys().next().value;
+      if (first) this.activeSheetId = first;
+    }
+
+    // Re-attach collab structure listeners. setData replaces every
+    // SheetImpl instance, so the listeners installed at attachCollab time
+    // are gone — without this, a peer's structural mutations stop
+    // mirroring after the first remote update it receives.
+    if (this.collabHandle) {
+      for (const sheet of this.sheets.values()) {
+        this.attachStructureListenerIfNeeded(sheet as SheetImpl);
+      }
+    }
+
     // Rebuild formula graph and evaluate formulas
     this.rebuildFormulaGraph();
 
@@ -1386,7 +1404,11 @@ export class WorkbookImpl implements Workbook {
     });
   }
 
-  /** Echo a sheet deletion. */
+  /**
+   * Echo a sheet deletion. The activeSheetId is updated in the SAME
+   * transaction so a peer never observes a window where activeSheetId
+   * points at the just-deleted sheet (which would crash getSheet()).
+   */
   private mirrorSheetDelete(sheetId: string): void {
     if (!this.collabHandle || this.isApplyingRemoteChange) return;
     const ydoc = this.collabHandle.ydoc;
@@ -1397,6 +1419,8 @@ export class WorkbookImpl implements Workbook {
       const ids = yTypes.sheetIds.toArray();
       const idx = ids.indexOf(sheetId);
       if (idx !== -1) yTypes.sheetIds.delete(idx, 1);
+      // Atomic activeSheetId fixup — keeps the delete self-consistent.
+      yTypes.meta.set('activeSheetId', this.activeSheetId);
     });
   }
 
