@@ -103,11 +103,10 @@ export class WorkbookImpl implements Workbook {
     }
     this.sheets.delete(sheetId);
     if (this.activeSheetId === sheetId) {
-      // Switch to first available sheet
+      // Switch to first available sheet (local view state).
       this.activeSheetId = Array.from(this.sheets.keys())[0];
     }
     this.mirrorSheetDelete(sheetId);
-    this.mirrorWorkbookMeta();
     this.events.emit('sheetDelete', { sheetId });
   }
 
@@ -125,7 +124,7 @@ export class WorkbookImpl implements Workbook {
       throw new Error(`Sheet not found: ${sheetId}`);
     }
     this.activeSheetId = sheetId;
-    this.mirrorWorkbookMeta();
+    // No mirror: which sheet a user is viewing is per-user view state.
     this.events.emit('sheetChange', { sheetId });
   }
 
@@ -1405,9 +1404,9 @@ export class WorkbookImpl implements Workbook {
   }
 
   /**
-   * Echo a sheet deletion. The activeSheetId is updated in the SAME
-   * transaction so a peer never observes a window where activeSheetId
-   * points at the just-deleted sheet (which would crash getSheet()).
+   * Echo a sheet deletion. activeSheetId is NOT touched — it's per-user
+   * view state; a peer that was viewing the deleted sheet snaps to the
+   * first sheet via the defensive fallback in setData.
    */
   private mirrorSheetDelete(sheetId: string): void {
     if (!this.collabHandle || this.isApplyingRemoteChange) return;
@@ -1419,8 +1418,6 @@ export class WorkbookImpl implements Workbook {
       const ids = yTypes.sheetIds.toArray();
       const idx = ids.indexOf(sheetId);
       if (idx !== -1) yTypes.sheetIds.delete(idx, 1);
-      // Atomic activeSheetId fixup — keeps the delete self-consistent.
-      yTypes.meta.set('activeSheetId', this.activeSheetId);
     });
   }
 
@@ -1438,18 +1435,6 @@ export class WorkbookImpl implements Workbook {
     });
   }
 
-  /** Sync workbook-level meta (activeSheetId, name, defaults) into Y. */
-  private mirrorWorkbookMeta(): void {
-    if (!this.collabHandle || this.isApplyingRemoteChange) return;
-    const ydoc = this.collabHandle.ydoc;
-    const yTypes = getWorkbookYTypes(ydoc);
-    ydoc.transact(() => {
-      yTypes.meta.set('activeSheetId', this.activeSheetId);
-      yTypes.meta.set('name', this.name);
-      yTypes.meta.set('defaultRowHeight', this.defaultRowHeight);
-      yTypes.meta.set('defaultColWidth', this.defaultColWidth);
-    });
-  }
 
   /**
    * Re-sync a sheet's full structure to the Y.Doc: order maps, dimension

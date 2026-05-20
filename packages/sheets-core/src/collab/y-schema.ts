@@ -151,7 +151,11 @@ export function hydrateYDocFromData(ydoc: Y.Doc, data: WorkbookData): void {
   ydoc.transact(() => {
     types.meta.set('id', data.id);
     types.meta.set('name', data.name);
-    types.meta.set('activeSheetId', data.activeSheetId);
+    // NOTE: activeSheetId is deliberately NOT stored in the Y.Doc — which
+    // sheet a user is viewing is per-user view state, not shared document
+    // state. Syncing it would yank every peer onto whichever sheet anyone
+    // last clicked. serializeYDocToData takes the local activeSheetId as
+    // an argument instead.
     types.meta.set('defaultRowHeight', data.defaultRowHeight);
     types.meta.set('defaultColWidth', data.defaultColWidth);
 
@@ -263,9 +267,18 @@ function serializeOrderMap(map: Y.Map<number>): Array<[number, string]> {
 // Y.Doc → WorkbookData  (called on attach to seed a late joiner)
 // ============================================================================
 
+/**
+ * Read the Y.Doc back into WorkbookData.
+ *
+ * `activeSheetId` is NOT in the Y.Doc (per-user view state) — the caller
+ * passes its local value. It's resolved against the actual sheet list:
+ * if the local active sheet has been deleted by a peer, the result snaps
+ * to the first sheet so consumers never get a dangling reference.
+ */
 export function serializeYDocToData(
   ydoc: Y.Doc,
   selection?: Selection,
+  activeSheetId?: string,
 ): WorkbookData {
   const t = getWorkbookYTypes(ydoc);
 
@@ -285,10 +298,15 @@ export function serializeYDocToData(
     sheets.push(serializeSheetYMap(sheetMap));
   }
 
+  let resolvedActive = activeSheetId ?? '';
+  if (!resolvedActive || !sheets.some((s) => s.id === resolvedActive)) {
+    resolvedActive = sheets[0]?.id ?? '';
+  }
+
   return {
     id: (t.meta.get('id') as string) ?? '',
     name: (t.meta.get('name') as string) ?? '',
-    activeSheetId: (t.meta.get('activeSheetId') as string) ?? '',
+    activeSheetId: resolvedActive,
     defaultRowHeight: (t.meta.get('defaultRowHeight') as number) ?? 20,
     defaultColWidth: (t.meta.get('defaultColWidth') as number) ?? 100,
     stylePool,

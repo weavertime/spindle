@@ -114,7 +114,13 @@ export async function attachCollabToWorkbook(
       // Y.Doc has new state that the workbook's internal Maps don't reflect
       // yet — remote came in via the network, or our undo just rewrote Y.
       // Reload via the dedicated entrypoint (suspends history + mirror).
-      const newData = serializeYDocToData(ydoc, workbook.getSelection());
+      // activeSheetId is passed from the LOCAL workbook so a peer's sheet
+      // switch never drags this user onto a different sheet.
+      const newData = serializeYDocToData(
+        ydoc,
+        workbook.getSelection(),
+        workbook.activeSheetId,
+      );
       workbook._reloadFromCollab(newData);
     }
   };
