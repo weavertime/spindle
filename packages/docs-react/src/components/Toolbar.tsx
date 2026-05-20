@@ -1,6 +1,6 @@
 import React, { memo, useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { EditorView } from 'prosemirror-view';
-import { TextSelection } from 'prosemirror-state';
+import { TextSelection, type Command } from 'prosemirror-state';
 import { useDocument, useHistory } from '../context/DocumentContext';
 import { 
   docsSchema, 
@@ -374,7 +374,7 @@ export const Toolbar = memo(function Toolbar({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
   
-  const runCommand = useCallback((command: any) => {
+  const runCommand = useCallback((command: Command) => {
     if (!editorView) return false;
     
     if (selectedCell) {

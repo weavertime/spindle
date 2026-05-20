@@ -207,7 +207,7 @@ export function insertTableColumn(
     return { ...row, cells: newCells };
   });
   
-  let newColWidths = table.colWidths ? [...table.colWidths] : undefined;
+  const newColWidths = table.colWidths ? [...table.colWidths] : undefined;
   if (newColWidths) {
     newColWidths.splice(position, 0, width || 100);
   }
@@ -232,7 +232,7 @@ export function deleteTableColumn(
     return { ...row, cells: newCells };
   });
   
-  let newColWidths = table.colWidths ? [...table.colWidths] : undefined;
+  const newColWidths = table.colWidths ? [...table.colWidths] : undefined;
   if (newColWidths) {
     newColWidths.splice(position, 1);
   }

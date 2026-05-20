@@ -1,4 +1,5 @@
 import React, { memo, useMemo } from 'react';
+import { PAGE_SIZES } from '@pagent-libs/docs-core';
 import type { Section, PageConfig } from '@pagent-libs/docs-core';
 import { useDocument } from '../context/DocumentContext';
 
@@ -104,8 +105,7 @@ export const PageView = memo(function PageView({
  * Get the page size name from dimensions
  */
 export function getPageSizeName(config: PageConfig): string {
-  const { PAGE_SIZES } = require('@pagent-libs/docs-core');
-  const effectiveSize = config.orientation === 'landscape' 
+  const effectiveSize = config.orientation === 'landscape'
     ? { w: config.size.h, h: config.size.w }
     : config.size;
     

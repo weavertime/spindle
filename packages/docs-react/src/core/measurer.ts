@@ -21,6 +21,7 @@ import {
   HorizontalRuleBlock,
   PageBreakBlock,
   isRunContainingBlock,
+  isTextRun,
 } from './flow-blocks';
 
 // ============================================================================
@@ -710,7 +711,7 @@ export class DomMeasurer {
     
     // If no lines were detected, use fallback
     if (lines.length === 0) {
-      const allText = runs?.filter(r => r.kind === 'text').map(r => (r as any).text).join('') || '';
+      const allText = runs?.filter(isTextRun).map(r => r.text).join('') || '';
       lines.push({
         height: elementRect.height || defaultLineHeight,
         width: elementRect.width,

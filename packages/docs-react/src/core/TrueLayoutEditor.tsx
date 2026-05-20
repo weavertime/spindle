@@ -25,7 +25,7 @@ import {
 import { EditorState, Transaction } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { Node as PmNode } from 'prosemirror-model';
-import { docsSchema, createPlugins, blocksToPmDoc, proseMirrorToDocument, Block } from '@pagent-libs/docs-core';
+import { docsSchema, createPlugins, blocksToPmDoc, proseMirrorToDocument, Block, DEFAULT_PAGE_CONFIG } from '@pagent-libs/docs-core';
 import type { CollabHandle } from '@pagent-libs/docs-core/collab';
 import { ySyncPlugin, yCursorPlugin } from 'y-prosemirror';
 import { ensureCollabCursorStyles } from './collab-cursor-styles';
@@ -373,6 +373,7 @@ export const TrueLayoutEditor = forwardRef<TrueLayoutEditorHandle, TrueLayoutEdi
       // hasn't been assigned yet. The `view ?? this` fallback uses the
       // EditorView that ProseMirror binds to `this` inside dispatchTransaction.
       let view: EditorView | undefined;
+      // eslint-disable-next-line prefer-const -- `const` would TDZ-crash; see above
       view = new EditorView(hiddenEditorRef.current, {
         state,
         editable: () => editable,
@@ -392,7 +393,13 @@ export const TrueLayoutEditor = forwardRef<TrueLayoutEditorHandle, TrueLayoutEdi
             if (onDocChangeRef.current) {
               const docModel = proseMirrorToDocument(
                 newState.doc,
-                { sections: [{ id: 'main', blocks: [] }] } as any,
+                // Minimal stand-in document — only its blocks are read back.
+                {
+                  id: '',
+                  title: '',
+                  sections: [{ id: 'main', pageConfig: DEFAULT_PAGE_CONFIG, blocks: [] }],
+                  defaultPageConfig: DEFAULT_PAGE_CONFIG,
+                },
                 textStylePoolRef.current  // Pass style pool for efficient style storage
               );
               onDocChangeRef.current(docModel.sections[0].blocks);
