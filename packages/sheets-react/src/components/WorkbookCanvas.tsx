@@ -544,7 +544,19 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
       if (!shouldHandle) {
         return;
       }
-      
+
+      // Never hijack keys while the user is typing in a text field — the
+      // formula bar, comment composer, dialogs, etc. own their own input.
+      // Without this, Backspace/Delete would clear grid cells instead of
+      // deleting characters.
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
       // Skip if we're editing a cell (let the editor handle it)
       // Exception: Ctrl+Z/Y should still work for undo/redo during editing in some cases
       if (editingCell) {
