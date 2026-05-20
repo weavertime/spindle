@@ -30,6 +30,7 @@ import {
 import * as syncProtocol from 'y-protocols/sync';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
+import { IndexeddbPersistence } from 'y-indexeddb';
 import type { CollabIdentity, CollabProvider } from '@pagent-libs/shared';
 
 import { getWorkbookYTypes, hydrateYDocFromData, serializeYDocToData } from './y-schema';
@@ -56,6 +57,13 @@ export interface AttachCollabOptions {
    * is hydrated.
    */
   roomId?: string;
+  /**
+   * When set, the Y.Doc is mirrored to IndexedDB under this key. Edits
+   * survive a page refresh / offline period: on the next attach the Y.Doc
+   * is restored from IndexedDB BEFORE deciding whether to hydrate from the
+   * workbook's data. Browser-only — leave unset for server-side rendering.
+   */
+  persistenceKey?: string;
 }
 
 /**
@@ -73,7 +81,19 @@ export async function attachCollabToWorkbook(
   options: AttachCollabOptions = {},
 ): Promise<CollabHandle> {
   const ydoc = new Y.Doc();
-  hydrateYDocFromData(ydoc, initialData);
+
+  // Optional IndexedDB persistence. Restore any prior local state FIRST,
+  // then only hydrate from initialData if the doc came back empty —
+  // otherwise we'd stack a duplicate copy on top of the restored one.
+  let persistence: IndexeddbPersistence | undefined;
+  if (options.persistenceKey) {
+    persistence = new IndexeddbPersistence(options.persistenceKey, ydoc);
+    await persistence.whenSynced;
+  }
+
+  if (getWorkbookYTypes(ydoc).sheetIds.length === 0) {
+    hydrateYDocFromData(ydoc, initialData);
+  }
 
   const awareness = new Awareness(ydoc);
   awareness.setLocalStateField('user', {
@@ -175,6 +195,7 @@ export async function attachCollabToWorkbook(
     undoManager.destroy();
     awareness.destroy();
     provider.disconnect();
+    void persistence?.destroy();
     ydoc.destroy();
   };
 

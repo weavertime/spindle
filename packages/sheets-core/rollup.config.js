@@ -27,6 +27,7 @@ const external = [
   'y-protocols',
   'y-protocols/awareness',
   'y-protocols/sync',
+  'y-indexeddb',
   'lib0/encoding',
   'lib0/decoding',
 ];

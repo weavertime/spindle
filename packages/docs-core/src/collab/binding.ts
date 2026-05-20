@@ -22,6 +22,7 @@ import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwareness
 import * as syncProtocol from 'y-protocols/sync';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
+import { IndexeddbPersistence } from 'y-indexeddb';
 import type { CollabIdentity, CollabProvider } from '@pagent-libs/shared';
 
 import { getYDocFields, hydrateYDocFromData } from './y-schema';
@@ -47,6 +48,14 @@ export interface AttachCollabOptions {
    * sessions under a stable URL even if the document id changes.
    */
   roomId?: string;
+  /**
+   * When set, the Y.Doc is mirrored to IndexedDB under this key. Edits
+   * survive a page refresh / offline period: on the next attach the Y.Doc
+   * is restored from IndexedDB BEFORE deciding whether to hydrate from
+   * initialData. Browser-only — has no effect (and would throw) outside a
+   * browser, so leave it unset for server-side rendering.
+   */
+  persistenceKey?: string;
 }
 
 /**
@@ -65,8 +74,18 @@ export async function attachCollabToYDoc(
 ): Promise<CollabHandle> {
   const ydoc = new Y.Doc();
 
-  // Hydrate Y types from the initial DocumentData snapshot.
-  hydrateYDocFromData(ydoc, initialData);
+  // Optional IndexedDB persistence. Load any prior local state FIRST, then
+  // only hydrate from initialData if the doc came back empty — otherwise
+  // we'd append a duplicate copy of the content on top of the restored one.
+  let persistence: IndexeddbPersistence | undefined;
+  if (options.persistenceKey) {
+    persistence = new IndexeddbPersistence(options.persistenceKey, ydoc);
+    await persistence.whenSynced;
+  }
+
+  if (getYDocFields(ydoc).content.length === 0) {
+    hydrateYDocFromData(ydoc, initialData);
+  }
 
   const { content: xmlFragment } = getYDocFields(ydoc);
 
@@ -148,6 +167,7 @@ export async function attachCollabToYDoc(
     unsubAwareness();
     awareness.destroy();
     provider.disconnect();
+    void persistence?.destroy();
     ydoc.destroy();
   };
 

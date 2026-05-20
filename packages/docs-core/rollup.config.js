@@ -26,6 +26,7 @@ const external = [
   'yjs',
   'y-protocols',
   'y-protocols/awareness',
+  'y-indexeddb',
   'y-prosemirror',
   'prosemirror-model',
   'prosemirror-state',
