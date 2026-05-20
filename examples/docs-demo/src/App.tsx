@@ -1,9 +1,28 @@
 import { useState, useEffect } from 'react';
 import { DocumentProvider, DocumentEditor } from '@pagent-libs/docs-react';
-import { DocumentImpl, type DocumentData, type HeaderFooterContent } from '@pagent-libs/docs-core';
+import {
+  DocumentImpl,
+  type DocumentData,
+  type HeaderFooterContent,
+  type CommentAuthor,
+  type DocsCommentEvent,
+} from '@pagent-libs/docs-core';
 import { InMemoryProvider, type CollabIdentity, type CollabStatus } from '@pagent-libs/shared';
 import { WebSocketProvider } from '@pagent-libs/transport-websocket';
 import './App.css';
+
+// Sample directory of users that can be @-mentioned in comments.
+const DEMO_USERS: CommentAuthor[] = [
+  { id: 'alice', name: 'Alice' },
+  { id: 'bob', name: 'Bob' },
+  { id: 'carol', name: 'Carol Diaz' },
+  { id: 'dave', name: 'Dave Kim' },
+];
+
+// Stand-in for a host app reacting to comment activity (notifications, etc.).
+function logCommentEvent(event: DocsCommentEvent): void {
+  console.log('[comment event]', event.type, event);
+}
 
 // ============================================================================
 // Cross-tab WebSocket demo helpers
@@ -430,7 +449,12 @@ function CollabDemo({
           Alice
         </div>
         <div style={{ flex: 1, minHeight: 0 }}>
-          <DocumentProvider document={docs[0]}>
+          <DocumentProvider
+            document={docs[0]}
+            currentUser={DEMO_USERS[0]}
+            mentionableUsers={DEMO_USERS}
+            onCommentEvent={logCommentEvent}
+          >
             <DocumentEditor width={paneWidth} height={paneHeight} showToolbar={true} showRuler={false} />
           </DocumentProvider>
         </div>
@@ -440,7 +464,12 @@ function CollabDemo({
           Bob
         </div>
         <div style={{ flex: 1, minHeight: 0 }}>
-          <DocumentProvider document={docs[1]}>
+          <DocumentProvider
+            document={docs[1]}
+            currentUser={DEMO_USERS[1]}
+            mentionableUsers={DEMO_USERS}
+            onCommentEvent={logCommentEvent}
+          >
             <DocumentEditor width={paneWidth} height={paneHeight} showToolbar={true} showRuler={false} />
           </DocumentProvider>
         </div>
@@ -522,7 +551,12 @@ function WsDemo({
         </span>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
-        <DocumentProvider document={doc}>
+        <DocumentProvider
+          document={doc}
+          currentUser={{ id: config.identity.userId, name: config.identity.displayName }}
+          mentionableUsers={DEMO_USERS}
+          onCommentEvent={logCommentEvent}
+        >
           <DocumentEditor width={width} height={height - 28} showToolbar={true} showRuler={true} />
         </DocumentProvider>
       </div>
@@ -642,7 +676,12 @@ function App() {
             paneHeight={dimensions.height - 28 /* peer header strip */}
           />
         ) : (
-          <DocumentProvider document={document}>
+          <DocumentProvider
+            document={document}
+            currentUser={DEMO_USERS[0]}
+            mentionableUsers={DEMO_USERS}
+            onCommentEvent={logCommentEvent}
+          >
             <DocumentEditor
               width={dimensions.width}
               height={dimensions.height}

@@ -182,12 +182,13 @@ export const DocumentEditor = memo(function DocumentEditor({
   }, [editorView]);
 
   // Create the thread and apply the comment mark over the captured range.
-  const createComment = useCallback((body: string) => {
+  const createComment = useCallback((body: string, mentions: string[]) => {
     if (!editorView || !pendingComment) return;
     const thread = docModel.getComments().addThread(
       { quote: pendingComment.quote },
       body,
       currentUser,
+      mentions,
     );
     const commentMark = editorView.state.schema.marks.comment;
     editorView.dispatch(
@@ -201,8 +202,8 @@ export const DocumentEditor = memo(function DocumentEditor({
     setActiveThreadId(thread.id);
   }, [editorView, pendingComment, docModel, currentUser]);
 
-  const replyToThread = useCallback((threadId: string, body: string) => {
-    docModel.getComments().addReply(threadId, body, currentUser);
+  const replyToThread = useCallback((threadId: string, body: string, mentions: string[]) => {
+    docModel.getComments().addReply(threadId, body, currentUser, mentions);
   }, [docModel, currentUser]);
 
   const resolveThread = useCallback((threadId: string) => {

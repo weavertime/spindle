@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useMemo, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { DocumentImpl } from '@pagent-libs/docs-core';
-import type { CommentAuthor } from '@pagent-libs/docs-core';
+import type { CommentAuthor, DocsCommentEvent } from '@pagent-libs/docs-core';
 
 interface DocumentContextValue {
   document: DocumentImpl;
@@ -9,11 +9,14 @@ interface DocumentContextValue {
   setZoom: (zoom: number) => void;
   /** Identity attributed to comments created in this session. */
   currentUser: CommentAuthor;
+  /** Users that can be @-mentioned in comments. */
+  mentionableUsers: CommentAuthor[];
 }
 
 const DocumentContext = createContext<DocumentContextValue | undefined>(undefined);
 
 const DEFAULT_USER: CommentAuthor = { id: 'local-user', name: 'You' };
+const NO_USERS: CommentAuthor[] = [];
 
 export interface DocumentProviderProps {
   document: DocumentImpl;
@@ -21,6 +24,13 @@ export interface DocumentProviderProps {
   initialZoom?: number;
   /** Author for comments. Falls back to a generic local user when omitted. */
   currentUser?: CommentAuthor;
+  /** Users that can be @-mentioned. Pass a stable reference. */
+  mentionableUsers?: CommentAuthor[];
+  /**
+   * Called for the local user's comment actions — the hook for sending
+   * notifications. Not fired for threads arriving from collaborators.
+   */
+  onCommentEvent?: (event: DocsCommentEvent) => void;
 }
 
 export function DocumentProvider({
@@ -28,6 +38,8 @@ export function DocumentProvider({
   children,
   initialZoom = 100,
   currentUser,
+  mentionableUsers,
+  onCommentEvent,
 }: DocumentProviderProps) {
   const [document] = useState<DocumentImpl>(initialDocument);
   const [updateTrigger, setUpdateTrigger] = useState(0);
@@ -37,6 +49,17 @@ export function DocumentProvider({
     () => currentUser ?? DEFAULT_USER,
     [currentUser?.id, currentUser?.name],
   );
+  const resolvedMentionables = mentionableUsers ?? NO_USERS;
+
+  // Forward semantic comment events to the host. A ref keeps the listener
+  // stable even if the app passes an inline onCommentEvent callback.
+  const onCommentEventRef = useRef(onCommentEvent);
+  onCommentEventRef.current = onCommentEvent;
+  useEffect(() => {
+    return document.on('commentEvent', (data) => {
+      onCommentEventRef.current?.(data.payload as DocsCommentEvent);
+    });
+  }, [document]);
 
   // Subscribe to document events to trigger re-renders
   useEffect(() => {
@@ -100,8 +123,9 @@ export function DocumentProvider({
       zoom,
       setZoom: handleSetZoom,
       currentUser: resolvedUser,
+      mentionableUsers: resolvedMentionables,
     }),
-    [document, updateDocument, zoom, handleSetZoom, updateTrigger, resolvedUser]
+    [document, updateDocument, zoom, handleSetZoom, updateTrigger, resolvedUser, resolvedMentionables]
   );
 
   return <DocumentContext.Provider value={value}>{children}</DocumentContext.Provider>;
