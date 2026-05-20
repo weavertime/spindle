@@ -396,9 +396,19 @@ export const DocumentEditor = memo(function DocumentEditor({
           collabHandle={docModel.getCollabHandle()}
         />
 
-        {/* Comments sidebar */}
+        {/* Comments sidebar — a floating overlay so the page + ruler stay put */}
         {showComments && (
-          <div style={{ width: 320, flexShrink: 0, height: '100%' }}>
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: 320,
+              zIndex: 30,
+              boxShadow: '-8px 0 24px -12px rgba(15, 23, 42, 0.15)',
+            }}
+          >
             <CommentsSidebar
               threads={docModel.getComments().getThreads()}
               activeThreadId={activeThreadId}
