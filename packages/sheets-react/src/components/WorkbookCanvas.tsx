@@ -1184,6 +1184,11 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
             });
             handleContextMenuClose();
           }}
+          onComment={() => {
+            setActiveCell(contextMenu.cell);
+            setShowComments(true);
+            handleContextMenuClose();
+          }}
         />
       )}
 

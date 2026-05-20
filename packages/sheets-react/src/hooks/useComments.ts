@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { columnIndexToLabel } from '@pagent-libs/sheets-core';
 import type { SheetCommentThread } from '@pagent-libs/sheets-core';
 import { useWorkbook } from '../context/WorkbookContext';
 
@@ -7,6 +8,8 @@ export interface UseCommentsResult {
   threads: SheetCommentThread[];
   /** Threads anchored to a given cell (by current row/col index). */
   getThreadsForCell: (row: number, col: number) => SheetCommentThread[];
+  /** A1 label for a thread's anchored cell, or null if its row/col was deleted. */
+  cellLabelForThread: (thread: SheetCommentThread) => string | null;
   addThreadAtCell: (row: number, col: number, body: string) => void;
   addReply: (threadId: string, body: string) => void;
   editComment: (threadId: string, commentId: string, body: string) => void;
@@ -47,6 +50,16 @@ export function useComments(): UseCommentsResult {
       return store.getThreadsForCell(rowId, colId);
     },
     [sheet, store],
+  );
+
+  const cellLabelForThread = useCallback(
+    (thread: SheetCommentThread): string | null => {
+      const r = sheet.getRowIndex(thread.anchor.rowId);
+      const c = sheet.getColIndex(thread.anchor.colId);
+      if (r === undefined || c === undefined) return null;
+      return `${columnIndexToLabel(c)}${r + 1}`;
+    },
+    [sheet],
   );
 
   const addThreadAtCell = useCallback(
@@ -103,6 +116,7 @@ export function useComments(): UseCommentsResult {
   return {
     threads: store.getThreads(),
     getThreadsForCell,
+    cellLabelForThread,
     addThreadAtCell,
     addReply,
     editComment,

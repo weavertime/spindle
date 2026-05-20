@@ -152,6 +152,8 @@ function Composer({ placeholder, submitLabel, autoFocus, onSubmit }: ComposerPro
 
 interface ThreadCardProps {
   thread: SheetCommentThread;
+  /** Cell label (A1) shown as a badge — used in the all-threads list. */
+  cellLabel?: string;
   onReply: (body: string) => void;
   onResolve: () => void;
   onReopen: () => void;
@@ -171,6 +173,15 @@ const iconButton: React.CSSProperties = {
   color: '#94a3b8',
   cursor: 'pointer',
   transition: 'background-color 0.12s ease, color 0.12s ease',
+};
+
+const cellBadge: React.CSSProperties = {
+  fontSize: '11px',
+  fontWeight: 600,
+  color: '#6366f1',
+  backgroundColor: 'rgba(99, 102, 241, 0.1)',
+  padding: '2px 7px',
+  borderRadius: '6px',
 };
 
 function CommentRow({
@@ -237,6 +248,7 @@ function CommentRow({
 
 const ThreadCard = memo(function ThreadCard({
   thread,
+  cellLabel,
   onReply,
   onResolve,
   onReopen,
@@ -255,6 +267,11 @@ const ThreadCard = memo(function ThreadCard({
         boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
       }}
     >
+      {cellLabel && (
+        <div style={{ marginBottom: 8 }}>
+          <span style={cellBadge}>{cellLabel}</span>
+        </div>
+      )}
       {resolved && (
         <div
           style={{
@@ -346,19 +363,83 @@ const ThreadCard = memo(function ThreadCard({
 // Panel
 // ============================================================================
 
+interface SegmentedProps<T extends string> {
+  options: Array<{ value: T; label: string }>;
+  value: T;
+  onChange: (value: T) => void;
+}
+
+function Segmented<T extends string>({ options, value, onChange }: SegmentedProps<T>) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        gap: 2,
+        padding: 2,
+        background: 'rgba(15, 23, 42, 0.05)',
+        borderRadius: '9px',
+      }}
+    >
+      {options.map((o) => {
+        const active = o.value === value;
+        return (
+          <button
+            key={o.value}
+            onClick={() => onChange(o.value)}
+            style={{
+              flex: 1,
+              padding: '5px 10px',
+              border: 'none',
+              borderRadius: '7px',
+              background: active ? '#ffffff' : 'transparent',
+              color: active ? '#6366f1' : '#64748b',
+              fontWeight: active ? 600 : 500,
+              fontSize: '12px',
+              fontFamily: FONT,
+              cursor: 'pointer',
+              boxShadow: active ? '0 1px 2px rgba(15, 23, 42, 0.1)' : 'none',
+              transition: 'all 0.12s ease',
+            }}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 interface CommentsPanelProps {
   activeCell: { row: number; col: number } | null;
   onClose: () => void;
 }
 
+type CommentTab = 'cell' | 'all';
+type CommentFilter = 'open' | 'resolved' | 'all';
+
 export const CommentsPanel = memo(function CommentsPanel({ activeCell, onClose }: CommentsPanelProps) {
   const comments = useComments();
+  const [tab, setTab] = useState<CommentTab>('cell');
+  const [filter, setFilter] = useState<CommentFilter>('open');
+
   const cellThreads = activeCell
     ? comments.getThreadsForCell(activeCell.row, activeCell.col)
     : [];
   const cellLabel = activeCell
     ? `${columnIndexToLabel(activeCell.col)}${activeCell.row + 1}`
     : '';
+
+  const allThreads = [...comments.threads]
+    .filter((t) => filter === 'all' || t.status === filter)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  const threadCallbacks = (thread: SheetCommentThread) => ({
+    onReply: (body: string) => comments.addReply(thread.id, body),
+    onResolve: () => comments.resolveThread(thread.id),
+    onReopen: () => comments.reopenThread(thread.id),
+    onDeleteThread: () => comments.deleteThread(thread.id),
+    onDeleteComment: (commentId: string) => comments.deleteComment(thread.id, commentId),
+  });
 
   return (
     <div
@@ -386,20 +467,7 @@ export const CommentsPanel = memo(function CommentsPanel({ activeCell, onClose }
       >
         <MessageSquare size={17} strokeWidth={2} color="#6366f1" />
         <span style={{ fontSize: '14px', fontWeight: 700, color: '#1e293b' }}>Comments</span>
-        {activeCell && (
-          <span
-            style={{
-              fontSize: '11px',
-              fontWeight: 600,
-              color: '#6366f1',
-              backgroundColor: 'rgba(99, 102, 241, 0.1)',
-              padding: '2px 7px',
-              borderRadius: '6px',
-            }}
-          >
-            {cellLabel}
-          </span>
-        )}
+        {tab === 'cell' && activeCell && <span style={cellBadge}>{cellLabel}</span>}
         <button
           onClick={onClose}
           title="Close"
@@ -411,44 +479,76 @@ export const CommentsPanel = memo(function CommentsPanel({ activeCell, onClose }
         </button>
       </div>
 
+      {/* Tab switcher */}
+      <div style={{ padding: '10px 14px 0' }}>
+        <Segmented
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'cell', label: 'This cell' },
+            { value: 'all', label: 'All' },
+          ]}
+        />
+      </div>
+
       {/* Body */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {!activeCell ? (
-          <div style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center', marginTop: 24 }}>
-            Select a cell to add a comment.
-          </div>
+        {tab === 'cell' ? (
+          !activeCell ? (
+            <div style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center', marginTop: 24 }}>
+              Select a cell to add a comment.
+            </div>
+          ) : (
+            <>
+              {cellThreads.map((thread) => (
+                <ThreadCard key={thread.id} thread={thread} {...threadCallbacks(thread)} />
+              ))}
+
+              {/* New-thread composer */}
+              <div
+                style={{
+                  border: '1px dashed rgba(15, 23, 42, 0.15)',
+                  borderRadius: '12px',
+                  padding: '12px',
+                }}
+              >
+                <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
+                  {cellThreads.length > 0 ? 'Add another comment' : `Comment on ${cellLabel}`}
+                </div>
+                <Composer
+                  placeholder="Add a comment…"
+                  submitLabel="Comment"
+                  autoFocus={cellThreads.length === 0}
+                  onSubmit={(body) => comments.addThreadAtCell(activeCell.row, activeCell.col, body)}
+                />
+              </div>
+            </>
+          )
         ) : (
           <>
-            {cellThreads.map((thread) => (
-              <ThreadCard
-                key={thread.id}
-                thread={thread}
-                onReply={(body) => comments.addReply(thread.id, body)}
-                onResolve={() => comments.resolveThread(thread.id)}
-                onReopen={() => comments.reopenThread(thread.id)}
-                onDeleteThread={() => comments.deleteThread(thread.id)}
-                onDeleteComment={(commentId) => comments.deleteComment(thread.id, commentId)}
-              />
-            ))}
-
-            {/* New-thread composer */}
-            <div
-              style={{
-                border: '1px dashed rgba(15, 23, 42, 0.15)',
-                borderRadius: '12px',
-                padding: '12px',
-              }}
-            >
-              <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
-                {cellThreads.length > 0 ? 'Add another comment' : `Comment on ${cellLabel}`}
+            <Segmented
+              value={filter}
+              onChange={setFilter}
+              options={[
+                { value: 'open', label: 'Open' },
+                { value: 'resolved', label: 'Resolved' },
+                { value: 'all', label: 'All' },
+              ]}
+            />
+            {allThreads.length === 0 ? (
+              <div style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center', marginTop: 24 }}>
+                {filter === 'all' ? 'No comments yet.' : `No ${filter} comments.`}
               </div>
-              <Composer
-                placeholder="Add a comment…"
-                submitLabel="Comment"
-                autoFocus={cellThreads.length === 0}
-                onSubmit={(body) => comments.addThreadAtCell(activeCell.row, activeCell.col, body)}
-              />
-            </div>
+            ) : (
+              allThreads.map((thread) => (
+                <ThreadCard
+                  key={thread.id}
+                  thread={thread}
+                  cellLabel={comments.cellLabelForThread(thread) ?? '(deleted cell)'}
+                  {...threadCallbacks(thread)}
+                />
+              ))
+            )}
           </>
         )}
       </div>
