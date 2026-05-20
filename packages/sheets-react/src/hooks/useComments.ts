@@ -10,8 +10,8 @@ export interface UseCommentsResult {
   getThreadsForCell: (row: number, col: number) => SheetCommentThread[];
   /** A1 label for a thread's anchored cell, or null if its row/col was deleted. */
   cellLabelForThread: (thread: SheetCommentThread) => string | null;
-  addThreadAtCell: (row: number, col: number, body: string) => void;
-  addReply: (threadId: string, body: string) => void;
+  addThreadAtCell: (row: number, col: number, body: string, mentions?: string[]) => void;
+  addReply: (threadId: string, body: string, mentions?: string[]) => void;
   editComment: (threadId: string, commentId: string, body: string) => void;
   deleteComment: (threadId: string, commentId: string) => void;
   deleteThread: (threadId: string) => void;
@@ -63,17 +63,17 @@ export function useComments(): UseCommentsResult {
   );
 
   const addThreadAtCell = useCallback(
-    (row: number, col: number, body: string): void => {
+    (row: number, col: number, body: string, mentions: string[] = []): void => {
       const rowId = sheet.ensureRowId(row);
       const colId = sheet.ensureColId(col);
-      store.addThread({ rowId, colId }, body, currentUser);
+      store.addThread({ rowId, colId }, body, currentUser, mentions);
     },
     [sheet, store, currentUser],
   );
 
   const addReply = useCallback(
-    (threadId: string, body: string): void => {
-      store.addReply(threadId, body, currentUser);
+    (threadId: string, body: string, mentions: string[] = []): void => {
+      store.addReply(threadId, body, currentUser, mentions);
     },
     [store, currentUser],
   );
@@ -108,9 +108,9 @@ export function useComments(): UseCommentsResult {
 
   const reopenThread = useCallback(
     (threadId: string): void => {
-      store.reopenThread(threadId);
+      store.reopenThread(threadId, currentUser);
     },
-    [store],
+    [store, currentUser],
   );
 
   return {

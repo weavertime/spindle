@@ -6,8 +6,10 @@
 // kept (so nothing is silently lost) but no longer resolves to a cell.
 //
 // The store owns the in-memory thread map and notifies a single listener after
-// every mutation. WorkbookImpl wires that listener to (a) emit a `commentChange`
-// event for the UI and (b) mirror the threads into the Y.Doc when collab is on.
+// every mutation, handing it a semantic CommentMutationEvent. WorkbookImpl
+// wires that listener to mirror threads into the Y.Doc, emit a `commentChange`
+// event for the UI, and emit a `commentEvent` the host app can hook for
+// notifications.
 
 import type { Comment, CommentThread } from '@pagent-libs/shared';
 import { generateId } from './utils/id';
@@ -30,21 +32,37 @@ export interface CommentAuthor {
   name: string;
 }
 
+/**
+ * A semantic description of a single comment mutation. Emitted for the local
+ * user's own actions (not for threads arriving from collaborators).
+ */
+export type CommentMutationEvent =
+  | { type: 'thread-created'; threadId: string; anchor: CellCommentAnchor; comment: Comment; mentions: string[] }
+  | { type: 'reply-added'; threadId: string; anchor: CellCommentAnchor; comment: Comment; mentions: string[] }
+  | { type: 'comment-edited'; threadId: string; anchor: CellCommentAnchor; commentId: string }
+  | { type: 'comment-deleted'; threadId: string; anchor: CellCommentAnchor; commentId: string }
+  | { type: 'thread-deleted'; threadId: string; anchor: CellCommentAnchor }
+  | { type: 'thread-resolved'; threadId: string; anchor: CellCommentAnchor; by: CommentAuthor }
+  | { type: 'thread-reopened'; threadId: string; anchor: CellCommentAnchor; by: CommentAuthor };
+
+/** A CommentMutationEvent enriched with the sheet it occurred on. */
+export type SheetCommentEvent = CommentMutationEvent & { sheetId: string };
+
 function now(): string {
   return new Date().toISOString();
 }
 
 export class CommentStore {
   private threads: Map<string, SheetCommentThread> = new Map();
-  private changeListener: (() => void) | undefined;
+  private changeListener: ((event: CommentMutationEvent) => void) | undefined;
 
   /** @internal Wired by WorkbookImpl to mirror + emit on every mutation. */
-  __setChangeListener(listener: (() => void) | undefined): void {
+  __setChangeListener(listener: ((event: CommentMutationEvent) => void) | undefined): void {
     this.changeListener = listener;
   }
 
-  private notifyChange(): void {
-    this.changeListener?.();
+  private notify(event: CommentMutationEvent): void {
+    this.changeListener?.(event);
   }
 
   // --- Queries -------------------------------------------------------------
@@ -77,30 +95,40 @@ export class CommentStore {
   // --- Mutations -----------------------------------------------------------
 
   /** Create a new thread anchored to a cell, seeded with its root comment. */
-  addThread(anchor: CellCommentAnchor, body: string, author: CommentAuthor): SheetCommentThread {
+  addThread(
+    anchor: CellCommentAnchor,
+    body: string,
+    author: CommentAuthor,
+    mentions: string[] = [],
+  ): SheetCommentThread {
     const timestamp = now();
+    const comment: Comment = {
+      id: generateId(),
+      authorId: author.id,
+      authorName: author.name,
+      body,
+      createdAt: timestamp,
+    };
+    if (mentions.length > 0) comment.mentions = [...mentions];
     const thread: SheetCommentThread = {
       id: generateId(),
       anchor: { ...anchor },
       status: 'open',
       createdAt: timestamp,
-      comments: [
-        {
-          id: generateId(),
-          authorId: author.id,
-          authorName: author.name,
-          body,
-          createdAt: timestamp,
-        },
-      ],
+      comments: [comment],
     };
     this.threads.set(thread.id, thread);
-    this.notifyChange();
+    this.notify({ type: 'thread-created', threadId: thread.id, anchor: thread.anchor, comment, mentions });
     return thread;
   }
 
   /** Append a reply to an existing thread. */
-  addReply(threadId: string, body: string, author: CommentAuthor): Comment | undefined {
+  addReply(
+    threadId: string,
+    body: string,
+    author: CommentAuthor,
+    mentions: string[] = [],
+  ): Comment | undefined {
     const thread = this.threads.get(threadId);
     if (!thread) return undefined;
     const comment: Comment = {
@@ -110,8 +138,9 @@ export class CommentStore {
       body,
       createdAt: now(),
     };
+    if (mentions.length > 0) comment.mentions = [...mentions];
     thread.comments.push(comment);
-    this.notifyChange();
+    this.notify({ type: 'reply-added', threadId, anchor: thread.anchor, comment, mentions });
     return comment;
   }
 
@@ -123,7 +152,7 @@ export class CommentStore {
     if (!comment) return;
     comment.body = body;
     comment.editedAt = now();
-    this.notifyChange();
+    this.notify({ type: 'comment-edited', threadId, anchor: thread.anchor, commentId });
   }
 
   /** Remove a comment. Removing the last comment removes the whole thread. */
@@ -132,18 +161,21 @@ export class CommentStore {
     if (!thread) return;
     const idx = thread.comments.findIndex((c) => c.id === commentId);
     if (idx === -1) return;
+    const anchor = thread.anchor;
     thread.comments.splice(idx, 1);
     if (thread.comments.length === 0) {
       this.threads.delete(threadId);
     }
-    this.notifyChange();
+    this.notify({ type: 'comment-deleted', threadId, anchor, commentId });
   }
 
   /** Remove a thread and all its comments. */
   deleteThread(threadId: string): void {
-    if (this.threads.delete(threadId)) {
-      this.notifyChange();
-    }
+    const thread = this.threads.get(threadId);
+    if (!thread) return;
+    const anchor = thread.anchor;
+    this.threads.delete(threadId);
+    this.notify({ type: 'thread-deleted', threadId, anchor });
   }
 
   resolveThread(threadId: string, by: CommentAuthor): void {
@@ -152,16 +184,16 @@ export class CommentStore {
     thread.status = 'resolved';
     thread.resolvedBy = by.id;
     thread.resolvedAt = now();
-    this.notifyChange();
+    this.notify({ type: 'thread-resolved', threadId, anchor: thread.anchor, by });
   }
 
-  reopenThread(threadId: string): void {
+  reopenThread(threadId: string, by: CommentAuthor): void {
     const thread = this.threads.get(threadId);
     if (!thread || thread.status === 'open') return;
     thread.status = 'open';
     delete thread.resolvedBy;
     delete thread.resolvedAt;
-    this.notifyChange();
+    this.notify({ type: 'thread-reopened', threadId, anchor: thread.anchor, by });
   }
 
   // --- Serialization -------------------------------------------------------

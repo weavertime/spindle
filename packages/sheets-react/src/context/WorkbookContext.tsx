@@ -1,26 +1,39 @@
-import React, { createContext, useContext, useMemo, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { WorkbookImpl } from '@pagent-libs/sheets-core';
-import type { CommentAuthor } from '@pagent-libs/sheets-core';
+import type { CommentAuthor, SheetCommentEvent } from '@pagent-libs/sheets-core';
 
 interface WorkbookContextValue {
   workbook: WorkbookImpl;
   updateWorkbook: (updater: (wb: WorkbookImpl) => void) => void;
   /** Identity attributed to comments created in this session. */
   currentUser: CommentAuthor;
+  /** Users that can be @-mentioned in comments. */
+  mentionableUsers: CommentAuthor[];
 }
 
 const WorkbookContext = createContext<WorkbookContextValue | undefined>(undefined);
 
 const DEFAULT_USER: CommentAuthor = { id: 'local-user', name: 'You' };
+const NO_USERS: CommentAuthor[] = [];
 
 export function WorkbookProvider({
   workbook: initialWorkbook,
   currentUser,
+  mentionableUsers,
+  onCommentEvent,
   children,
 }: {
   workbook: WorkbookImpl;
   /** Author for comments. Falls back to a generic local user when omitted. */
   currentUser?: CommentAuthor;
+  /** Users that can be @-mentioned. Pass a stable reference. */
+  mentionableUsers?: CommentAuthor[];
+  /**
+   * Called for the local user's comment actions (create / reply / resolve /
+   * etc.) — the hook for sending notifications. Not fired for threads that
+   * arrive from collaborators.
+   */
+  onCommentEvent?: (event: SheetCommentEvent) => void;
   children: React.ReactNode;
 }) {
   const [workbook] = useState<WorkbookImpl>(initialWorkbook);
@@ -31,6 +44,17 @@ export function WorkbookProvider({
     () => currentUser ?? DEFAULT_USER,
     [currentUser?.id, currentUser?.name],
   );
+  const resolvedMentionables = mentionableUsers ?? NO_USERS;
+
+  // Forward semantic comment events to the host. A ref keeps the listener
+  // stable even if the app passes an inline onCommentEvent callback.
+  const onCommentEventRef = useRef(onCommentEvent);
+  onCommentEventRef.current = onCommentEvent;
+  useEffect(() => {
+    return workbook.on('commentEvent', (data) => {
+      onCommentEventRef.current?.(data.payload as SheetCommentEvent);
+    });
+  }, [workbook]);
 
   // Subscribe to workbook events to trigger re-renders
   useEffect(() => {
@@ -73,8 +97,9 @@ export function WorkbookProvider({
       workbook,
       updateWorkbook,
       currentUser: resolvedUser,
+      mentionableUsers: resolvedMentionables,
     }),
-    [workbook, updateWorkbook, updateTrigger, resolvedUser]
+    [workbook, updateWorkbook, updateTrigger, resolvedUser, resolvedMentionables]
   );
 
   return <WorkbookContext.Provider value={value}>{children}</WorkbookContext.Provider>;

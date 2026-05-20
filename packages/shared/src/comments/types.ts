@@ -20,6 +20,8 @@ export interface Comment {
   createdAt: string;
   /** ISO-8601 timestamp, set when the body is edited. */
   editedAt?: string;
+  /** IDs of users @-mentioned in the body. */
+  mentions?: string[];
 }
 
 export interface CommentThread<Anchor = unknown> {

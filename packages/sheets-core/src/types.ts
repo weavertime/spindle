@@ -331,6 +331,7 @@ export type EventType =
   | 'sheetDelete'
   | 'sheetRename'
   | 'commentChange'
+  | 'commentEvent'
   | 'workbookChange';
 
 export interface EventData {

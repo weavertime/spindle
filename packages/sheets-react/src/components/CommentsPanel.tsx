@@ -1,8 +1,9 @@
-import React, { memo, useState } from 'react';
+import React, { memo, useRef, useState } from 'react';
 import { X, Check, RotateCcw, Trash2, MessageSquare } from 'lucide-react';
 import { columnIndexToLabel } from '@pagent-libs/sheets-core';
-import type { Comment, SheetCommentThread } from '@pagent-libs/sheets-core';
+import type { Comment, CommentAuthor, SheetCommentThread } from '@pagent-libs/sheets-core';
 import { useComments } from '../hooks/useComments';
+import { useWorkbook } from '../context/WorkbookContext';
 
 // ============================================================================
 // Helpers
@@ -41,6 +42,36 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
+const mentionStyle: React.CSSProperties = {
+  color: '#6366f1',
+  fontWeight: 600,
+};
+
+/** Render a comment body, highlighting @Name spans for known mentioned users. */
+function renderBody(body: string, mentionNames: string[]): React.ReactNode {
+  if (mentionNames.length === 0) return body;
+  // Longest names first so "@John Smith" wins over "@John".
+  const escaped = mentionNames
+    .slice()
+    .sort((a, b) => b.length - a.length)
+    .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const re = new RegExp('@(?:' + escaped.join('|') + ')', 'g');
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    if (m.index > last) parts.push(body.slice(last, m.index));
+    parts.push(
+      <span key={m.index} style={mentionStyle}>
+        {m[0]}
+      </span>,
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < body.length) parts.push(body.slice(last));
+  return parts;
+}
+
 // ============================================================================
 // Avatar
 // ============================================================================
@@ -76,52 +107,167 @@ interface ComposerProps {
   placeholder: string;
   submitLabel: string;
   autoFocus?: boolean;
-  onSubmit: (body: string) => void;
+  onSubmit: (body: string, mentions: string[]) => void;
 }
 
 function Composer({ placeholder, submitLabel, autoFocus, onSubmit }: ComposerProps) {
+  const { mentionableUsers } = useWorkbook();
   const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
+  // Users picked from the @-autocomplete; reconciled against the body on submit.
+  const [picked, setPicked] = useState<CommentAuthor[]>([]);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [highlightIdx, setHighlightIdx] = useState(0);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const matches =
+    mentionQuery !== null
+      ? mentionableUsers
+          .filter((u) => u.name.toLowerCase().includes(mentionQuery.toLowerCase()))
+          .slice(0, 6)
+      : [];
+  const dropdownOpen = mentionQuery !== null && matches.length > 0;
 
   const submit = (): void => {
     const body = value.trim();
     if (!body) return;
-    onSubmit(body);
+    const mentions = [
+      ...new Set(picked.filter((u) => body.includes('@' + u.name)).map((u) => u.id)),
+    ];
+    onSubmit(body, mentions);
     setValue('');
+    setPicked([]);
+    setMentionQuery(null);
+  };
+
+  // Track whether the caret sits inside an `@token` partial.
+  const syncMentionQuery = (text: string, caret: number): void => {
+    const m = text.slice(0, caret).match(/(?:^|\s)@(\w*)$/);
+    setMentionQuery(m ? m[1] : null);
+    setHighlightIdx(0);
+  };
+
+  const insertMention = (user: CommentAuthor): void => {
+    const ta = textareaRef.current;
+    const caret = ta?.selectionStart ?? value.length;
+    const m = value.slice(0, caret).match(/@(\w*)$/);
+    if (!m) return;
+    const atIndex = caret - m[0].length;
+    const next = value.slice(0, atIndex) + '@' + user.name + ' ' + value.slice(caret);
+    setValue(next);
+    setPicked((p) => (p.some((u) => u.id === user.id) ? p : [...p, user]));
+    setMentionQuery(null);
+    const newCaret = atIndex + user.name.length + 2;
+    requestAnimationFrame(() => {
+      ta?.focus();
+      ta?.setSelectionRange(newCaret, newCaret);
+    });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (dropdownOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setHighlightIdx((i) => Math.min(i + 1, matches.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setHighlightIdx((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        insertMention(matches[highlightIdx]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMentionQuery(null);
+        return;
+      }
+    }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      submit();
+    }
   };
 
   return (
     <div>
-      <textarea
-        value={value}
-        autoFocus={autoFocus}
-        placeholder={placeholder}
-        onChange={(e) => setValue(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            submit();
-          }
-        }}
-        rows={2}
-        style={{
-          width: '100%',
-          resize: 'vertical',
-          minHeight: 38,
-          padding: '8px 10px',
-          borderRadius: '8px',
-          border: `1px solid ${focused ? '#6366f1' : 'rgba(15, 23, 42, 0.12)'}`,
-          boxShadow: focused ? '0 0 0 3px rgba(99, 102, 241, 0.12)' : 'none',
-          outline: 'none',
-          fontFamily: FONT,
-          fontSize: '13px',
-          color: '#1e293b',
-          boxSizing: 'border-box',
-          transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
-        }}
-      />
+      <div style={{ position: 'relative' }}>
+        <textarea
+          ref={textareaRef}
+          value={value}
+          autoFocus={autoFocus}
+          placeholder={placeholder}
+          onChange={(e) => {
+            setValue(e.target.value);
+            syncMentionQuery(e.target.value, e.target.selectionStart ?? e.target.value.length);
+          }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onKeyDown={handleKeyDown}
+          rows={2}
+          style={{
+            width: '100%',
+            resize: 'vertical',
+            minHeight: 38,
+            padding: '8px 10px',
+            borderRadius: '8px',
+            border: `1px solid ${focused ? '#6366f1' : 'rgba(15, 23, 42, 0.12)'}`,
+            boxShadow: focused ? '0 0 0 3px rgba(99, 102, 241, 0.12)' : 'none',
+            outline: 'none',
+            fontFamily: FONT,
+            fontSize: '13px',
+            color: '#1e293b',
+            boxSizing: 'border-box',
+            transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+          }}
+        />
+        {dropdownOpen && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 'calc(100% + 4px)',
+              left: 0,
+              right: 0,
+              background: '#ffffff',
+              borderRadius: '8px',
+              border: '1px solid rgba(15, 23, 42, 0.1)',
+              boxShadow: '0 8px 20px -6px rgba(15, 23, 42, 0.2)',
+              zIndex: 50,
+              padding: 4,
+              maxHeight: 180,
+              overflowY: 'auto',
+            }}
+          >
+            {matches.map((u, i) => (
+              <div
+                key={u.id}
+                // mousedown (not click) so the textarea keeps focus
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  insertMention(u);
+                }}
+                onMouseEnter={() => setHighlightIdx(i)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '6px 8px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  background: i === highlightIdx ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                }}
+              >
+                <Avatar name={u.name} id={u.id} size={22} />
+                <span style={{ fontSize: '13px', color: '#1e293b' }}>{u.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
         <button
           onClick={submit}
@@ -154,7 +300,7 @@ interface ThreadCardProps {
   thread: SheetCommentThread;
   /** Cell label (A1) shown as a badge — used in the all-threads list. */
   cellLabel?: string;
-  onReply: (body: string) => void;
+  onReply: (body: string, mentions: string[]) => void;
   onResolve: () => void;
   onReopen: () => void;
   onDeleteThread: () => void;
@@ -191,7 +337,11 @@ function CommentRow({
   comment: Comment;
   onDelete: () => void;
 }) {
+  const { mentionableUsers } = useWorkbook();
   const [hovered, setHovered] = useState(false);
+  const mentionNames = (comment.mentions ?? [])
+    .map((id) => mentionableUsers.find((u) => u.id === id)?.name)
+    .filter((n): n is string => !!n);
   return (
     <div
       onMouseEnter={() => setHovered(true)}
@@ -239,7 +389,7 @@ function CommentRow({
             marginTop: 2,
           }}
         >
-          {comment.body}
+          {renderBody(comment.body, mentionNames)}
         </div>
       </div>
     </div>
@@ -434,7 +584,7 @@ export const CommentsPanel = memo(function CommentsPanel({ activeCell, onClose }
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   const threadCallbacks = (thread: SheetCommentThread) => ({
-    onReply: (body: string) => comments.addReply(thread.id, body),
+    onReply: (body: string, mentions: string[]) => comments.addReply(thread.id, body, mentions),
     onResolve: () => comments.resolveThread(thread.id),
     onReopen: () => comments.reopenThread(thread.id),
     onDeleteThread: () => comments.deleteThread(thread.id),
@@ -516,10 +666,12 @@ export const CommentsPanel = memo(function CommentsPanel({ activeCell, onClose }
                   {cellThreads.length > 0 ? 'Add another comment' : `Comment on ${cellLabel}`}
                 </div>
                 <Composer
-                  placeholder="Add a comment…"
+                  placeholder="Add a comment…  Use @ to mention"
                   submitLabel="Comment"
                   autoFocus={cellThreads.length === 0}
-                  onSubmit={(body) => comments.addThreadAtCell(activeCell.row, activeCell.col, body)}
+                  onSubmit={(body, mentions) =>
+                    comments.addThreadAtCell(activeCell.row, activeCell.col, body, mentions)
+                  }
                 />
               </div>
             </>

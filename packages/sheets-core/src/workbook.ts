@@ -19,7 +19,7 @@ import {
   ensureSheetYMap,
   threadKey,
 } from './collab/y-schema';
-import type { CommentStore, SheetCommentThread } from './comments';
+import type { CommentStore, CommentMutationEvent, SheetCommentThread } from './comments';
 import {
   toStableAst,
   fromStableAst,
@@ -1542,13 +1542,18 @@ export class WorkbookImpl implements Workbook {
    * event for the UI and mirrors the threads into the Y.Doc.
    */
   private wireCommentListener(sheet: SheetImpl): void {
-    sheet.comments.__setChangeListener(() => this.onCommentChange(sheet.id));
+    sheet.comments.__setChangeListener((event) => this.onCommentChange(sheet.id, event));
   }
 
-  /** Comment-mutation handler: mirror to collab (if attached) + notify UI. */
-  private onCommentChange(sheetId: string): void {
+  /**
+   * Comment-mutation handler: mirror to collab (if attached), trigger a UI
+   * re-render (`commentChange`), and surface a semantic `commentEvent` the
+   * host app can hook for notifications.
+   */
+  private onCommentChange(sheetId: string, event: CommentMutationEvent): void {
     this.mirrorSheetThreads(sheetId);
     this.events.emit('commentChange', { sheetId });
+    this.events.emit('commentEvent', { ...event, sheetId });
   }
 
   /**
