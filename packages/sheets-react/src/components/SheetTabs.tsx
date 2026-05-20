@@ -102,16 +102,20 @@ export const SheetTabs = memo(function SheetTabs({
       style={{
         display: 'flex',
         alignItems: 'center',
-        borderTop: '1px solid #e0e0e0',
-        backgroundColor: '#f8f9fa',
+        gap: '4px',
+        borderTop: '1px solid rgba(15, 23, 42, 0.06)',
+        background: 'rgba(255, 255, 255, 0.55)',
+        backdropFilter: 'blur(12px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(12px) saturate(180%)',
         overflowX: 'auto',
         overflowY: 'hidden',
-        minHeight: '36px',
-        height: '36px',
+        minHeight: '38px',
+        height: '38px',
         flexShrink: 0,
-        boxShadow: '0 -1px 4px rgba(0, 0, 0, 0.04)',
+        padding: '0 8px',
         position: 'relative',
         zIndex: 10,
+        fontFamily: '"Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
       }}
     >
       {sheets.map((sheet) => {
@@ -124,29 +128,27 @@ export const SheetTabs = memo(function SheetTabs({
             className="sheet-tab"
             style={{
               position: 'relative',
-              padding: '8px 28px 8px 16px',
-              marginRight: '2px',
+              padding: '6px 30px 6px 14px',
               backgroundColor: isActive ? '#ffffff' : 'transparent',
               cursor: 'pointer',
               userSelect: 'none',
-              minWidth: '100px',
+              minWidth: '92px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               fontSize: '13px',
-              fontWeight: isActive ? 500 : 400,
-              color: isActive ? '#1a73e8' : '#5f6368',
-              borderRadius: isActive ? '0 0 8px 8px' : '0',
-              borderTop: isActive ? '2px solid #1a73e8' : '2px solid transparent',
+              fontWeight: isActive ? 600 : 500,
+              color: isActive ? '#6366f1' : '#64748b',
+              borderRadius: '9px',
+              border: isActive ? '1px solid rgba(99, 102, 241, 0.25)' : '1px solid transparent',
               transition: 'all 0.15s ease',
-              transform: isActive ? 'translateY(2px)' : 'none',
-              boxShadow: isActive ? '0 2px 4px rgba(0, 0, 0, 0.08)' : 'none',
+              boxShadow: isActive ? '0 2px 6px rgba(99, 102, 241, 0.16)' : 'none',
             }}
             onClick={() => handleSheetClick(sheet.id)}
             onDoubleClick={() => handleSheetDoubleClick(sheet.id, sheet.name)}
             onMouseEnter={(e) => {
               if (!isActive) {
-                e.currentTarget.style.backgroundColor = '#f1f3f4';
+                e.currentTarget.style.backgroundColor = 'rgba(99, 102, 241, 0.08)';
               }
             }}
             onMouseLeave={(e) => {
@@ -164,15 +166,16 @@ export const SheetTabs = memo(function SheetTabs({
                 onKeyDown={(e) => handleRenameKeyDown(e, sheet.id)}
                 onClick={(e) => e.stopPropagation()}
                 style={{
-                  border: '2px solid #1a73e8',
+                  border: '2px solid #6366f1',
                   outline: 'none',
                   padding: '4px 8px',
                   fontSize: '13px',
                   width: '100%',
                   maxWidth: '150px',
-                  borderRadius: '4px',
+                  borderRadius: '7px',
                   backgroundColor: '#ffffff',
-                  color: '#202124',
+                  color: '#1e293b',
+                  fontFamily: 'inherit',
                 }}
                 autoFocus
               />
@@ -192,13 +195,13 @@ export const SheetTabs = memo(function SheetTabs({
                       border: 'none',
                       background: 'transparent',
                       cursor: 'pointer',
-                      fontSize: '18px',
-                      color: '#5f6368',
+                      fontSize: '15px',
+                      color: '#94a3b8',
                       padding: '2px 6px',
                       lineHeight: 1,
                       borderRadius: '50%',
-                      width: '20px',
-                      height: '20px',
+                      width: '18px',
+                      height: '18px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -206,12 +209,12 @@ export const SheetTabs = memo(function SheetTabs({
                     }}
                     title="Delete sheet"
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#ea4335';
+                      e.currentTarget.style.backgroundColor = '#ef4444';
                       e.currentTarget.style.color = '#ffffff';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.backgroundColor = 'transparent';
-                      e.currentTarget.style.color = '#5f6368';
+                      e.currentTarget.style.color = '#94a3b8';
                     }}
                   >
                     ×
@@ -225,30 +228,30 @@ export const SheetTabs = memo(function SheetTabs({
       <button
         onClick={handleAddSheet}
         style={{
-          padding: '8px 16px',
+          padding: '0',
           border: 'none',
-          marginLeft: '4px',
           backgroundColor: 'transparent',
           cursor: 'pointer',
           fontSize: '20px',
-          color: '#5f6368',
+          color: '#64748b',
           lineHeight: 1,
-          borderRadius: '4px',
+          borderRadius: '8px',
           transition: 'all 0.15s ease',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          minWidth: '32px',
-          height: '32px',
+          minWidth: '30px',
+          height: '30px',
+          flexShrink: 0,
         }}
         title="Add new sheet"
         onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = '#f1f3f4';
-          e.currentTarget.style.color = '#1a73e8';
+          e.currentTarget.style.backgroundColor = 'rgba(99, 102, 241, 0.08)';
+          e.currentTarget.style.color = '#6366f1';
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.backgroundColor = 'transparent';
-          e.currentTarget.style.color = '#5f6368';
+          e.currentTarget.style.color = '#64748b';
         }}
       >
         +

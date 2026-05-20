@@ -46,7 +46,8 @@
   },
   "dependencies": {
     "@pagent-libs/sheets-core": "^0.1.0",
-    "immer": "^10.0.0"
+    "immer": "^10.0.0",
+    "lucide-react": "^0.563.0"
   },
   "devDependencies": {
     "@rollup/plugin-typescript": "^11.1.0",

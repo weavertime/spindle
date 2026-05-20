@@ -83,7 +83,7 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
   
   // Calculate layout dimensions (needed for floating input positioning)
   const headerHeight = rowHeight;
-  const toolbarHeight = 44;
+  const toolbarHeight = 60;
   const formulaBarHeight = 32;
   const canvasAreaHeight = height - toolbarHeight - formulaBarHeight;
   const canvasAreaWidth = width;
@@ -697,12 +697,13 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
         flexDirection: 'column',
         width,
         height,
-        border: '1px solid #e0e0e0',
-        backgroundColor: '#ffffff',
-        borderRadius: '4px',
-        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+        border: '1px solid rgba(15, 23, 42, 0.08)',
+        background: 'linear-gradient(180deg, #f8fafc 0%, #eef2f6 100%)',
+        borderRadius: '14px',
+        boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04), 0 12px 32px -8px rgba(15, 23, 42, 0.12)',
         overflow: 'hidden',
         position: 'relative',
+        fontFamily: '"Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
       }}
       onMouseDown={handleContainerInteraction}
       onFocus={handleContainerInteraction}
@@ -737,6 +738,17 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
         }}
         frozenRows={workbook.getSheet().getFrozenRows()}
         frozenCols={workbook.getSheet().getFrozenCols()}
+        activeColumn={activeCell?.col}
+        onSortColumn={handleSortColumnByDirection}
+        onFilterColumn={(column) => {
+          const sheet = workbook.getSheet();
+          const existingFilter = sheet.getFilters().get(column);
+          setFilterModal({
+            isOpen: true,
+            column,
+            existingFilter,
+          });
+        }}
         onBold={() => applyStyleToSelection((s) => ({ ...s, bold: !s?.bold }))}
         onItalic={() => applyStyleToSelection((s) => ({ ...s, italic: !s?.italic }))}
         onUnderline={() =>
@@ -894,11 +906,15 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
               left: floatingInputPos.x,
               width: 280,
               zIndex: 1000,
-              backgroundColor: '#ffffff',
-              border: '1px solid #1a73e8',
-              borderRadius: '6px',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+              background: 'rgba(255, 255, 255, 0.98)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+              border: '1px solid rgba(99, 102, 241, 0.35)',
+              borderRadius: '12px',
+              boxShadow:
+                '0 10px 15px -3px rgba(15, 23, 42, 0.1), 0 20px 25px -5px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(15, 23, 42, 0.04)',
               overflow: 'hidden',
+              fontFamily: '"Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
             }}
           >
             {/* Drag handle */}
@@ -908,11 +924,12 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '4px 8px',
-                backgroundColor: '#1a73e8',
+                padding: '7px 12px',
+                background: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
                 color: '#ffffff',
                 cursor: isDragging ? 'grabbing' : 'grab',
-                fontSize: '11px',
+                fontSize: '12px',
+                fontWeight: 600,
                 userSelect: 'none',
               }}
             >
@@ -922,11 +939,11 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
                   return originalSheet?.name || 'Sheet';
                 })()}!{columnIndexToLabel(editingCell.col)}{editingCell.row + 1}
               </span>
-              <span style={{ opacity: 0.7, fontSize: '10px' }}>⋮⋮ drag</span>
+              <span style={{ opacity: 0.85, fontSize: '10px', fontWeight: 500 }}>⋮⋮ drag</span>
             </div>
-            
+
             {/* Input area */}
-            <div style={{ padding: '6px 8px' }}>
+            <div style={{ padding: '10px' }}>
               <input
                 ref={floatingInputRef}
                 type="text"
@@ -972,16 +989,19 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
                 onMouseDown={(e) => e.stopPropagation()}
                 style={{
                   width: '100%',
-                  border: '1px solid #e0e0e0',
-                  borderRadius: '3px',
-                  padding: '5px 8px',
-                  fontSize: '12px',
+                  border: '1px solid #6366f1',
+                  borderRadius: '8px',
+                  padding: '7px 10px',
+                  fontSize: '13px',
                   outline: 'none',
                   boxSizing: 'border-box',
+                  color: '#1e293b',
+                  fontFamily: 'inherit',
+                  boxShadow: '0 0 0 3px rgba(99, 102, 241, 0.12)',
                 }}
                 autoFocus
               />
-              <div style={{ fontSize: '9px', color: '#888', marginTop: '3px' }}>
+              <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '6px' }}>
                 Click cells to add. Enter ✓ | Esc ✗
               </div>
             </div>
