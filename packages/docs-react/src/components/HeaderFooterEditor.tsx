@@ -11,7 +11,7 @@
 import { memo, useState, useCallback, useEffect, useRef } from 'react';
 import { EditorState, Transaction } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
-import { Schema, Node as PmNode } from 'prosemirror-model';
+import { Schema, Node as PmNode, type Mark } from 'prosemirror-model';
 import { TextSelection } from 'prosemirror-state';
 import { baseKeymap, toggleMark } from 'prosemirror-commands';
 import { keymap } from 'prosemirror-keymap';
@@ -201,7 +201,7 @@ function contentToPmDoc(content: HeaderFooterContent, pageIndex: number): PmNode
     for (const item of block.content) {
       if (item.type === 'text') {
         if (item.text) {
-          const marks: any[] = [];
+          const marks: Mark[] = [];
           if (item.bold) marks.push(headerFooterSchema.mark('bold'));
           if (item.italic) marks.push(headerFooterSchema.mark('italic'));
           if (item.underline) marks.push(headerFooterSchema.mark('underline'));

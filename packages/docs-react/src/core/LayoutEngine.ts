@@ -154,34 +154,38 @@ function estimateBlockHeight(node: PmNode): number {
   const paragraphSpacing = 12; // Default paragraph spacing
 
   switch (node.type.name) {
-    case 'paragraph':
+    case 'paragraph': {
       // Estimate based on text length
       const textLength = node.textContent.length;
       const charsPerLine = 80; // Approximate
       const lines = Math.max(1, Math.ceil(textLength / charsPerLine));
       return lines * lineHeight + paragraphSpacing;
+    }
 
-    case 'heading':
+    case 'heading': {
       const level = node.attrs.level || 1;
       const headingHeight = level === 1 ? 36 : level === 2 ? 28 : 22;
       return headingHeight + paragraphSpacing;
+    }
 
     case 'bullet_list':
-    case 'ordered_list':
+    case 'ordered_list': {
       let listHeight = 0;
       node.forEach((item) => {
         listHeight += estimateBlockHeight(item);
       });
       return listHeight + paragraphSpacing;
+    }
 
-    case 'list_item':
+    case 'list_item': {
       let itemHeight = 0;
       node.forEach((child) => {
         itemHeight += estimateBlockHeight(child);
       });
       return itemHeight;
+    }
 
-    case 'table':
+    case 'table': {
       let tableHeight = 0;
       node.forEach((row) => {
         let maxCellHeight = lineHeight;
@@ -195,6 +199,7 @@ function estimateBlockHeight(node: PmNode): number {
         tableHeight += maxCellHeight + 8; // Cell padding
       });
       return tableHeight + paragraphSpacing;
+    }
 
     case 'image':
       return (node.attrs.height || 200) + paragraphSpacing;

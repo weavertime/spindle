@@ -500,9 +500,9 @@ export class TableInteractionManager {
       
       if (frag.isListItem) {
         // Start of a list group - find all consecutive list items
-        let groupStart = frag.pmStart;
+        const groupStart = frag.pmStart;
         let groupEnd = frag.pmEnd;
-        let groupTop = frag.top;
+        const groupTop = frag.top;
         let groupBottom = frag.bottom;
         const firstElement = frag.element;
         

@@ -128,7 +128,7 @@ const proseMirrorStyles = `
 export interface ActiveMarks extends ActiveState {}
 
 export interface ProseMirrorEditorProps {
-  initialContent?: any;
+  initialContent?: unknown;
   onChange?: (state: EditorState) => void;
   onSelectionChange?: (state: EditorState, activeMarks: ActiveMarks) => void;
   onFocus?: () => void;
@@ -153,7 +153,7 @@ export interface ProseMirrorEditorRef {
   focus: () => void;
   blur: () => void;
   getState: () => EditorState | null;
-  getContent: () => any;
+  getContent: () => unknown;
   runCommand: (command: ReturnType<DocsCommands[keyof DocsCommands]>) => boolean;
 }
 
@@ -229,6 +229,7 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorRef, ProseMirrorEdi
       // the EditorView constructor — at that moment the outer `view` binding
       // hasn't been assigned yet.
       let view: EditorView | undefined;
+      // eslint-disable-next-line prefer-const -- `const` would TDZ-crash; see above
       view = new EditorView(editorRef.current, {
         state,
         editable: () => editable,

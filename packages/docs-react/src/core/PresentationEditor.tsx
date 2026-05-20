@@ -21,7 +21,7 @@ import {
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { Node as PmNode } from 'prosemirror-model';
-import { blocksToPmDoc, proseMirrorToDocument, Block } from '@pagent-libs/docs-core';
+import { blocksToPmDoc, proseMirrorToDocument, Block, DEFAULT_PAGE_CONFIG } from '@pagent-libs/docs-core';
 
 import { HiddenEditor, HiddenEditorHandle } from './HiddenEditor';
 import {
@@ -165,7 +165,13 @@ export const PresentationEditor = memo(function PresentationEditor({
 
     // Notify parent
     if (onDocChange) {
-      const docModel = proseMirrorToDocument(doc, { sections: [{ id: 'main', blocks: [] }] } as any);
+      // Minimal stand-in document — only its blocks are read back.
+      const docModel = proseMirrorToDocument(doc, {
+        id: '',
+        title: '',
+        sections: [{ id: 'main', pageConfig: DEFAULT_PAGE_CONFIG, blocks: [] }],
+        defaultPageConfig: DEFAULT_PAGE_CONFIG,
+      });
       onDocChange(docModel.sections[0].blocks);
     }
   }, [onDocChange]);

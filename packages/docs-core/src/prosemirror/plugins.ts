@@ -10,7 +10,7 @@ import {
   ellipsis,
   InputRule,
 } from 'prosemirror-inputrules';
-import { Plugin, PluginKey } from 'prosemirror-state';
+import { Plugin, PluginKey, type Command } from 'prosemirror-state';
 import type { Schema } from 'prosemirror-model';
 import { liftListItem, sinkListItem, splitListItem } from 'prosemirror-schema-list';
 
@@ -92,7 +92,7 @@ export function buildInputRules(schema: Schema): Plugin {
  * Build the keymap for the schema
  */
 export function buildKeymap(schema: Schema): Plugin {
-  const keys: Record<string, any> = {};
+  const keys: Record<string, Command> = {};
 
   // Undo/Redo
   keys['Mod-z'] = undo;

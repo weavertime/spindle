@@ -1,24 +1,53 @@
-import { Node as PmNode } from 'prosemirror-model';
+import { Node as PmNode, type Mark } from 'prosemirror-model';
 import { docsSchema } from './schema';
-import type { 
-  Document, 
-  Block, 
+import type {
+  Document,
+  Block,
   Section,
   InlineContent,
   TextRun,
   InlineLink,
   TextStyle,
   TextStylePool,
+  ParagraphBlock,
+  HeadingBlock,
+  TableRow,
+  TableCell,
+  ListType,
 } from '../types';
+
+/**
+ * Loosely-typed ProseMirror node JSON — the shape Schema.nodeFromJSON()
+ * accepts. ProseMirror itself types this position as `any`.
+ */
+export interface PmNodeJSON {
+  type: string;
+  attrs?: Record<string, unknown>;
+  content?: PmNodeJSON[];
+  marks?: PmMarkJSON[];
+  text?: string;
+  /**
+   * Internal marker field, set only on synthetic '__list_item__' nodes.
+   * blocksToPmDoc groups consecutive markers into list nodes — the markers
+   * themselves are never handed to ProseMirror.
+   */
+  listType?: ListType;
+}
+
+/** Loosely-typed ProseMirror mark JSON. */
+export interface PmMarkJSON {
+  type: string;
+  attrs?: Record<string, unknown>;
+}
 
 /**
  * Convert our document model to ProseMirror JSON format
  */
-export function documentToProseMirror(doc: Document): any {
-  const content = doc.sections.flatMap(section => 
-    section.blocks.map(block => blockToPmNode(block))
-  ).filter(Boolean);
-  
+export function documentToProseMirror(doc: Document): PmNodeJSON {
+  const content = doc.sections
+    .flatMap(section => section.blocks.map(block => blockToPmNode(block)))
+    .filter((node): node is PmNodeJSON => node !== null);
+
   return {
     type: 'doc',
     content: content.length > 0 ? content : [{ type: 'paragraph', content: [] }],
@@ -28,9 +57,11 @@ export function documentToProseMirror(doc: Document): any {
 /**
  * Convert a section to ProseMirror JSON format
  */
-export function sectionToProseMirror(section: Section): any {
-  const content = section.blocks.map(block => blockToPmNode(block)).filter(Boolean);
-  
+export function sectionToProseMirror(section: Section): PmNodeJSON {
+  const content = section.blocks
+    .map(block => blockToPmNode(block))
+    .filter((node): node is PmNodeJSON => node !== null);
+
   return {
     type: 'doc',
     content: content.length > 0 ? content : [{ type: 'paragraph', content: [] }],
@@ -40,7 +71,7 @@ export function sectionToProseMirror(section: Section): any {
 /**
  * Convert a single block to ProseMirror node JSON
  */
-function blockToPmNode(block: Block, stylePool?: TextStylePool): any {
+function blockToPmNode(block: Block, stylePool?: TextStylePool): PmNodeJSON | null {
   switch (block.type) {
     case 'paragraph':
       return {
@@ -124,8 +155,8 @@ function blockToPmNode(block: Block, stylePool?: TextStylePool): any {
 /**
  * Convert a TextStyle to ProseMirror marks
  */
-function styleToMarks(style: TextStyle): any[] {
-  const marks: any[] = [];
+function styleToMarks(style: TextStyle): PmMarkJSON[] {
+  const marks: PmMarkJSON[] = [];
   
   if (style.bold) marks.push({ type: 'bold' });
   if (style.italic) marks.push({ type: 'italic' });
@@ -136,7 +167,7 @@ function styleToMarks(style: TextStyle): any[] {
   if (style.smallCaps) marks.push({ type: 'smallCaps' });
   
   // Add textStyle mark if any text style attributes are set
-  const textStyleAttrs: any = {};
+  const textStyleAttrs: Record<string, unknown> = {};
   if (style.color) textStyleAttrs.color = style.color;
   if (style.backgroundColor) textStyleAttrs.backgroundColor = style.backgroundColor;
   if (style.fontSize) textStyleAttrs.fontSize = style.fontSize;
@@ -154,15 +185,15 @@ function styleToMarks(style: TextStyle): any[] {
  * @param content - The inline content array
  * @param stylePool - Optional style pool for looking up styles by ID
  */
-function inlineContentToPm(content: InlineContent[], stylePool?: TextStylePool): any[] {
+function inlineContentToPm(content: InlineContent[], stylePool?: TextStylePool): PmNodeJSON[] {
   if (!content || content.length === 0) {
     return [];
   }
   
   return content.map(item => {
     if (item.type === 'text') {
-      const result: any = { type: 'text', text: item.text };
-      let marks: any[] = [];
+      const result: PmNodeJSON = { type: 'text', text: item.text };
+      let marks: PmMarkJSON[] = [];
       
       // Check if using styleId (style pool reference)
       if (item.styleId && stylePool) {
@@ -208,7 +239,7 @@ function inlineContentToPm(content: InlineContent[], stylePool?: TextStylePool):
     
     // Inline images would need special handling
     return null;
-  }).filter(Boolean);
+  }).filter((node): node is PmNodeJSON => node !== null);
 }
 
 /**
@@ -257,7 +288,7 @@ export function proseMirrorToDocument(
 function pmNodeToBlocks(node: PmNode, startIndex: number, stylePool?: TextStylePool): Block[] {
   switch (node.type.name) {
     case 'paragraph': {
-      const block: any = {
+      const block: ParagraphBlock = {
         id: `block_${startIndex}_${Date.now()}`,
         type: 'paragraph',
         content: pmContentToInline(node, stylePool),
@@ -279,7 +310,7 @@ function pmNodeToBlocks(node: PmNode, startIndex: number, stylePool?: TextStyleP
     }
       
     case 'heading': {
-      const block: any = {
+      const block: HeadingBlock = {
         id: `block_${startIndex}_${Date.now()}`,
         type: 'heading',
         level: node.attrs.level as 1 | 2 | 3 | 4 | 5 | 6,
@@ -319,9 +350,9 @@ function pmNodeToBlocks(node: PmNode, startIndex: number, stylePool?: TextStyleP
     }
       
     case 'table': {
-      const rows: any[] = [];
+      const rows: TableRow[] = [];
       node.forEach((rowNode) => {
-        const cells: any[] = [];
+        const cells: TableCell[] = [];
         rowNode.forEach((cellNode) => {
           let content: InlineContent[] = [];
           cellNode.forEach((child) => {
@@ -380,7 +411,7 @@ function pmNodeToBlocks(node: PmNode, startIndex: number, stylePool?: TextStyleP
 /**
  * Extract TextStyle from ProseMirror marks
  */
-function extractStyleFromMarks(marks: readonly any[]): TextStyle | null {
+function extractStyleFromMarks(marks: readonly Mark[]): TextStyle | null {
   const style: TextStyle = {};
   let hasStyle = false;
   
@@ -482,7 +513,7 @@ function pmContentToInline(node: PmNode, stylePool?: TextStylePool): InlineConte
 /**
  * Create a ProseMirror document node from JSON
  */
-export function createPmDoc(json: any): PmNode {
+export function createPmDoc(json: PmNodeJSON): PmNode {
   return docsSchema.nodeFromJSON(json);
 }
 
@@ -492,11 +523,13 @@ export function createPmDoc(json: any): PmNode {
  * @param stylePool - Optional style pool for looking up styles by ID
  */
 export function blocksToPmDoc(blocks: Block[], stylePool?: TextStylePool): PmNode {
-  const rawNodes = blocks.map(block => blockToPmNode(block, stylePool)).filter(Boolean);
-  
+  const rawNodes = blocks
+    .map(block => blockToPmNode(block, stylePool))
+    .filter((node): node is PmNodeJSON => node !== null);
+
   // Group consecutive list items into single list nodes
-  const content: any[] = [];
-  let currentList: { type: string; listType: string; items: any[] } | null = null;
+  const content: PmNodeJSON[] = [];
+  let currentList: { type: string; listType: ListType | undefined; items: PmNodeJSON[] } | null = null;
   
   for (const node of rawNodes) {
     if (node.type === '__list_item__') {
@@ -505,7 +538,7 @@ export function blocksToPmDoc(blocks: Block[], stylePool?: TextStylePool): PmNod
       
       if (currentList && currentList.listType === node.listType) {
         // Add to existing list
-        currentList.items.push(...node.content);
+        currentList.items.push(...(node.content ?? []));
       } else {
         // Finish previous list if any
         if (currentList) {
@@ -518,7 +551,7 @@ export function blocksToPmDoc(blocks: Block[], stylePool?: TextStylePool): PmNod
         currentList = {
           type: listType,
           listType: node.listType,
-          items: [...node.content],
+          items: [...(node.content ?? [])],
         };
       }
     } else {

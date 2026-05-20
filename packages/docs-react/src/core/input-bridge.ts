@@ -412,7 +412,7 @@ export class InputBridge {
         }
         break;
         
-      default:
+      default: {
         // For other input types, try forwarding as synthetic event
         const synthetic = new InputEvent('beforeinput', {
           data: e.data,
@@ -424,6 +424,7 @@ export class InputBridge {
         });
         view.dom.dispatchEvent(synthetic);
         break;
+      }
     }
   }
   
