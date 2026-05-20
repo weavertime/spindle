@@ -28,6 +28,8 @@ export interface TextRun {
   backgroundColor?: string;
   superscript?: boolean;
   subscript?: boolean;
+  /** Thread ID when this run is covered by a comment. */
+  commentThreadId?: string;
 }
 
 /**
@@ -59,6 +61,8 @@ export interface LinkRun {
   italic?: boolean;
   underline?: boolean;
   color?: string;
+  /** Thread ID when this link is covered by a comment. */
+  commentThreadId?: string;
 }
 
 /**

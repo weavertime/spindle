@@ -380,6 +380,27 @@ const marks: Record<string, MarkSpec> = {
       return ['span', { style: 'font-variant: small-caps' }, 0];
     },
   },
+
+  // Anchors a comment thread to a span of text. `threadId` points at an
+  // entry in the document's comment-thread store. `inclusive: false` so
+  // typing at either edge of the range does not extend the comment.
+  comment: {
+    attrs: {
+      threadId: {},
+    },
+    inclusive: false,
+    parseDOM: [
+      {
+        tag: 'span[data-comment-thread]',
+        getAttrs(dom: HTMLElement) {
+          return { threadId: dom.getAttribute('data-comment-thread') };
+        },
+      },
+    ],
+    toDOM(node): DOMOutputSpec {
+      return ['span', { 'data-comment-thread': node.attrs.threadId as string }, 0];
+    },
+  },
 };
 
 /**

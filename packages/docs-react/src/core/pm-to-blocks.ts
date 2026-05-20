@@ -405,6 +405,10 @@ function applyMarkToRun(run: TextRun, mark: Mark): void {
       run.color = run.color || '#1a73e8';
       run.underline = true;
       break;
+
+    case 'comment':
+      run.commentThreadId = mark.attrs.threadId as string;
+      break;
   }
 }
 
