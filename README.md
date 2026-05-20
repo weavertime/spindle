@@ -15,9 +15,6 @@ This inspired me to create **pagent-libs**—a forever-free, open-source library
 
 pagentapp.com will be a fully encrypted drive application powered by the pagent-libs editing experience.
 
-Love, B.
-
-
 ## Quick Start
 
 ### Installation
@@ -249,7 +246,7 @@ const provider = new WebSocketProvider({ url: 'wss://collab.example.com' });
 
 await workbook.attachCollab(
   provider,
-  { userId: 'u_42', displayName: 'Bharat', color: '#4ecdc4' },
+  { userId: 'u_42', displayName: 'Alice', color: '#4ecdc4' },
   { roomId: 'quarterly-plan', persistenceKey: 'wb:quarterly-plan' },
 );
 ```
