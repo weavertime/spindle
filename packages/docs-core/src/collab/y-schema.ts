@@ -32,6 +32,7 @@ import type {
   SectionData,
   TextStyle,
 } from '../types';
+import type { DocsCommentThread } from '../comments';
 
 export interface YDocFields {
   meta: Y.Map<unknown>;
@@ -39,6 +40,11 @@ export interface YDocFields {
   sectionsMeta: Y.Array<Y.Map<unknown>>;
   textStylePool: Y.Map<unknown>;
   paragraphStylePool: Y.Map<unknown>;
+  /**
+   * Comment threads, keyed by thread id (plain JSON). The `comment` mark in
+   * the body content is the position anchor; this map holds thread content.
+   */
+  threads: Y.Map<unknown>;
 }
 
 /** Return the named Y types used by the schema. Idempotent. */
@@ -49,6 +55,7 @@ export function getYDocFields(ydoc: Y.Doc): YDocFields {
     sectionsMeta: ydoc.getArray<Y.Map<unknown>>('sectionsMeta'),
     textStylePool: ydoc.getMap<unknown>('textStylePool'),
     paragraphStylePool: ydoc.getMap<unknown>('paragraphStylePool'),
+    threads: ydoc.getMap<unknown>('threads'),
   };
 }
 
@@ -97,6 +104,13 @@ export function hydrateYDocFromData(ydoc: Y.Doc, data: DocumentData): void {
       if (section.header) sectionMap.set('header', section.header);
       if (section.footer) sectionMap.set('footer', section.footer);
       fields.sectionsMeta.push([sectionMap]);
+    }
+
+    // Comment threads — keyed by thread id, stored as plain JSON.
+    if (data.threads) {
+      for (const thread of data.threads) {
+        fields.threads.set(thread.id, thread);
+      }
     }
 
     // Content: hydrate the Y.XmlFragment from a PM document built by
@@ -178,6 +192,11 @@ export function serializeYDocToData(ydoc: Y.Doc): DocumentData {
   const rebuilt = proseMirrorToDocument(pmDoc, seedDoc);
   sections[0].blocks = rebuilt.sections[0].blocks;
 
+  const threads: DocsCommentThread[] = [];
+  for (const value of fields.threads.values()) {
+    threads.push(value as DocsCommentThread);
+  }
+
   return {
     id,
     title,
@@ -187,5 +206,6 @@ export function serializeYDocToData(ydoc: Y.Doc): DocumentData {
     paragraphStylePool,
     createdAt,
     updatedAt,
+    threads: threads.length > 0 ? threads : undefined,
   };
 }

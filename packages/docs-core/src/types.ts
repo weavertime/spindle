@@ -149,6 +149,8 @@ export interface TextRun {
   color?: string;
   backgroundColor?: string;
   smallCaps?: boolean;
+  /** Thread ID when this run is covered by a comment. */
+  commentThreadId?: string;
 }
 
 export interface InlineImage {
@@ -164,6 +166,8 @@ export interface InlineLink {
   text: string;
   href: string;
   styleId?: string;
+  /** Thread ID when this link is covered by a comment. */
+  commentThreadId?: string;
 }
 
 export type InlineContent = TextRun | InlineImage | InlineLink | DynamicFieldRun;
@@ -391,7 +395,9 @@ export type DocumentEventType =
   | 'blockDelete'
   | 'selectionChange'
   | 'pageConfigChange'
-  | 'historyChange';
+  | 'historyChange'
+  | 'commentChange'
+  | 'commentEvent';
 
 export interface DocumentEventData {
   type: DocumentEventType;
@@ -428,6 +434,8 @@ export interface DocumentData {
   paragraphStylePool: Record<string, ParagraphStyle>;
   createdAt?: string;
   updatedAt?: string;
+  /** Comment threads anchored to spans of the document body. */
+  threads?: import('./comments').DocsCommentThread[];
 }
 
 export interface SectionData {

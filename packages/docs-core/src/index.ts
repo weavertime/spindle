@@ -4,6 +4,9 @@
 // Types
 export * from './types';
 
+// Comments
+export * from './comments';
+
 // Document
 export { DocumentImpl, createDocument, createSection } from './document';
 

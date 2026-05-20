@@ -13,11 +13,12 @@
 
 import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { PageConfig, PageMargins, Block, HeaderFooterContent } from '@pagent-libs/docs-core';
-import { activeMarksPluginKey } from '@pagent-libs/docs-core';
+import { activeMarksPluginKey, createCommands, docsSchema } from '@pagent-libs/docs-core';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { useDocument, useSections } from '../context/DocumentContext';
 import { Toolbar } from './Toolbar';
+import { CommentsSidebar } from './CommentsSidebar';
 import { Ruler } from './Ruler';
 import { VerticalRuler } from './VerticalRuler';
 import { PageSetupModal } from './PageSetupModal';
@@ -61,15 +62,18 @@ export const DocumentEditor = memo(function DocumentEditor({
   showToolbar = true,
   showRuler = true,
 }: DocumentEditorProps) {
-  const { document: docModel, zoom } = useDocument();
+  const { document: docModel, zoom, currentUser } = useDocument();
   const sections = useSections();
-  
+
   const [showPageSetup, setShowPageSetup] = useState(false);
   const [editorView, setEditorView] = useState<EditorView | null>(null);
   const [activeMarks, setActiveMarks] = useState<ActiveMarks>(defaultActiveMarks);
   const [selectedCell, setSelectedCell] = useState<CellSelection | null>(null);
   const [activePageInfo, setActivePageInfo] = useState<ActivePageInfo | null>(null);
   const [scrollContainer, setScrollContainer] = useState<HTMLElement | null>(null);
+  const [showComments, setShowComments] = useState(false);
+  const [pendingComment, setPendingComment] = useState<{ from: number; to: number; quote: string } | null>(null);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<TrueLayoutEditorHandle>(null);
@@ -162,6 +166,90 @@ export const DocumentEditor = memo(function DocumentEditor({
   const handleActivePageChange = useCallback((info: ActivePageInfo) => {
     setActivePageInfo(info);
   }, []);
+
+  // --- Comments ------------------------------------------------------------
+
+  // Begin a comment on the current selection: capture the range + quoted text
+  // and open the sidebar with a composer. The thread is created on submit.
+  const startComment = useCallback(() => {
+    if (!editorView) return;
+    const { from, to } = editorView.state.selection;
+    if (from === to) return;
+    const quote = editorView.state.doc.textBetween(from, to, ' ');
+    setPendingComment({ from, to, quote });
+    setActiveThreadId(null);
+    setShowComments(true);
+  }, [editorView]);
+
+  // Create the thread and apply the comment mark over the captured range.
+  const createComment = useCallback((body: string, mentions: string[]) => {
+    if (!editorView || !pendingComment) return;
+    const thread = docModel.getComments().addThread(
+      { quote: pendingComment.quote },
+      body,
+      currentUser,
+      mentions,
+    );
+    const commentMark = editorView.state.schema.marks.comment;
+    editorView.dispatch(
+      editorView.state.tr.addMark(
+        pendingComment.from,
+        pendingComment.to,
+        commentMark.create({ threadId: thread.id }),
+      ),
+    );
+    setPendingComment(null);
+    setActiveThreadId(thread.id);
+  }, [editorView, pendingComment, docModel, currentUser]);
+
+  const replyToThread = useCallback((threadId: string, body: string, mentions: string[]) => {
+    docModel.getComments().addReply(threadId, body, currentUser, mentions);
+  }, [docModel, currentUser]);
+
+  const resolveThread = useCallback((threadId: string) => {
+    docModel.getComments().resolveThread(threadId, currentUser);
+  }, [docModel, currentUser]);
+
+  const reopenThread = useCallback((threadId: string) => {
+    docModel.getComments().reopenThread(threadId, currentUser);
+  }, [docModel, currentUser]);
+
+  // Strip a thread's comment mark from the document body.
+  const stripCommentMark = useCallback((threadId: string) => {
+    if (!editorView) return;
+    createCommands(docsSchema).removeComment(threadId)(editorView.state, editorView.dispatch);
+  }, [editorView]);
+
+  const deleteThread = useCallback((threadId: string) => {
+    docModel.getComments().deleteThread(threadId);
+    stripCommentMark(threadId);
+  }, [docModel, stripCommentMark]);
+
+  const deleteComment = useCallback((threadId: string, commentId: string) => {
+    const store = docModel.getComments();
+    store.deleteComment(threadId, commentId);
+    // Deleting the last comment removes the thread — drop its highlight too.
+    if (!store.getThread(threadId)) {
+      stripCommentMark(threadId);
+    }
+  }, [docModel, stripCommentMark]);
+
+  // Clicking a comment highlight opens the sidebar focused on that thread.
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root) return;
+    const onClick = (e: MouseEvent) => {
+      const el = (e.target as HTMLElement).closest('[data-comment-thread]');
+      const threadId = el?.getAttribute('data-comment-thread');
+      if (threadId) {
+        setActiveThreadId(threadId);
+        setPendingComment(null);
+        setShowComments(true);
+      }
+    };
+    root.addEventListener('click', onClick);
+    return () => root.removeEventListener('click', onClick);
+  }, []);
   
   // Keyboard shortcuts for document-level undo/redo
   useEffect(() => {
@@ -232,11 +320,12 @@ export const DocumentEditor = memo(function DocumentEditor({
           padding: '8px 16px',
           background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
         }}>
-          <Toolbar 
+          <Toolbar
             onPageSetup={() => setShowPageSetup(true)}
             editorView={editorView}
             activeMarks={activeMarks}
             selectedCell={selectedCell}
+            onAddComment={startComment}
           />
         </div>
       )}
@@ -306,8 +395,40 @@ export const DocumentEditor = memo(function DocumentEditor({
           onFooterChange={handleFooterChange}
           collabHandle={docModel.getCollabHandle()}
         />
+
+        {/* Comments sidebar — a floating overlay so the page + ruler stay put */}
+        {showComments && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: 320,
+              zIndex: 30,
+              boxShadow: '-8px 0 24px -12px rgba(15, 23, 42, 0.15)',
+            }}
+          >
+            <CommentsSidebar
+              threads={docModel.getComments().getThreads()}
+              activeThreadId={activeThreadId}
+              pendingQuote={pendingComment?.quote ?? null}
+              onClose={() => {
+                setShowComments(false);
+                setPendingComment(null);
+              }}
+              onCreate={createComment}
+              onCancelPending={() => setPendingComment(null)}
+              onReply={replyToThread}
+              onResolve={resolveThread}
+              onReopen={reopenThread}
+              onDeleteThread={deleteThread}
+              onDeleteComment={deleteComment}
+            />
+          </div>
+        )}
       </div>
-      
+
       {/* Page Setup Modal */}
       <PageSetupModal
         isOpen={showPageSetup}

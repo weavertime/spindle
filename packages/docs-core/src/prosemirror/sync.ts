@@ -218,7 +218,11 @@ function inlineContentToPm(content: InlineContent[], stylePool?: TextStylePool):
         
         marks = styleToMarks(inlineStyle);
       }
-      
+
+      if (item.commentThreadId) {
+        marks.push({ type: 'comment', attrs: { threadId: item.commentThreadId } });
+      }
+
       if (marks.length > 0) {
         result.marks = marks;
       }
@@ -227,14 +231,11 @@ function inlineContentToPm(content: InlineContent[], stylePool?: TextStylePool):
     }
     
     if (item.type === 'link') {
-      return {
-        type: 'text',
-        text: item.text,
-        marks: [{
-          type: 'link',
-          attrs: { href: item.href },
-        }],
-      };
+      const marks: PmMarkJSON[] = [{ type: 'link', attrs: { href: item.href } }];
+      if (item.commentThreadId) {
+        marks.push({ type: 'comment', attrs: { threadId: item.commentThreadId } });
+      }
+      return { type: 'text', text: item.text, marks };
     }
     
     // Inline images would need special handling
@@ -468,42 +469,43 @@ function pmContentToInline(node: PmNode, stylePool?: TextStylePool): InlineConte
   node.forEach((child) => {
     if (child.isText) {
       const text = child.text || '';
-      
+
+      // A comment mark anchors a thread to this run.
+      const commentMark = child.marks.find((m) => m.type.name === 'comment');
+      const commentThreadId = commentMark
+        ? (commentMark.attrs.threadId as string)
+        : undefined;
+
       // Check for link mark
       const linkMark = child.marks.find(m => m.type.name === 'link');
+      let item: InlineContent;
       if (linkMark) {
-        content.push({
+        item = {
           type: 'link',
           text,
           href: linkMark.attrs.href,
-        } as InlineLink);
+        } as InlineLink;
       } else {
         // Extract style from marks
         const style = extractStyleFromMarks(child.marks);
-        
+
         if (style && stylePool) {
           // Use style pool for deduplication (recommended for large documents)
           const styleId = stylePool.getOrCreate(style);
-          content.push({
-            type: 'text',
-            text,
-            styleId,
-          } as TextRun);
+          item = { type: 'text', text, styleId } as TextRun;
         } else if (style) {
           // Inline styles (fallback when no style pool provided)
-          content.push({
-            type: 'text',
-            text,
-            ...style,
-          } as TextRun);
+          item = { type: 'text', text, ...style } as TextRun;
         } else {
           // Plain text with no styling
-          content.push({
-            type: 'text',
-            text,
-          } as TextRun);
+          item = { type: 'text', text } as TextRun;
         }
       }
+
+      if (commentThreadId) {
+        (item as TextRun | InlineLink).commentThreadId = commentThreadId;
+      }
+      content.push(item);
     }
   });
   

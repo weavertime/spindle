@@ -44,6 +44,7 @@ import {
   Highlighter,
   SeparatorHorizontal,
   FileDown,
+  MessageSquarePlus,
   Type,
   Settings2,
 } from 'lucide-react';
@@ -262,6 +263,8 @@ interface ToolbarProps {
   editorView?: EditorView | null;
   activeMarks?: ActiveMarks;
   selectedCell?: CellSelection | null;
+  /** Start a comment on the current selection. */
+  onAddComment?: () => void;
 }
 
 interface ToolbarButtonProps {
@@ -314,6 +317,7 @@ const Divider = memo(function Divider() {
  */
 export const Toolbar = memo(function Toolbar({ 
   onPageSetup,
+  onAddComment,
   editorView,
   activeMarks,
   selectedCell,
@@ -859,7 +863,12 @@ export const Toolbar = memo(function Toolbar({
       </ToolbarButton>
       
       <Divider />
-      
+
+      {/* Comment */}
+      <ToolbarButton onClick={onAddComment} tooltip="Comment">
+        <MessageSquarePlus size={18} strokeWidth={2} />
+      </ToolbarButton>
+
       {/* Page Setup */}
       <ToolbarButton onClick={onPageSetup} tooltip="Page setup">
         <Settings2 size={18} strokeWidth={2} />
