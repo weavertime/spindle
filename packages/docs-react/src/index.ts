@@ -7,6 +7,7 @@ export { DocumentProvider, useDocument, useSelection, useSections, useHistory } 
 // Components
 export { DocumentEditor } from './components/DocumentEditor';
 export { Toolbar } from './components/Toolbar';
+export { CommentsSidebar } from './components/CommentsSidebar';
 export { Ruler } from './components/Ruler';
 export { PageView } from './components/PageView';
 export { PageSetupModal } from './components/PageSetupModal';

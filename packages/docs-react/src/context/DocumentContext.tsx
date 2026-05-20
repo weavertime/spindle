@@ -1,29 +1,42 @@
 import React, { createContext, useContext, useMemo, useState, useCallback, useEffect } from 'react';
 import { DocumentImpl } from '@pagent-libs/docs-core';
+import type { CommentAuthor } from '@pagent-libs/docs-core';
 
 interface DocumentContextValue {
   document: DocumentImpl;
   updateDocument: (updater: (doc: DocumentImpl) => void) => void;
   zoom: number;
   setZoom: (zoom: number) => void;
+  /** Identity attributed to comments created in this session. */
+  currentUser: CommentAuthor;
 }
 
 const DocumentContext = createContext<DocumentContextValue | undefined>(undefined);
+
+const DEFAULT_USER: CommentAuthor = { id: 'local-user', name: 'You' };
 
 export interface DocumentProviderProps {
   document: DocumentImpl;
   children: React.ReactNode;
   initialZoom?: number;
+  /** Author for comments. Falls back to a generic local user when omitted. */
+  currentUser?: CommentAuthor;
 }
 
 export function DocumentProvider({
   document: initialDocument,
   children,
   initialZoom = 100,
+  currentUser,
 }: DocumentProviderProps) {
   const [document] = useState<DocumentImpl>(initialDocument);
   const [updateTrigger, setUpdateTrigger] = useState(0);
   const [zoom, setZoom] = useState(initialZoom);
+
+  const resolvedUser = useMemo<CommentAuthor>(
+    () => currentUser ?? DEFAULT_USER,
+    [currentUser?.id, currentUser?.name],
+  );
 
   // Subscribe to document events to trigger re-renders
   useEffect(() => {
@@ -63,6 +76,7 @@ export function DocumentProvider({
       document.on('selectionChange', handleSelectionChange),
       document.on('pageConfigChange', handlePageConfigChange),
       document.on('historyChange', handleHistoryChange),
+      document.on('commentChange', handleDocumentChange),
     ];
 
     return () => {
@@ -85,8 +99,9 @@ export function DocumentProvider({
       updateDocument,
       zoom,
       setZoom: handleSetZoom,
+      currentUser: resolvedUser,
     }),
-    [document, updateDocument, zoom, handleSetZoom, updateTrigger]
+    [document, updateDocument, zoom, handleSetZoom, updateTrigger, resolvedUser]
   );
 
   return <DocumentContext.Provider value={value}>{children}</DocumentContext.Provider>;
