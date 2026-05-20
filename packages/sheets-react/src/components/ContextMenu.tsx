@@ -15,6 +15,7 @@ interface ContextMenuProps {
   onDeleteRow?: () => void;
   onDeleteColumn?: () => void;
   onFormat?: () => void;
+  onComment?: () => void;
 }
 
 export const ContextMenu = memo(function ContextMenu({
@@ -32,6 +33,7 @@ export const ContextMenu = memo(function ContextMenu({
   onDeleteRow,
   onDeleteColumn,
   onFormat,
+  onComment,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -147,6 +149,14 @@ export const ContextMenu = memo(function ContextMenu({
         }}
       />
       <MenuItem onClick={onFormat}>Format Cells...</MenuItem>
+      <div
+        style={{
+          height: '1px',
+          backgroundColor: '#e0e0e0',
+          margin: '4px 0',
+        }}
+      />
+      <MenuItem onClick={onComment}>Comment</MenuItem>
     </div>
   );
 });

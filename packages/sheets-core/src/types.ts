@@ -1,5 +1,7 @@
 // Core types for pagent-sheets
 
+import type { CommentStore, SheetCommentThread } from './comments';
+
 export type CellValue = string | number | boolean | null;
 
 export interface CellStyle {
@@ -80,7 +82,6 @@ export interface Cell {
   formulaAst?: import('./formula-parser/stable-ast').StableFormulaNode;
   styleId?: string; // Reference to shared style in StylePool
   formatId?: string; // Reference to shared format in FormatPool
-  comment?: string;
   hyperlink?: string;
 }
 
@@ -144,6 +145,8 @@ export interface Sheet {
   config: SheetConfig;
   rowCount: number;
   colCount: number;
+  /** Comment threads anchored to cells in this sheet. */
+  comments: CommentStore;
 
   // Stable-ID helpers (translate between numeric indices and stable rowId/colId)
   getRowId(row: number): string | undefined;
@@ -297,6 +300,8 @@ export interface SheetData {
   };
   rowCount: number;
   colCount: number;
+  /** Comment threads anchored to cells in this sheet. */
+  threads?: SheetCommentThread[];
 }
 
 export interface FormulaNode {
@@ -325,6 +330,8 @@ export type EventType =
   | 'sheetAdd'
   | 'sheetDelete'
   | 'sheetRename'
+  | 'commentChange'
+  | 'commentEvent'
   | 'workbookChange';
 
 export interface EventData {

@@ -17,7 +17,9 @@ import {
   getWorkbookYTypes,
   getSheetYTypes,
   ensureSheetYMap,
+  threadKey,
 } from './collab/y-schema';
+import type { CommentStore, CommentMutationEvent, SheetCommentThread } from './comments';
 import {
   toStableAst,
   fromStableAst,
@@ -91,10 +93,19 @@ export class WorkbookImpl implements Workbook {
     const id = `sheet_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const sheet = new SheetImpl(id, name);
     this.sheets.set(id, sheet);
+    this.wireCommentListener(sheet);
     this.attachStructureListenerIfNeeded(sheet);
     this.mirrorSheetAdd(id, name, sheet);
     this.events.emit('sheetAdd', { sheetId: id, name });
     return sheet;
+  }
+
+  /**
+   * Return the comment store for a sheet (defaults to the active sheet).
+   * Re-fetch this after any reload — a remote update replaces the SheetImpl.
+   */
+  getCommentStore(sheetId?: string): CommentStore {
+    return this.getSheet(sheetId).comments;
   }
 
   deleteSheet(sheetId: string): void {
@@ -593,9 +604,16 @@ export class WorkbookImpl implements Workbook {
    * Restore workbook state from a snapshot
    */
   private restoreSnapshot(snapshot: WorkbookSnapshot): void {
+    // Comments are not part of the undo timeline — capture them before the
+    // rebuild so an unrelated undo/redo never drops a comment.
+    const preservedComments = new Map<string, SheetCommentThread[]>();
+    for (const [id, sheet] of this.sheets) {
+      preservedComments.set(id, sheet.comments.toJSON());
+    }
+
     // Clear existing sheets
     this.sheets.clear();
-    
+
     // Restore sheets
     for (const [sheetId, sheetSnapshot] of snapshot.sheets.entries()) {
       const sheet = new SheetImpl(sheetSnapshot.id, sheetSnapshot.name, sheetSnapshot.config);
@@ -609,6 +627,11 @@ export class WorkbookImpl implements Workbook {
       for (const [key, cell] of sheetSnapshot.cells.entries()) {
         sheet.cells.set(key, { ...cell });
       }
+
+      // Carry comments across the rebuild (see note above).
+      const restoredComments = preservedComments.get(sheetId);
+      if (restoredComments) sheet.comments.loadJSON(restoredComments);
+      this.wireCommentListener(sheet);
 
       this.sheets.set(sheetId, sheet);
     }
@@ -816,6 +839,8 @@ export class WorkbookImpl implements Workbook {
           : undefined,
       };
 
+      const threads = sheet.comments.toJSON();
+
       sheets.push({
         id: sheet.id,
         name: sheet.name,
@@ -825,6 +850,7 @@ export class WorkbookImpl implements Workbook {
         config,
         rowCount: sheet.rowCount,
         colCount: sheet.colCount,
+        threads: threads.length > 0 ? threads : undefined,
       });
     }
 
@@ -979,6 +1005,8 @@ export class WorkbookImpl implements Workbook {
         }
       }
 
+      sheet.comments.loadJSON(sheetData.threads);
+
       this.sheets.set(sheetData.id, sheet);
     }
 
@@ -998,6 +1026,14 @@ export class WorkbookImpl implements Workbook {
       for (const sheet of this.sheets.values()) {
         this.attachStructureListenerIfNeeded(sheet as SheetImpl);
       }
+    }
+
+    // Wire comment-change listeners — setData replaces every SheetImpl, so
+    // any listeners installed earlier are gone. Always wired (not collab-
+    // gated): they emit `commentChange` for the UI and mirror to the Y.Doc
+    // only when collab is attached.
+    for (const sheet of this.sheets.values()) {
+      this.wireCommentListener(sheet as SheetImpl);
     }
 
     // Rebuild formula graph and evaluate formulas
@@ -1418,6 +1454,11 @@ export class WorkbookImpl implements Workbook {
       const ids = yTypes.sheetIds.toArray();
       const idx = ids.indexOf(sheetId);
       if (idx !== -1) yTypes.sheetIds.delete(idx, 1);
+      // Purge the sheet's comment threads.
+      const prefix = `${sheetId}/`;
+      for (const key of Array.from(yTypes.threads.keys())) {
+        if (key.startsWith(prefix)) yTypes.threads.delete(key);
+      }
     });
   }
 
@@ -1489,6 +1530,62 @@ export class WorkbookImpl implements Workbook {
       setOrDelete(t.meta, 'frozenCols', sheet.config.frozenCols);
       setOrDelete(t.meta, 'showGridLines', sheet.config.showGridLines);
       setOrDelete(t.meta, 'sortOrder', sheet.config.sortOrder);
+    });
+  }
+
+  // ============================================
+  // Comment threads
+  // ============================================
+
+  /**
+   * Wire a sheet's comment store so every mutation emits a `commentChange`
+   * event for the UI and mirrors the threads into the Y.Doc.
+   */
+  private wireCommentListener(sheet: SheetImpl): void {
+    sheet.comments.__setChangeListener((event) => this.onCommentChange(sheet.id, event));
+  }
+
+  /**
+   * Comment-mutation handler: mirror to collab (if attached), trigger a UI
+   * re-render (`commentChange`), and surface a semantic `commentEvent` the
+   * host app can hook for notifications.
+   */
+  private onCommentChange(sheetId: string, event: CommentMutationEvent): void {
+    this.mirrorSheetThreads(sheetId);
+    this.events.emit('commentChange', { sheetId });
+    this.events.emit('commentEvent', { ...event, sheetId });
+  }
+
+  /**
+   * Re-sync a sheet's comment threads into the Y.Doc. Threads live in a flat
+   * top-level `threads` map keyed "sheetId/threadId"; drop the sheet's
+   * existing entries and repopulate from the store. No-op when collab is
+   * detached or a remote update is being applied.
+   */
+  private mirrorSheetThreads(sheetId: string): void {
+    if (!this.collabHandle || this.isApplyingRemoteChange) return;
+    const sheet = this.sheets.get(sheetId) as SheetImpl | undefined;
+    if (!sheet) return;
+    const ydoc = this.collabHandle.ydoc;
+    const yTypes = getWorkbookYTypes(ydoc);
+    const ySheetMap = yTypes.sheets.get(sheetId);
+    const prefix = `${sheetId}/`;
+    ydoc.transact(() => {
+      for (const key of Array.from(yTypes.threads.keys())) {
+        if (key.startsWith(prefix)) yTypes.threads.delete(key);
+      }
+      const sheetT = ySheetMap ? getSheetYTypes(ySheetMap) : undefined;
+      for (const thread of sheet.comments.toJSON()) {
+        yTypes.threads.set(threadKey(sheetId, thread.id), thread);
+        // Ensure the anchored cell's row/col positions reach peers, so the
+        // anchor still resolves when the commented cell is otherwise empty.
+        if (sheetT) {
+          const r = sheet.getRowIndex(thread.anchor.rowId);
+          const c = sheet.getColIndex(thread.anchor.colId);
+          if (r !== undefined) sheetT.rowOrder.set(thread.anchor.rowId, r);
+          if (c !== undefined) sheetT.colOrder.set(thread.anchor.colId, c);
+        }
+      }
     });
   }
 }

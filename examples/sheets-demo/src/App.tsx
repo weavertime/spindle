@@ -1,9 +1,23 @@
 import { useState, useEffect } from 'react';
 import { WorkbookProvider, WorkbookCanvas } from '@pagent-libs/sheets-react';
 import { WorkbookImpl } from '@pagent-libs/sheets-core';
+import type { CommentAuthor, SheetCommentEvent } from '@pagent-libs/sheets-core';
 import { InMemoryProvider, type CollabIdentity, type CollabStatus } from '@pagent-libs/shared';
 import { WebSocketProvider } from '@pagent-libs/transport-websocket';
 import './App.css';
+
+// Sample directory of users that can be @-mentioned in comments.
+const DEMO_USERS: CommentAuthor[] = [
+  { id: 'alice', name: 'Alice' },
+  { id: 'bob', name: 'Bob' },
+  { id: 'carol', name: 'Carol Diaz' },
+  { id: 'dave', name: 'Dave Kim' },
+];
+
+// Stand-in for a host app reacting to comment activity (notifications, etc.).
+function logCommentEvent(event: SheetCommentEvent): void {
+  console.log('[comment event]', event.type, event);
+}
 
 // ============================================================================
 // Cross-tab WebSocket demo helpers
@@ -174,7 +188,12 @@ function CollabDemo({ width, height }: { width: number; height: number }) {
       <div style={paneStyle}>
         <div style={{ padding: '4px 12px', background: '#ff6b6b', color: 'white', fontWeight: 500 }}>Alice</div>
         <div style={{ flex: 1, minHeight: 0 }}>
-          <WorkbookProvider workbook={workbooks[0]}>
+          <WorkbookProvider
+            workbook={workbooks[0]}
+            currentUser={DEMO_USERS[0]}
+            mentionableUsers={DEMO_USERS}
+            onCommentEvent={logCommentEvent}
+          >
             <WorkbookCanvas width={paneWidth} height={paneHeight} />
           </WorkbookProvider>
         </div>
@@ -182,7 +201,12 @@ function CollabDemo({ width, height }: { width: number; height: number }) {
       <div style={{ ...paneStyle, borderRight: 'none' }}>
         <div style={{ padding: '4px 12px', background: '#4ecdc4', color: 'white', fontWeight: 500 }}>Bob</div>
         <div style={{ flex: 1, minHeight: 0 }}>
-          <WorkbookProvider workbook={workbooks[1]}>
+          <WorkbookProvider
+            workbook={workbooks[1]}
+            currentUser={DEMO_USERS[1]}
+            mentionableUsers={DEMO_USERS}
+            onCommentEvent={logCommentEvent}
+          >
             <WorkbookCanvas width={paneWidth} height={paneHeight} />
           </WorkbookProvider>
         </div>
@@ -261,7 +285,12 @@ function WsDemo({
         </span>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
-        <WorkbookProvider workbook={wb}>
+        <WorkbookProvider
+          workbook={wb}
+          currentUser={{ id: config.identity.userId, name: config.identity.displayName }}
+          mentionableUsers={DEMO_USERS}
+          onCommentEvent={logCommentEvent}
+        >
           <WorkbookCanvas width={width} height={height - 28} />
         </WorkbookProvider>
       </div>
@@ -334,7 +363,12 @@ function App() {
         ) : collabMode ? (
           <CollabDemo width={dimensions.width} height={dimensions.height} />
         ) : (
-          <WorkbookProvider workbook={workbook}>
+          <WorkbookProvider
+            workbook={workbook}
+            currentUser={DEMO_USERS[0]}
+            mentionableUsers={DEMO_USERS}
+            onCommentEvent={logCommentEvent}
+          >
             <WorkbookCanvas width={dimensions.width} height={dimensions.height} />
           </WorkbookProvider>
         )}

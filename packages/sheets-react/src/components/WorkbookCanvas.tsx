@@ -5,6 +5,7 @@ import { EditOverlay, type EditOverlayRef } from './EditOverlay';
 import { FormulaBar } from './FormulaBar';
 import { Toolbar } from './Toolbar';
 import { SheetTabs } from './SheetTabs';
+import { CommentsPanel } from './CommentsPanel';
 import { ContextMenu } from './ContextMenu';
 import { HeaderContextMenu } from './HeaderContextMenu';
 import { FilterModal } from './FilterModal';
@@ -36,6 +37,7 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
   const [editValue, setEditValue] = useState('');
   const [editingCellFormat, setEditingCellFormat] = useState<CellFormat | undefined>(undefined);
   const [dimensionVersion, setDimensionVersion] = useState(0);
+  const [showComments, setShowComments] = useState(false);
   const [originalEditingSheetId, setOriginalEditingSheetId] = useState<string | null>(null);
   const canvasGridRef = useRef<HTMLDivElement>(null);
   const editOverlayRef = useRef<EditOverlayRef>(null);
@@ -542,7 +544,19 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
       if (!shouldHandle) {
         return;
       }
-      
+
+      // Never hijack keys while the user is typing in a text field — the
+      // formula bar, comment composer, dialogs, etc. own their own input.
+      // Without this, Backspace/Delete would clear grid cells instead of
+      // deleting characters.
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
       // Skip if we're editing a cell (let the editor handle it)
       // Exception: Ctrl+Z/Y should still work for undo/redo during editing in some cases
       if (editingCell) {
@@ -749,6 +763,8 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
             existingFilter,
           });
         }}
+        onToggleComments={() => setShowComments((v) => !v)}
+        commentsActive={showComments}
         onBold={() => applyStyleToSelection((s) => ({ ...s, bold: !s?.bold }))}
         onItalic={() => applyStyleToSelection((s) => ({ ...s, italic: !s?.italic }))}
         onUnderline={() =>
@@ -1025,6 +1041,22 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
         />
       </div>
 
+      {/* Comments panel — floating drawer above the sheet tabs */}
+      {showComments && (
+        <div
+          style={{
+            position: 'absolute',
+            top: toolbarHeight + formulaBarHeight,
+            right: 0,
+            bottom: 66,
+            width: 320,
+            zIndex: 30,
+          }}
+        >
+          <CommentsPanel activeCell={activeCell} onClose={() => setShowComments(false)} />
+        </div>
+      )}
+
       {/* Cell Context Menu */}
       {contextMenu && contextMenu.type === 'cell' && (
         <ContextMenu
@@ -1162,6 +1194,11 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
               currentFormat,
               sampleValue,
             });
+            handleContextMenuClose();
+          }}
+          onComment={() => {
+            setActiveCell(contextMenu.cell);
+            setShowComments(true);
             handleContextMenuClose();
           }}
         />

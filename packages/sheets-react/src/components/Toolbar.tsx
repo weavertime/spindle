@@ -29,6 +29,7 @@ import {
   ArrowUpAZ,
   Minus,
   Plus,
+  MessageSquare,
 } from 'lucide-react';
 
 // ============================================================================
@@ -430,6 +431,9 @@ interface ToolbarProps {
   activeColumn?: number;
   onSortColumn?: (column: number, direction: 'asc' | 'desc') => void;
   onFilterColumn?: (column: number) => void;
+  // Comments panel
+  onToggleComments?: () => void;
+  commentsActive?: boolean;
   selectedFormat?: {
     bold?: boolean;
     italic?: boolean;
@@ -478,6 +482,8 @@ export const Toolbar = memo(function Toolbar({
   activeColumn,
   onSortColumn,
   onFilterColumn,
+  onToggleComments,
+  commentsActive,
   selectedFormat,
 }: ToolbarProps) {
   const [showFontDropdown, setShowFontDropdown] = useState(false);
@@ -1202,6 +1208,13 @@ export const Toolbar = memo(function Toolbar({
           )}
         </DropdownMenu>
       </div>
+
+      <Divider />
+
+      {/* Comments */}
+      <ToolbarButton onClick={onToggleComments} active={commentsActive} tooltip="Comments">
+        <MessageSquare size={18} strokeWidth={2} />
+      </ToolbarButton>
 
       {/* Hyperlink Modal */}
       <HyperlinkModal

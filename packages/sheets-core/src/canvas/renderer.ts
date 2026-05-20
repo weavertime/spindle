@@ -669,7 +669,12 @@ export class CanvasRenderer {
           // Render empty cell background for editing cell
           this.cellRenderer.renderEmptyCell(this.ctx, bounds);
         }
-        
+
+        // Comment marker — drawn last so it sits above cell content.
+        if (state.commentedCells?.has(cellKey)) {
+          this.cellRenderer.renderCommentIndicator(this.ctx, bounds);
+        }
+
         x += colWidth;
       }
       
