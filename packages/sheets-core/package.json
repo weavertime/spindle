@@ -1,6 +1,6 @@
 {
   "name": "@pagent-libs/sheets-core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Core spreadsheet engine for pagent-sheets",
   "repository": {
     "type": "git",
@@ -44,7 +44,11 @@
     "data-table"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
+    "@pagent-libs/shared": "^0.2.0",
     "immer": "^10.0.0",
     "y-indexeddb": "^9.0.12",
     "y-protocols": "^1.0.7",

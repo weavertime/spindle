@@ -1,6 +1,6 @@
 {
   "name": "@pagent-libs/sheets-react",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "React components for pagent-sheets",
   "repository": {
     "type": "git",
@@ -40,12 +40,16 @@
     "react-component"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "peerDependencies": {
     "react": ">=18.0.0",
     "react-dom": ">=18.0.0"
   },
   "dependencies": {
-    "@pagent-libs/sheets-core": "^0.1.0",
+    "@pagent-libs/sheets-core": "^0.2.0",
+    "@pagent-libs/shared": "^0.2.0",
     "immer": "^10.0.0",
     "lucide-react": "^0.563.0"
   },

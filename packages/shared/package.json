@@ -1,7 +1,15 @@
 {
   "name": "@pagent-libs/shared",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shared utilities for pagent-libs (EventEmitter, collaboration)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pagentapp/pagent-libs.git",
+    "directory": "packages/shared"
+  },
+  "bugs": {
+    "url": "https://github.com/pagentapp/pagent-libs/issues"
+  },
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
   "type": "module",
@@ -31,6 +39,9 @@
     "utilities"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {},
   "devDependencies": {
     "@rollup/plugin-typescript": "^11.1.0",

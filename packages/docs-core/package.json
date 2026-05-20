@@ -1,6 +1,6 @@
 {
   "name": "@pagent-libs/docs-core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Core document editor engine for pagent-docs",
   "repository": {
     "type": "git",
@@ -44,7 +44,11 @@
     "rich-text"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
+    "@pagent-libs/shared": "^0.2.0",
     "immer": "^10.0.0",
     "prosemirror-model": "^1.19.0",
     "prosemirror-schema-basic": "^1.2.0",
