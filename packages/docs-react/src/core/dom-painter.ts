@@ -984,7 +984,8 @@ export class DomPainter {
             span.dataset.pmStart = String(pmPos.start + 1 + spanStart);
             span.dataset.pmEnd = String(pmPos.start + 1 + spanEnd);
           }
-          
+
+          this.applyCommentDecoration(span, run);
           lineDiv.appendChild(span);
         } else if (run.kind === 'link') {
           const a = document.createElement('a');
@@ -1002,7 +1003,8 @@ export class DomPainter {
             a.dataset.pmStart = String(pmPos.start + 1 + spanStart);
             a.dataset.pmEnd = String(pmPos.start + 1 + spanEnd);
           }
-          
+
+          this.applyCommentDecoration(a, run);
           lineDiv.appendChild(a);
         }
       }
@@ -1297,7 +1299,8 @@ export class DomPainter {
                   span.dataset.pmStart = String(spanStart);
                   span.dataset.pmEnd = String(spanEnd);
                   runCharOffset += run.text.length;
-                  
+
+                  this.applyCommentDecoration(span, run);
                   p.appendChild(span);
                 } else if (run.kind === 'lineBreak') {
                   p.appendChild(document.createElement('br'));
@@ -1427,7 +1430,8 @@ export class DomPainter {
           span.dataset.pmEnd = String(pmPos.start + 1 + spanEnd);
           charOffset = spanEnd;
         }
-        
+
+        this.applyCommentDecoration(span, run);
         container.appendChild(span);
       } else if (run.kind === 'lineBreak') {
         container.appendChild(document.createElement('br'));
@@ -1458,7 +1462,8 @@ export class DomPainter {
           a.dataset.pmEnd = String(pmPos.start + 1 + spanEnd);
           charOffset = spanEnd;
         }
-        
+
+        this.applyCommentDecoration(a, run);
         container.appendChild(a);
       }
     }
@@ -1469,6 +1474,19 @@ export class DomPainter {
     }
   }
   
+  /**
+   * Decorate an element that's covered by a comment thread: a highlight tint,
+   * a pointer cursor, and a data attribute the click handler keys off.
+   */
+  private applyCommentDecoration(el: HTMLElement, run: Run): void {
+    const threadId =
+      run.kind === 'text' || run.kind === 'link' ? run.commentThreadId : undefined;
+    if (!threadId) return;
+    el.setAttribute('data-comment-thread', threadId);
+    el.style.backgroundColor = 'rgba(99, 102, 241, 0.18)';
+    el.style.cursor = 'pointer';
+  }
+
   /**
    * Get CSS styles for a text run
    */

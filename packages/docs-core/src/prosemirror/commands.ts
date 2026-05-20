@@ -316,15 +316,63 @@ export function removeLink(schema: Schema): Command {
   return (state, dispatch) => {
     const { from, to } = state.selection;
     const linkMark = schema.marks.link;
-    
+
     if (!linkMark) return false;
-    
+
     if (!state.doc.rangeHasMark(from, to, linkMark)) {
       return false;
     }
-    
+
     if (dispatch) {
       dispatch(state.tr.removeMark(from, to, linkMark));
+    }
+    return true;
+  };
+}
+
+/**
+ * Apply a comment mark over the current selection, anchoring it to a thread.
+ */
+export function addComment(schema: Schema, threadId: string): Command {
+  return (state, dispatch) => {
+    const { from, to, empty } = state.selection;
+    const commentMark = schema.marks.comment;
+    if (!commentMark) return false;
+    if (empty) return false;
+    if (dispatch) {
+      dispatch(state.tr.addMark(from, to, commentMark.create({ threadId })));
+    }
+    return true;
+  };
+}
+
+/**
+ * Strip a comment thread's mark from wherever it appears in the document —
+ * used when a thread is deleted. Removes the exact mark instances so an
+ * overlapping comment on the same text is left intact.
+ */
+export function removeComment(schema: Schema, threadId: string): Command {
+  return (state, dispatch) => {
+    const commentMark = schema.marks.comment;
+    if (!commentMark) return false;
+
+    const hits: Array<{ from: number; to: number; mark: Mark }> = [];
+    state.doc.descendants((node, pos) => {
+      if (!node.isText) return;
+      for (const mark of node.marks) {
+        if (mark.type === commentMark && mark.attrs.threadId === threadId) {
+          hits.push({ from: pos, to: pos + node.nodeSize, mark });
+        }
+      }
+    });
+    if (hits.length === 0) return false;
+
+    if (dispatch) {
+      let tr = state.tr;
+      for (const hit of hits) {
+        tr = tr.removeMark(hit.from, hit.to, hit.mark);
+      }
+      dispatch(tr);
     }
     return true;
   };
@@ -468,6 +516,8 @@ export function createCommands(schema: Schema) {
     insertImage: (attrs: { src: string; alt?: string; width?: number; height?: number }) => insertImage(schema, attrs),
     insertLink: (attrs: { href: string; title?: string }) => insertLink(schema, attrs),
     removeLink: () => removeLink(schema),
+    addComment: (threadId: string) => addComment(schema, threadId),
+    removeComment: (threadId: string) => removeComment(schema, threadId),
     insertTable: (rows: number, cols: number) => insertTable(schema, rows, cols),
     
     // Cell formatting
