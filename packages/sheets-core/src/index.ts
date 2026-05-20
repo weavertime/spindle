@@ -1,6 +1,7 @@
 // Core library exports
 
 export * from './types';
+export * from './comments';
 export { WorkbookImpl } from './workbook';
 export { SheetImpl } from './sheet';
 export { StylePool } from './style-pool';

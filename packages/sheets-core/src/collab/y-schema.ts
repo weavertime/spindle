@@ -34,6 +34,7 @@ import type {
   SortOrder,
   WorkbookData,
 } from '../types';
+import type { SheetCommentThread } from '../comments';
 
 export interface SheetYTypes {
   root: Y.Map<unknown>;
@@ -61,6 +62,13 @@ export interface WorkbookYTypes {
   formatPool: Y.Map<CellFormat>;
   sheetIds: Y.Array<string>;
   sheets: Y.Map<Y.Map<unknown>>;
+  /**
+   * Comment threads, keyed `"sheetId/threadId"`. Deliberately a flat
+   * top-level map rather than a child of `sheets` — the Y.UndoManager tracks
+   * `sheets`, so nesting threads there would pull comment add/reply/resolve
+   * into the document undo stack. Comments are intentionally not undoable.
+   */
+  threads: Y.Map<SheetCommentThread>;
 }
 
 /** Return the named top-level Y types. Idempotent. */
@@ -71,7 +79,13 @@ export function getWorkbookYTypes(ydoc: Y.Doc): WorkbookYTypes {
     formatPool: ydoc.getMap<CellFormat>('formatPool'),
     sheetIds: ydoc.getArray<string>('sheetIds'),
     sheets: ydoc.getMap<Y.Map<unknown>>('sheets'),
+    threads: ydoc.getMap<SheetCommentThread>('threads'),
   };
+}
+
+/** Compose the flat thread key used in the top-level `threads` Y.Map. */
+export function threadKey(sheetId: string, threadId: string): string {
+  return `${sheetId}/${threadId}`;
 }
 
 /** Pull out the named sub-types from a sheet's Y.Map. Caller ensures the
@@ -172,6 +186,11 @@ export function hydrateYDocFromData(ydoc: Y.Doc, data: WorkbookData): void {
       types.sheetIds.push([sheetData.id]);
       const sheetMap = ensureSheetYMap(types.sheets, sheetData.id);
       hydrateSheetYMap(sheetMap, sheetData);
+      if (sheetData.threads) {
+        for (const thread of sheetData.threads) {
+          types.threads.set(threadKey(sheetData.id, thread.id), thread);
+        }
+      }
     }
   });
 }
@@ -296,6 +315,25 @@ export function serializeYDocToData(
     const sheetMap = t.sheets.get(sheetId);
     if (!sheetMap) continue;
     sheets.push(serializeSheetYMap(sheetMap));
+  }
+
+  // Comment threads live in a flat top-level map keyed "sheetId/threadId";
+  // demux them back onto each sheet.
+  const threadsBySheet = new Map<string, SheetCommentThread[]>();
+  for (const [key, thread] of t.threads.entries()) {
+    const slash = key.indexOf('/');
+    if (slash === -1) continue;
+    const sid = key.slice(0, slash);
+    let list = threadsBySheet.get(sid);
+    if (!list) {
+      list = [];
+      threadsBySheet.set(sid, list);
+    }
+    list.push(thread);
+  }
+  for (const sheet of sheets) {
+    const list = threadsBySheet.get(sheet.id);
+    if (list && list.length > 0) sheet.threads = list;
   }
 
   let resolvedActive = activeSheetId ?? '';

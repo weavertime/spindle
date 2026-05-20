@@ -9,6 +9,7 @@
 //     numeric index a cell appears at changes, but its identity does not.
 
 import type { Sheet, SheetConfig, Cell, Range, SortOrder } from './types';
+import { CommentStore } from './comments';
 import { getStableCellKey, parseStableCellKey } from './utils/cell-key';
 import { generateId } from './utils/id';
 import { getRangeCells } from './utils/range';
@@ -20,6 +21,8 @@ export class SheetImpl implements Sheet {
   config: SheetConfig;
   rowCount: number;
   colCount: number;
+  /** Comment threads anchored to cells in this sheet. */
+  comments: CommentStore = new CommentStore();
 
   // Sparse index → stable ID maps. Only filled for indices that have been
   // explicitly touched (cell set, row/col operation, etc.).
