@@ -63,6 +63,23 @@ export class CellRenderer {
   renderEmptyCell(ctx: CanvasRenderingContext2D, bounds: Rect): void {
     this.renderBackground(ctx, bounds, undefined);
   }
+
+  /**
+   * Render the comment marker — a small filled triangle in the cell's
+   * top-right corner, shown on cells that have an open comment thread.
+   */
+  renderCommentIndicator(ctx: CanvasRenderingContext2D, bounds: Rect): void {
+    const size = 6;
+    const x = bounds.x + bounds.width;
+    const y = bounds.y;
+    ctx.beginPath();
+    ctx.moveTo(x - size, y);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x, y + size);
+    ctx.closePath();
+    ctx.fillStyle = '#6366f1';
+    ctx.fill();
+  }
   
   /**
    * Render cell background

@@ -12,6 +12,10 @@
 import type { Comment, CommentThread } from '@pagent-libs/shared';
 import { generateId } from './utils/id';
 
+// Re-export the shared comment vocabulary so consumers of sheets-core get the
+// full set of types without depending on @pagent-libs/shared directly.
+export type { Comment, CommentThread, CommentStatus } from '@pagent-libs/shared';
+
 /** Stable-ID pointer to the cell a thread is anchored to. */
 export interface CellCommentAnchor {
   rowId: string;

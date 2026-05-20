@@ -235,6 +235,8 @@ export interface RenderState {
   filters?: Map<number, ColumnFilter>;
   /** Filtered rows (rows that should be visible after filtering) */
   filteredRows?: Set<number>;
+  /** Cells with an open comment thread, keyed "row:col" — drives the corner marker. */
+  commentedCells?: Set<string>;
 }
 
 /**

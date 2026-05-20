@@ -1,22 +1,36 @@
 import React, { createContext, useContext, useMemo, useState, useCallback, useEffect } from 'react';
 import { WorkbookImpl } from '@pagent-libs/sheets-core';
+import type { CommentAuthor } from '@pagent-libs/sheets-core';
 
 interface WorkbookContextValue {
   workbook: WorkbookImpl;
   updateWorkbook: (updater: (wb: WorkbookImpl) => void) => void;
+  /** Identity attributed to comments created in this session. */
+  currentUser: CommentAuthor;
 }
 
 const WorkbookContext = createContext<WorkbookContextValue | undefined>(undefined);
 
+const DEFAULT_USER: CommentAuthor = { id: 'local-user', name: 'You' };
+
 export function WorkbookProvider({
   workbook: initialWorkbook,
+  currentUser,
   children,
 }: {
   workbook: WorkbookImpl;
+  /** Author for comments. Falls back to a generic local user when omitted. */
+  currentUser?: CommentAuthor;
   children: React.ReactNode;
 }) {
   const [workbook] = useState<WorkbookImpl>(initialWorkbook);
   const [updateTrigger, setUpdateTrigger] = useState(0);
+
+  // Stable even if the app passes an inline currentUser object.
+  const resolvedUser = useMemo<CommentAuthor>(
+    () => currentUser ?? DEFAULT_USER,
+    [currentUser?.id, currentUser?.name],
+  );
 
   // Subscribe to workbook events to trigger re-renders
   useEffect(() => {
@@ -58,8 +72,9 @@ export function WorkbookProvider({
     () => ({
       workbook,
       updateWorkbook,
+      currentUser: resolvedUser,
     }),
-    [workbook, updateWorkbook, updateTrigger]
+    [workbook, updateWorkbook, updateTrigger, resolvedUser]
   );
 
   return <WorkbookContext.Provider value={value}>{children}</WorkbookContext.Provider>;

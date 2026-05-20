@@ -1563,13 +1563,23 @@ export class WorkbookImpl implements Workbook {
     if (!sheet) return;
     const ydoc = this.collabHandle.ydoc;
     const yTypes = getWorkbookYTypes(ydoc);
+    const ySheetMap = yTypes.sheets.get(sheetId);
     const prefix = `${sheetId}/`;
     ydoc.transact(() => {
       for (const key of Array.from(yTypes.threads.keys())) {
         if (key.startsWith(prefix)) yTypes.threads.delete(key);
       }
+      const sheetT = ySheetMap ? getSheetYTypes(ySheetMap) : undefined;
       for (const thread of sheet.comments.toJSON()) {
         yTypes.threads.set(threadKey(sheetId, thread.id), thread);
+        // Ensure the anchored cell's row/col positions reach peers, so the
+        // anchor still resolves when the commented cell is otherwise empty.
+        if (sheetT) {
+          const r = sheet.getRowIndex(thread.anchor.rowId);
+          const c = sheet.getColIndex(thread.anchor.colId);
+          if (r !== undefined) sheetT.rowOrder.set(thread.anchor.rowId, r);
+          if (c !== undefined) sheetT.colOrder.set(thread.anchor.colId, c);
+        }
       }
     });
   }

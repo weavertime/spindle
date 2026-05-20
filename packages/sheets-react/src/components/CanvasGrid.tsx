@@ -206,11 +206,17 @@ export const CanvasGrid = memo(function CanvasGrid({
     }
   }, [scrollTop, scrollLeft]);
   
+  // Re-render when a comment thread is added, replied to, resolved, etc.
+  const [commentVersion, setCommentVersion] = useState(0);
+  useEffect(() => {
+    return workbook.on('commentChange', () => setCommentVersion((v) => v + 1));
+  }, [workbook]);
+
   // Build render state and trigger render
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
-    
+
     const cells = new Map<string, Cell>();
     const styles = workbook.getStylePool();
     
@@ -300,6 +306,15 @@ export const CanvasGrid = memo(function CanvasGrid({
     const filters = sheet.getFilters();
     const filteredRows = filters.size > 0 ? FilterManager.getFilteredRows(sheet, filters) : undefined;
 
+    // Cells carrying an open comment thread — drives the corner marker.
+    const commentedCells = new Set<string>();
+    for (const thread of sheet.comments.getThreads()) {
+      if (thread.status !== 'open') continue;
+      const r = sheet.getRowIndex(thread.anchor.rowId);
+      const c = sheet.getColIndex(thread.anchor.colId);
+      if (r !== undefined && c !== undefined) commentedCells.add(`${r}:${c}`);
+    }
+
     const renderState: RenderState = {
       cells,
       styles: styles.getAllStyles(),
@@ -318,6 +333,7 @@ export const CanvasGrid = memo(function CanvasGrid({
       frozenCols: frozenCols > 0 ? frozenCols : undefined,
       filters,
       filteredRows,
+      commentedCells,
     };
     
     renderer.setState(renderState);
@@ -334,6 +350,7 @@ export const CanvasGrid = memo(function CanvasGrid({
     dimensionVersion,
     resizeVersion,
     formulaRanges,
+    commentVersion,
     // Re-render when filters change
     sheet.getFilters(),
   ]);

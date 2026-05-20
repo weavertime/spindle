@@ -11,7 +11,11 @@ export * from './components/FormulaBar';
 export * from './components/Toolbar';
 export * from './components/SheetTabs';
 export * from './components/ContextMenu';
+export * from './components/CommentsPanel';
 
 // Context
 export * from './context/WorkbookContext';
+
+// Hooks
+export * from './hooks/useComments';
 
