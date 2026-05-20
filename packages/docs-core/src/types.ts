@@ -395,7 +395,9 @@ export type DocumentEventType =
   | 'blockDelete'
   | 'selectionChange'
   | 'pageConfigChange'
-  | 'historyChange';
+  | 'historyChange'
+  | 'commentChange'
+  | 'commentEvent';
 
 export interface DocumentEventData {
   type: DocumentEventType;
@@ -432,6 +434,8 @@ export interface DocumentData {
   paragraphStylePool: Record<string, ParagraphStyle>;
   createdAt?: string;
   updatedAt?: string;
+  /** Comment threads anchored to spans of the document body. */
+  threads?: import('./comments').DocsCommentThread[];
 }
 
 export interface SectionData {

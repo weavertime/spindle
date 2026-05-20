@@ -17,6 +17,8 @@ import { DocumentHistory } from './history';
 import { TextStylePoolImpl, ParagraphStylePoolImpl } from './style-pool';
 import { createParagraphFromText } from './blocks/paragraph';
 import { attachCollabToYDoc } from './collab/binding';
+import { getYDocFields } from './collab/y-schema';
+import { DocsCommentStore, type DocsCommentEvent, type DocsCommentThread } from './comments';
 
 function generateDocumentId(): string {
   return `doc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -73,6 +75,13 @@ export class DocumentImpl {
   // (history snapshots, addBlock, etc.) keep working on this.document but
   // the React editor binds to handle.xmlFragment via ySyncPlugin.
   private collabHandle: import('./collab/binding').CollabHandle | null = null;
+  // Comment threads. The `comment` mark in the body is the position anchor;
+  // this store holds thread content (comments, replies, status).
+  private commentStore: DocsCommentStore = new DocsCommentStore();
+  // True while mirrorThreads is writing to the Y.Doc — lets the threads
+  // observer ignore our own writes.
+  private mirroringThreads = false;
+  private threadsObserver: (() => void) | null = null;
 
   constructor(id?: string, title?: string) {
     this.document = createDocument(title || 'Untitled Document');
@@ -83,9 +92,56 @@ export class DocumentImpl {
     this.history = new DocumentHistory();
     this.textStylePool = new TextStylePoolImpl();
     this.paragraphStylePool = new ParagraphStylePoolImpl();
-    
+    this.commentStore.__setChangeListener((event) => this.onCommentChange(event));
+
     // Record initial state
     this.recordHistory('Initial state');
+  }
+
+  /** The document's comment-thread store. */
+  getComments(): DocsCommentStore {
+    return this.commentStore;
+  }
+
+  /**
+   * Comment-mutation handler: mirror threads to the Y.Doc (when collab is
+   * attached), trigger a UI re-render, and surface a semantic `commentEvent`.
+   */
+  private onCommentChange(event: DocsCommentEvent): void {
+    this.mirrorThreads();
+    this.emit('commentChange', {});
+    this.emit('commentEvent', event);
+  }
+
+  /** Re-sync the comment store's threads into the Y.Doc's threads map. */
+  private mirrorThreads(): void {
+    const handle = this.collabHandle;
+    if (!handle) return;
+    const threadsY = getYDocFields(handle.ydoc).threads;
+    this.mirroringThreads = true;
+    try {
+      handle.ydoc.transact(() => {
+        threadsY.clear();
+        for (const thread of this.commentStore.toJSON()) {
+          threadsY.set(thread.id, thread);
+        }
+      });
+    } finally {
+      this.mirroringThreads = false;
+    }
+  }
+
+  /** Load the comment store from the Y.Doc's threads map (remote changes). */
+  private loadThreadsFromY(): void {
+    const handle = this.collabHandle;
+    if (!handle) return;
+    const threadsY = getYDocFields(handle.ydoc).threads;
+    const threads: DocsCommentThread[] = [];
+    for (const value of threadsY.values()) {
+      threads.push(value as DocsCommentThread);
+    }
+    this.commentStore.loadJSON(threads);
+    this.emit('commentChange', {});
   }
 
   // ============================================================================
@@ -428,6 +484,7 @@ export class DocumentImpl {
       paragraphStylePool: this.paragraphStylePool.toData(),
       createdAt: this.document.createdAt,
       updatedAt: this.document.updatedAt,
+      threads: this.commentStore.toJSON(),
     };
   }
 
@@ -454,6 +511,7 @@ export class DocumentImpl {
 
     this.textStylePool.setFromData(data.textStylePool || {});
     this.paragraphStylePool.setFromData(data.paragraphStylePool || {});
+    this.commentStore.loadJSON(data.threads);
 
     this.history.clear();
     this.recordHistory('Loaded document');
@@ -490,6 +548,17 @@ export class DocumentImpl {
       options,
     );
     this.collabHandle = handle;
+
+    // Reconcile the comment store with the Y.Doc's threads map, then keep it
+    // live: on first attach the map was hydrated from getData(); on a late
+    // join it already holds peers' threads — loadThreadsFromY covers both.
+    this.loadThreadsFromY();
+    const threadsY = getYDocFields(handle.ydoc).threads;
+    this.threadsObserver = () => {
+      if (!this.mirroringThreads) this.loadThreadsFromY();
+    };
+    threadsY.observe(this.threadsObserver);
+
     this.emit('documentChange', { action: 'attachCollab' });
     return handle;
   }
@@ -502,6 +571,10 @@ export class DocumentImpl {
   /** Detach from the current collaboration session. */
   detachCollab(): void {
     if (!this.collabHandle) return;
+    if (this.threadsObserver) {
+      getYDocFields(this.collabHandle.ydoc).threads.unobserve(this.threadsObserver);
+      this.threadsObserver = null;
+    }
     this.collabHandle.detach();
     this.collabHandle = null;
     this.emit('documentChange', { action: 'detachCollab' });
