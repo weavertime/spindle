@@ -41,4 +41,9 @@ describe('parser integration', () => {
     expect(evaluate('=TEXTJOIN(",", TRUE, "a", "b")')).toBe('a,b');
     expect(evaluate('=SUBSTITUTE("a,b,c", ",", ";")')).toBe('a;b;c');
   });
+
+  it('evaluates lookup functions end to end', () => {
+    expect(evaluate('=CHOOSE(2, "a", "b", "c")')).toBe('b');
+    expect(evaluate('=ADDRESS(1, 1)')).toBe('$A$1');
+  });
 });
