@@ -36,4 +36,9 @@ describe('parser integration', () => {
   it('reports an unknown function as #NAME?', () => {
     expect(() => evaluate('=NOTAFUNCTION(1)')).toThrow('#NAME?');
   });
+
+  it('does not split arguments on a comma inside a string literal', () => {
+    expect(evaluate('=TEXTJOIN(",", TRUE, "a", "b")')).toBe('a,b');
+    expect(evaluate('=SUBSTITUTE("a,b,c", ",", ";")')).toBe('a;b;c');
+  });
 });

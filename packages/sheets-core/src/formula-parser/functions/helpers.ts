@@ -51,6 +51,7 @@ export function toNum(v: unknown): number {
 export function toText(v: unknown): string {
   if (v == null) return '';
   if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';
+  if (typeof v === 'string' && isErrorValue(v)) throw new Error(v);
   return String(v);
 }
 
