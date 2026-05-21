@@ -60,4 +60,8 @@ describe('parser integration', () => {
     expect(evaluate('=ISERROR(1/0)')).toBe(true);
     expect(evaluate('=ERROR.TYPE(1/0)')).toBe(2);
   });
+
+  it('evaluates financial functions end to end', () => {
+    expect(evaluate('=PMT(0.1, 10, 1000)')).toBeCloseTo(-162.745, 2);
+  });
 });
