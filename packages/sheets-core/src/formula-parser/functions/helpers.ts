@@ -100,7 +100,7 @@ export function looseEquals(a: unknown, b: unknown): boolean {
 }
 
 /** Compare text against a criterion pattern that may contain `*` / `?` wildcards. */
-function wildcardEquals(text: string, pattern: string): boolean {
+export function wildcardEquals(text: string, pattern: string): boolean {
   if (!/[*?~]/.test(pattern)) {
     return text.toLowerCase() === pattern.toLowerCase();
   }
