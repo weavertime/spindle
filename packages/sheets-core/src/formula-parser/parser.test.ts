@@ -50,4 +50,8 @@ describe('parser integration', () => {
   it('evaluates statistical functions end to end', () => {
     expect(evaluate('=MEDIAN(1, 2, 3, 4)')).toBe(2.5);
   });
+
+  it('evaluates date functions end to end', () => {
+    expect(evaluate('=YEAR(DATE(2026, 5, 21))')).toBe(2026);
+  });
 });
