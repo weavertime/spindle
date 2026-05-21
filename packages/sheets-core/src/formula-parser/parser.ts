@@ -276,7 +276,21 @@ export class FormulaParser {
     let depth = 0;
     let current = '';
 
-    for (const char of argsStr) {
+    for (let i = 0; i < argsStr.length; i++) {
+      const char = argsStr[i];
+      // Copy quoted strings through verbatim so a comma inside a string
+      // literal (e.g. a TEXTJOIN delimiter) is not treated as a separator.
+      if (char === '"' || char === "'") {
+        const quote = char;
+        current += char;
+        i++;
+        while (i < argsStr.length && argsStr[i] !== quote) {
+          current += argsStr[i];
+          i++;
+        }
+        if (i < argsStr.length) current += argsStr[i];
+        continue;
+      }
       if (char === '(') depth++;
       else if (char === ')') depth--;
       else if (char === ',' && depth === 0) {
