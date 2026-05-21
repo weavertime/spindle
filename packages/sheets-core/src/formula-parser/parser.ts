@@ -2,59 +2,24 @@
 
 import type { ParsedFormulaNode, ParseResult, EvaluationContext, RangeReference } from './types';
 import { parseCellReference, parseRangeReference, cellReferenceToKey } from './cell-reference';
+import { eagerFunctions, lazyFunctions } from './functions';
+import type { EagerFn, LazyFn } from './functions';
 
 export class FormulaParser {
-  private functions: Map<string, (args: unknown[], ctx: EvaluationContext) => unknown> = new Map();
+  private functions: Map<string, EagerFn> = new Map();
+  private lazyFunctions: Map<string, LazyFn> = new Map();
 
   constructor() {
     this.registerBuiltInFunctions();
   }
 
   private registerBuiltInFunctions(): void {
-    // SUM function
-    this.functions.set('SUM', (args, ctx) => {
-      const values = this.flattenArgs(args, ctx);
-      return values.reduce((sum: number, val) => {
-        const num = Number(val);
-        return sum + (isNaN(num) ? 0 : num);
-      }, 0);
-    });
-
-    // AVERAGE function
-    this.functions.set('AVERAGE', (args, ctx) => {
-      const values = this.flattenArgs(args, ctx);
-      const numbers = values.map(Number).filter((n) => !isNaN(n));
-      return numbers.length > 0 ? numbers.reduce((a, b) => a + b, 0) / numbers.length : 0;
-    });
-
-    // COUNT function
-    this.functions.set('COUNT', (args, ctx) => {
-      const values = this.flattenArgs(args, ctx);
-      return values.filter((v) => v != null && v !== '').length;
-    });
-
-    // MAX function
-    this.functions.set('MAX', (args, ctx) => {
-      const values = this.flattenArgs(args, ctx);
-      const numbers = values.map(Number).filter((n) => !isNaN(n));
-      return numbers.length > 0 ? Math.max(...numbers) : 0;
-    });
-
-    // MIN function
-    this.functions.set('MIN', (args, ctx) => {
-      const values = this.flattenArgs(args, ctx);
-      const numbers = values.map(Number).filter((n) => !isNaN(n));
-      return numbers.length > 0 ? Math.min(...numbers) : 0;
-    });
-
-    // IF function - args are already evaluated when passed to functions
-    this.functions.set('IF', (args, _ctx) => {
-      void _ctx;
-      if (args.length < 2) return null;
-      const condition = args[0];
-      const truthy = Boolean(condition);
-      return truthy ? args[1] : (args.length > 2 ? args[2] : null);
-    });
+    for (const [name, fn] of Object.entries(eagerFunctions)) {
+      this.functions.set(name, fn);
+    }
+    for (const [name, fn] of Object.entries(lazyFunctions)) {
+      this.lazyFunctions.set(name, fn);
+    }
   }
 
   parse(formula: string, currentRow: number = 0, currentCol: number = 0): ParseResult {
@@ -410,6 +375,15 @@ export class FormulaParser {
         return null;
       case 'function':
         if (node.functionName && node.args) {
+          // Lazy functions (IF, IFERROR, IFS, …) receive thunks so they can
+          // short-circuit and catch errors thrown while evaluating a branch.
+          const lazyFunc = this.lazyFunctions.get(node.functionName);
+          if (lazyFunc) {
+            const thunks = node.args.map(
+              (arg) => () => this.evaluateNode(arg, ctx, currentRow, currentCol)
+            );
+            return lazyFunc(thunks, ctx);
+          }
           const func = this.functions.get(node.functionName);
           if (!func) {
             throw new Error(`#NAME? Function ${node.functionName} not found`);
@@ -421,18 +395,6 @@ export class FormulaParser {
       default:
         return null;
     }
-  }
-
-  private flattenArgs(args: unknown[], ctx: EvaluationContext): unknown[] {
-    const result: unknown[] = [];
-    for (const arg of args) {
-      if (Array.isArray(arg)) {
-        result.push(...this.flattenArgs(arg, ctx));
-      } else {
-        result.push(arg);
-      }
-    }
-    return result;
   }
 }
 
