@@ -7,6 +7,7 @@ import { textFunctions } from './text';
 import { lookupFunctions } from './lookup';
 import { statsFunctions } from './stats';
 import { dateFunctions } from './date';
+import { informationEagerFunctions, informationLazyFunctions } from './information';
 
 export type { EagerFn, LazyFn } from './helpers';
 
@@ -18,9 +19,11 @@ export const eagerFunctions: Record<string, EagerFn> = {
   ...lookupFunctions,
   ...statsFunctions,
   ...dateFunctions,
+  ...informationEagerFunctions,
 };
 
 /** Functions that receive argument thunks so they can short-circuit. */
 export const lazyFunctions: Record<string, LazyFn> = {
   ...logicalLazyFunctions,
+  ...informationLazyFunctions,
 };

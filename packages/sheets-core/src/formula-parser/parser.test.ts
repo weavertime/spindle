@@ -54,4 +54,10 @@ describe('parser integration', () => {
   it('evaluates date functions end to end', () => {
     expect(evaluate('=YEAR(DATE(2026, 5, 21))')).toBe(2026);
   });
+
+  it('evaluates information functions, including dotted names', () => {
+    expect(evaluate('=ISNUMBER(5)')).toBe(true);
+    expect(evaluate('=ISERROR(1/0)')).toBe(true);
+    expect(evaluate('=ERROR.TYPE(1/0)')).toBe(2);
+  });
 });
