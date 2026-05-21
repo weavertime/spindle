@@ -6,6 +6,7 @@ import { logicalEagerFunctions, logicalLazyFunctions } from './logical';
 import { textFunctions } from './text';
 import { lookupFunctions } from './lookup';
 import { statsFunctions } from './stats';
+import { dateFunctions } from './date';
 
 export type { EagerFn, LazyFn } from './helpers';
 
@@ -16,6 +17,7 @@ export const eagerFunctions: Record<string, EagerFn> = {
   ...textFunctions,
   ...lookupFunctions,
   ...statsFunctions,
+  ...dateFunctions,
 };
 
 /** Functions that receive argument thunks so they can short-circuit. */
