@@ -2,12 +2,13 @@
 
 import type { ParsedFormulaNode, ParseResult, EvaluationContext, RangeReference } from './types';
 import { parseCellReference, parseRangeReference, cellReferenceToKey } from './cell-reference';
-import { eagerFunctions, lazyFunctions } from './functions';
-import type { EagerFn, LazyFn } from './functions';
+import { eagerFunctions, lazyFunctions, refFunctions } from './functions';
+import type { EagerFn, LazyFn, RefFn } from './functions';
 
 export class FormulaParser {
   private functions: Map<string, EagerFn> = new Map();
   private lazyFunctions: Map<string, LazyFn> = new Map();
+  private refFunctions: Map<string, RefFn> = new Map();
 
   constructor() {
     this.registerBuiltInFunctions();
@@ -19,6 +20,9 @@ export class FormulaParser {
     }
     for (const [name, fn] of Object.entries(lazyFunctions)) {
       this.lazyFunctions.set(name, fn);
+    }
+    for (const [name, fn] of Object.entries(refFunctions)) {
+      this.refFunctions.set(name, fn);
     }
   }
 
@@ -389,6 +393,18 @@ export class FormulaParser {
         return null;
       case 'function':
         if (node.functionName && node.args) {
+          // Reference functions (ROW, OFFSET, INDIRECT, …) need the raw
+          // argument AST so they can read an argument's reference.
+          const refFunc = this.refFunctions.get(node.functionName);
+          if (refFunc) {
+            return refFunc({
+              args: node.args,
+              ctx,
+              currentRow,
+              currentCol,
+              evaluate: (n) => this.evaluateNode(n, ctx, currentRow, currentCol),
+            });
+          }
           // Lazy functions (IF, IFERROR, IFS, …) receive thunks so they can
           // short-circuit and catch errors thrown while evaluating a branch.
           const lazyFunc = this.lazyFunctions.get(node.functionName);

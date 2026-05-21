@@ -64,4 +64,9 @@ describe('parser integration', () => {
   it('evaluates financial functions end to end', () => {
     expect(evaluate('=PMT(0.1, 10, 1000)')).toBeCloseTo(-162.745, 2);
   });
+
+  it('evaluates reference functions end to end', () => {
+    expect(evaluate('=ROW(A5)')).toBe(5);
+    expect(evaluate('=COLUMN(C1)')).toBe(3);
+  });
 });
