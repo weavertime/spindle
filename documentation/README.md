@@ -23,6 +23,14 @@ Documents and spreadsheets sync live between users via Yjs CRDTs.
 
 ---
 
+## 💬 Comments
+
+Comment threads on spreadsheet cells and document text — replies, resolve, and @-mentions.
+
+- **[Comments Guide](comments.md)** — the comment model, cell/text anchoring, @-mentions, and the `onCommentEvent` notification callback
+
+---
+
 ## 📄 Document Editor (Docs)
 
 A Google Docs-like document editor with true page-based layout and real-time pagination.
@@ -202,5 +210,5 @@ npm run dev
 
 ---
 
-**Last Updated**: January 2026  
-**Version**: 0.1.0
+**Last Updated**: May 2026  
+**Version**: 0.2.0
