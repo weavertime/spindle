@@ -1,0 +1,18 @@
+// Built-in formula function registry.
+
+import type { EagerFn, LazyFn } from './helpers';
+import { mathFunctions } from './math';
+import { logicalEagerFunctions, logicalLazyFunctions } from './logical';
+
+export type { EagerFn, LazyFn } from './helpers';
+
+/** Functions whose arguments are fully evaluated before the function runs. */
+export const eagerFunctions: Record<string, EagerFn> = {
+  ...mathFunctions,
+  ...logicalEagerFunctions,
+};
+
+/** Functions that receive argument thunks so they can short-circuit. */
+export const lazyFunctions: Record<string, LazyFn> = {
+  ...logicalLazyFunctions,
+};
