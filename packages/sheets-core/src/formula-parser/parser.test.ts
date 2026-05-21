@@ -46,4 +46,8 @@ describe('parser integration', () => {
     expect(evaluate('=CHOOSE(2, "a", "b", "c")')).toBe('b');
     expect(evaluate('=ADDRESS(1, 1)')).toBe('$A$1');
   });
+
+  it('evaluates statistical functions end to end', () => {
+    expect(evaluate('=MEDIAN(1, 2, 3, 4)')).toBe(2.5);
+  });
 });
