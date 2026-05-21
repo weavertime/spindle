@@ -465,6 +465,16 @@ export class WorkbookImpl implements Workbook {
         getSheetIdByName: (sheetName: string) => {
           return this.getSheetIdByName(sheetName);
         },
+        isCellFormula: (r: number, c: number, sheetName?: string) => {
+          let targetSheetId: string | undefined = sheetId;
+          if (sheetName) {
+            const resolvedSheetId = this.getSheetIdByName(sheetName);
+            if (!resolvedSheetId) return false;
+            targetSheetId = resolvedSheetId;
+          }
+          const target = this.getCell(targetSheetId, r, c);
+          return !!(target && (target.formula || target.formulaAst));
+        },
       };
 
       const result = this.formulaParser.evaluate(numericAst, evaluationContext, row, col);

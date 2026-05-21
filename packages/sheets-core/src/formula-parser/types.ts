@@ -35,5 +35,6 @@ export interface EvaluationContext {
   getCellValue: (row: number, col: number, sheetId?: string, sheetName?: string) => unknown;
   getRangeValues: (range: RangeReference, sheetId?: string, sheetName?: string) => unknown[][];
   getSheetIdByName?: (sheetName: string) => string | undefined; // Helper to resolve sheet name to sheet ID
+  isCellFormula?: (row: number, col: number, sheetName?: string) => boolean; // Whether a cell holds a formula (for ISFORMULA)
 }
 

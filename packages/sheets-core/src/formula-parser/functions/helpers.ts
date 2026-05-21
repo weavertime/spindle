@@ -1,6 +1,6 @@
 // Shared helpers for built-in formula functions.
 
-import type { EvaluationContext } from '../types';
+import type { EvaluationContext, ParsedFormulaNode } from '../types';
 
 /** An eager function receives already-evaluated argument values. */
 export type EagerFn = (args: unknown[], ctx: EvaluationContext) => unknown;
@@ -11,6 +11,25 @@ export type EagerFn = (args: unknown[], ctx: EvaluationContext) => unknown;
  * Required by short-circuiting functions like IF, IFS and IFERROR.
  */
 export type LazyFn = (argThunks: Array<() => unknown>, ctx: EvaluationContext) => unknown;
+
+/**
+ * What a reference function receives: the raw argument AST (so it can read an
+ * argument's *reference* rather than its value), the current cell position,
+ * and an `evaluate` callback for arguments that are plain values.
+ */
+export interface RefFnContext {
+  args: ParsedFormulaNode[];
+  ctx: EvaluationContext;
+  currentRow: number;
+  currentCol: number;
+  evaluate: (node: ParsedFormulaNode) => unknown;
+}
+
+/**
+ * A reference function works with an argument's reference — needed by
+ * ROW/COLUMN/OFFSET/INDIRECT/ISREF/ISFORMULA/CELL.
+ */
+export type RefFn = (rc: RefFnContext) => unknown;
 
 const ERROR_PATTERN = /^#(DIV\/0!|N\/A|NAME\?|NULL!|NUM!|REF!|VALUE!|ERROR!|SPILL!|CALC!)$/;
 
