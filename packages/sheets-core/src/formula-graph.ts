@@ -5,13 +5,22 @@ import type { FormulaGraph, FormulaNode, CellValue } from './types';
 export class FormulaGraphImpl implements FormulaGraph {
   nodes: Map<string, FormulaNode> = new Map();
 
-  addFormula(cellKey: string, formula: string, dependencies: Set<string>): void {
+  /** Cell keys of volatile formulas — kept in sync so recalc need not scan. */
+  private volatileNodes: Set<string> = new Set();
+
+  addFormula(
+    cellKey: string,
+    formula: string,
+    dependencies: Set<string>,
+    volatile = false
+  ): void {
     const node: FormulaNode = {
       cellKey,
       formula,
       dependencies: new Set(dependencies),
       dependents: new Set(),
       isDirty: true,
+      volatile,
     };
 
     // Update dependents of dependencies
@@ -23,6 +32,8 @@ export class FormulaGraphImpl implements FormulaGraph {
     }
 
     this.nodes.set(cellKey, node);
+    if (volatile) this.volatileNodes.add(cellKey);
+    else this.volatileNodes.delete(cellKey);
   }
 
   removeFormula(cellKey: string): void {
@@ -38,6 +49,7 @@ export class FormulaGraphImpl implements FormulaGraph {
     }
 
     this.nodes.delete(cellKey);
+    this.volatileNodes.delete(cellKey);
   }
 
   getDependents(cellKey: string): Set<string> {
@@ -84,6 +96,21 @@ export class FormulaGraphImpl implements FormulaGraph {
       node.cachedValue = undefined;
       for (const dependentKey of node.dependents) {
         if (!dirty.has(dependentKey)) stack.push(dependentKey);
+      }
+    }
+    return dirty;
+  }
+
+  markDirtyVolatile(): Set<string> {
+    const dirty = new Set<string>();
+    for (const key of this.volatileNodes) {
+      const node = this.nodes.get(key);
+      if (!node) continue;
+      node.isDirty = true;
+      node.cachedValue = undefined;
+      dirty.add(key);
+      for (const dependentKey of this.markDirtyDependents(key)) {
+        dirty.add(dependentKey);
       }
     }
     return dirty;

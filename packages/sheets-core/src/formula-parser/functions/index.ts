@@ -35,3 +35,16 @@ export const lazyFunctions: Record<string, LazyFn> = {
 export const refFunctions: Record<string, RefFn> = {
   ...referenceFunctions,
 };
+
+/**
+ * Functions whose result can change without any input changing. A formula
+ * containing one of these is recomputed on every recalculation pass.
+ */
+export const volatileFunctions: ReadonlySet<string> = new Set([
+  'RAND',
+  'RANDBETWEEN',
+  'NOW',
+  'TODAY',
+  'OFFSET',
+  'INDIRECT',
+]);

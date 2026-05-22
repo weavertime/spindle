@@ -107,3 +107,30 @@ describe('invalidate', () => {
     expect(g.nodes.get('B')?.isDirty).toBe(true);
   });
 });
+
+describe('markDirtyVolatile', () => {
+  it('returns volatile cells and their dependents, and marks them dirty', () => {
+    const g = new FormulaGraphImpl();
+    g.addFormula('V', '=NOW()', new Set(), true); // volatile
+    g.addFormula('D', '=V', new Set(['V'])); // depends on the volatile cell
+    g.addFormula('N', '=1', new Set()); // unrelated, non-volatile
+    g.markClean('V', 1);
+    g.markClean('D', 1);
+
+    const dirty = g.markDirtyVolatile();
+
+    expect([...dirty].sort()).toEqual(['D', 'V']);
+    expect(g.nodes.get('V')?.isDirty).toBe(true);
+    expect(g.nodes.get('D')?.isDirty).toBe(true);
+    expect(dirty.has('N')).toBe(false);
+  });
+
+  it('drops a cell from the volatile set when it is re-added non-volatile', () => {
+    const g = new FormulaGraphImpl();
+    g.addFormula('V', '=NOW()', new Set(), true);
+    expect(g.markDirtyVolatile().has('V')).toBe(true);
+
+    g.addFormula('V', '=5', new Set()); // re-added, no longer volatile
+    expect(g.markDirtyVolatile().size).toBe(0);
+  });
+});

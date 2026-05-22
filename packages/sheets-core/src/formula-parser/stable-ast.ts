@@ -12,6 +12,7 @@
 
 import type { Sheet } from '../types';
 import { columnIndexToLabel } from './cell-reference';
+import { volatileFunctions } from './functions';
 import type { CellReference, ParsedFormulaNode } from './types';
 
 export interface StableCellRef {
@@ -393,4 +394,17 @@ export function collectStableDependencies(
   };
   visit(node);
   return out;
+}
+
+/** True when a formula contains a volatile function (RAND, NOW, OFFSET, …). */
+export function formulaIsVolatile(node: StableFormulaNode): boolean {
+  if (node.functionName && volatileFunctions.has(node.functionName.toUpperCase())) {
+    return true;
+  }
+  for (const a of node.args ?? []) {
+    if (formulaIsVolatile(a)) return true;
+  }
+  if (node.left && formulaIsVolatile(node.left)) return true;
+  if (node.right && formulaIsVolatile(node.right)) return true;
+  return false;
 }

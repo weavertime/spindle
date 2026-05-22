@@ -25,6 +25,7 @@ import {
   fromStableAst,
   renderStableAst,
   collectStableDependencies,
+  formulaIsVolatile,
   StableRefDeletedError,
 } from './formula-parser/stable-ast';
 
@@ -281,7 +282,7 @@ export class WorkbookImpl implements Workbook {
     const formulaAst = toStableAst(parseResult.ast, resolver, sheet, row, col);
     const stableDeps = collectStableDependencies(formulaAst, sheet);
 
-    this.formulaGraph.addFormula(cellKey, formula, stableDeps);
+    this.formulaGraph.addFormula(cellKey, formula, stableDeps, formulaIsVolatile(formulaAst));
 
     // Store both AST (truth) and input string (display cache; gets refreshed
     // from the AST on every evaluation).
@@ -556,6 +557,11 @@ export class WorkbookImpl implements Workbook {
    */
   private recalculateDependents(cellKey: string, sheetId: string | undefined): void {
     const dirty = this.formulaGraph.markDirtyDependents(cellKey);
+
+    // Volatile formulas (RAND, NOW, OFFSET, …) recompute on every recalc pass.
+    for (const volatileKey of this.formulaGraph.markDirtyVolatile()) {
+      dirty.add(volatileKey);
+    }
     if (dirty.size === 0) return;
 
     const sheet = this.getSheet(sheetId);
@@ -678,7 +684,7 @@ export class WorkbookImpl implements Workbook {
         if (!ast) continue;
         const cellKey = this.graphKey(sheetId, row, col);
         const deps = collectStableDependencies(ast, sheet);
-        this.formulaGraph.addFormula(cellKey, cell.formula ?? '', deps);
+        this.formulaGraph.addFormula(cellKey, cell.formula ?? '', deps, formulaIsVolatile(ast));
       }
     }
 
@@ -1155,7 +1161,7 @@ export class WorkbookImpl implements Workbook {
         if (!ast) continue;
         const cellKey = this.graphKey(sheetId, row, col);
         const deps = collectStableDependencies(ast, sheet);
-        this.formulaGraph.addFormula(cellKey, cell.formula ?? '', deps);
+        this.formulaGraph.addFormula(cellKey, cell.formula ?? '', deps, formulaIsVolatile(ast));
         this.evaluateFormula(sheetId, row, col);
       }
     }

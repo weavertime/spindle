@@ -311,11 +311,12 @@ export interface FormulaNode {
   dependents: Set<string>; // cellKeys that depend on this formula
   cachedValue?: CellValue;
   isDirty: boolean;
+  volatile?: boolean; // recomputed on every recalc pass (RAND, NOW, OFFSET, …)
 }
 
 export interface FormulaGraph {
   nodes: Map<string, FormulaNode>;
-  addFormula(cellKey: string, formula: string, dependencies: Set<string>): void;
+  addFormula(cellKey: string, formula: string, dependencies: Set<string>, volatile?: boolean): void;
   removeFormula(cellKey: string): void;
   getDependents(cellKey: string): Set<string>;
   getDependencies(cellKey: string): Set<string>;
@@ -323,6 +324,8 @@ export interface FormulaGraph {
   getDirtyCells(): Set<string>;
   /** Mark every transitive dependent of a cell dirty, and return that set. */
   markDirtyDependents(cellKey: string): Set<string>;
+  /** Mark every volatile cell and its dependents dirty, and return that set. */
+  markDirtyVolatile(): Set<string>;
   /** Order a dirty set so dependencies precede dependents; cyclic nodes can't be ordered. */
   topologicalOrder(dirty: Set<string>): { ordered: string[]; cyclic: string[] };
 }
