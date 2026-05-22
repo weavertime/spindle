@@ -1,4 +1,4 @@
-import React, { memo, useState, useCallback, useRef, useEffect } from 'react';
+import React, { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useWorkbook } from '../context/WorkbookContext';
 import { CanvasGrid, type ContextMenuType } from './CanvasGrid';
 import { EditOverlay, type EditOverlayRef } from './EditOverlay';
@@ -13,9 +13,11 @@ import { ContextMenu } from './ContextMenu';
 import { HeaderContextMenu } from './HeaderContextMenu';
 import { FilterModal } from './FilterModal';
 import { FormatCellsModal } from './FormatCellsModal';
+import { FindReplaceModal, type FindReplaceState } from './FindReplaceModal';
 import type { CellPosition, Selection, CellFormat, ColumnFilter, CellStyle, SortOrder, FormatType } from '@pagent-libs/sheets-core';
 import { columnIndexToLabel } from '@pagent-libs/sheets-core';
 import { parseDateString } from '@pagent-libs/sheets-core';
+import { findMatches, computeReplacement } from '@pagent-libs/sheets-core';
 
 export interface WorkbookCanvasProps {
   className?: string;
@@ -71,6 +73,19 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
     currentFormat?: CellFormat;
     sampleValue?: number;
   } | null>(null);
+
+  // Find & replace state
+  const [findReplace, setFindReplace] = useState<FindReplaceState & { isOpen: boolean }>({
+    isOpen: false,
+    query: '',
+    replacement: '',
+    matchCase: false,
+    wholeCell: false,
+    searchFormulas: false,
+  });
+  const [activeMatchIndex, setActiveMatchIndex] = useState(-1);
+  // "Select + reveal a cell" function exposed by CanvasGrid.
+  const navigateRef = useRef<((cell: CellPosition) => void) | null>(null);
   
   // Clipboard handlers from CanvasGrid
   const clipboardHandlersRef = useRef<{
@@ -428,6 +443,106 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
     clipboardHandlersRef.current = handlers;
   }, []);
 
+  // Find & replace -----------------------------------------------------------
+  const handleNavigateReady = useCallback((navigate: (cell: CellPosition) => void) => {
+    navigateRef.current = navigate;
+  }, []);
+
+  // dimensionVersion is a dep so matches refresh after edits and replacements.
+  const findReplaceMatches = useMemo(() => {
+    if (!findReplace.isOpen || !findReplace.query) return [];
+    return findMatches(workbook.getSheet(), findReplace.query, {
+      matchCase: findReplace.matchCase,
+      wholeCell: findReplace.wholeCell,
+      searchFormulas: findReplace.searchFormulas,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [findReplace, workbook, dimensionVersion]);
+
+  // A changed match set invalidates the current position.
+  useEffect(() => {
+    setActiveMatchIndex(-1);
+  }, [findReplaceMatches]);
+
+  const handleFindReplaceChange = useCallback((patch: Partial<FindReplaceState>) => {
+    setFindReplace((fr) => ({ ...fr, ...patch }));
+  }, []);
+
+  const handleCloseFindReplace = useCallback(() => {
+    setFindReplace((fr) => ({ ...fr, isOpen: false }));
+  }, []);
+
+  const handleFindNext = useCallback(() => {
+    if (findReplaceMatches.length === 0) return;
+    const next = (activeMatchIndex + 1) % findReplaceMatches.length;
+    setActiveMatchIndex(next);
+    const m = findReplaceMatches[next];
+    navigateRef.current?.({ row: m.row, col: m.col });
+  }, [findReplaceMatches, activeMatchIndex]);
+
+  const handleFindPrev = useCallback(() => {
+    const n = findReplaceMatches.length;
+    if (n === 0) return;
+    const prev = (activeMatchIndex - 1 + n) % n;
+    setActiveMatchIndex(prev);
+    const m = findReplaceMatches[prev];
+    navigateRef.current?.({ row: m.row, col: m.col });
+  }, [findReplaceMatches, activeMatchIndex]);
+
+  const handleReplace = useCallback(() => {
+    if (!findReplace.query || findReplaceMatches.length === 0) return;
+    const idx = activeMatchIndex >= 0 ? activeMatchIndex : 0;
+    const m = findReplaceMatches[idx];
+    if (!m) return;
+    const result = computeReplacement(
+      workbook.getSheet().getCell(m.row, m.col),
+      findReplace.query,
+      findReplace.replacement,
+      {
+        matchCase: findReplace.matchCase,
+        wholeCell: findReplace.wholeCell,
+        searchFormulas: findReplace.searchFormulas,
+      }
+    );
+    if (result.kind === 'none') return;
+    workbook.batch(() => {
+      if (result.kind === 'value') {
+        workbook.setCellValue(undefined, m.row, m.col, result.value);
+      } else if (result.kind === 'formula') {
+        workbook.setFormula(undefined, m.row, m.col, result.formula);
+      }
+    });
+    setDimensionVersion((v) => v + 1);
+  }, [findReplace, findReplaceMatches, activeMatchIndex, workbook]);
+
+  const handleReplaceAll = useCallback(() => {
+    if (!findReplace.query) return;
+    const opts = {
+      matchCase: findReplace.matchCase,
+      wholeCell: findReplace.wholeCell,
+      searchFormulas: findReplace.searchFormulas,
+    };
+    const sheet = workbook.getSheet();
+    const matches = findMatches(sheet, findReplace.query, opts);
+    if (matches.length === 0) return;
+    workbook.batch(() => {
+      for (const m of matches) {
+        const result = computeReplacement(
+          sheet.getCell(m.row, m.col),
+          findReplace.query,
+          findReplace.replacement,
+          opts
+        );
+        if (result.kind === 'value') {
+          workbook.setCellValue(undefined, m.row, m.col, result.value);
+        } else if (result.kind === 'formula') {
+          workbook.setFormula(undefined, m.row, m.col, result.formula);
+        }
+      }
+    });
+    setDimensionVersion((v) => v + 1);
+  }, [findReplace, workbook]);
+
   // Cancel edit
   const cancelEdit = useCallback(() => {
     setEditingCell(null);
@@ -655,6 +770,12 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
             }));
             break;
             
+          case 'f':
+            // Ctrl+F to open find & replace
+            e.preventDefault();
+            setFindReplace((fr) => ({ ...fr, isOpen: true }));
+            break;
+
           case 'a':
             // Ctrl+A to select all - only if focus is in container (not body)
             if (isInContainer) {
@@ -920,6 +1041,7 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
           originalEditingSheetId={originalEditingSheetId ?? undefined}
           onContextMenu={handleContextMenu}
           onClipboardReady={handleClipboardReady}
+          onNavigateReady={handleNavigateReady}
         />
         
         {/* Edit Overlay - only show when on the original sheet */}
@@ -1405,6 +1527,25 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
             applyFormatToSelection(format);
             setFormatModal(null);
           }}
+        />
+      )}
+
+      {/* Find & Replace */}
+      {findReplace.isOpen && (
+        <FindReplaceModal
+          query={findReplace.query}
+          replacement={findReplace.replacement}
+          matchCase={findReplace.matchCase}
+          wholeCell={findReplace.wholeCell}
+          searchFormulas={findReplace.searchFormulas}
+          matchCount={findReplaceMatches.length}
+          activeMatchIndex={activeMatchIndex}
+          onChange={handleFindReplaceChange}
+          onFindNext={handleFindNext}
+          onFindPrev={handleFindPrev}
+          onReplace={handleReplace}
+          onReplaceAll={handleReplaceAll}
+          onClose={handleCloseFindReplace}
         />
       )}
     </div>

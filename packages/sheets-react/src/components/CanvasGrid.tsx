@@ -43,6 +43,8 @@ export interface CanvasGridProps {
     cut: () => void;
     paste: (targetCell?: CellPosition) => Promise<void>;
   }) => void;
+  /** Exposes a "select this cell and scroll it into view" function to the parent. */
+  onNavigateReady?: (navigate: (cell: CellPosition) => void) => void;
 }
 
 export const CanvasGrid = memo(function CanvasGrid({
@@ -65,6 +67,7 @@ export const CanvasGrid = memo(function CanvasGrid({
   originalEditingSheetId,
   onContextMenu,
   onClipboardReady,
+  onNavigateReady,
 }: CanvasGridProps) {
   const { workbook } = useWorkbook();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -1189,7 +1192,24 @@ export const CanvasGrid = memo(function CanvasGrid({
       onScroll?.(newScrollTop, newScrollLeft);
     }
   }, [scrollLeft, scrollTop, width, height, colWidth, headerHeight, onScroll]);
-  
+
+  // Select a single cell and scroll it into view — used by find & replace.
+  const navigateToCell = useCallback((cell: CellPosition) => {
+    const newSelection: Selection = {
+      ranges: [{ startRow: cell.row, endRow: cell.row, startCol: cell.col, endCol: cell.col }],
+      activeCell: cell,
+    };
+    setSelection(newSelection);
+    setSelectionStart(null);
+    onSelectionChange?.(newSelection);
+    onActiveCellChange?.(cell);
+    scrollToCellIfNeeded(cell);
+  }, [onSelectionChange, onActiveCellChange, scrollToCellIfNeeded]);
+
+  useEffect(() => {
+    onNavigateReady?.(navigateToCell);
+  }, [onNavigateReady, navigateToCell]);
+
   // Handle keyboard
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLCanvasElement>) => {
     if (editingCell) {
