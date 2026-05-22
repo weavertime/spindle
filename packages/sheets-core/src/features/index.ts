@@ -2,4 +2,5 @@
 export * from './freeze';
 export * from './sort';
 export * from './filter';
+export * from './autofill';
 

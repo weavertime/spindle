@@ -10,6 +10,7 @@ import {
 } from '@pagent-libs/sheets-core';
 import type { Selection, Range, Cell, CellValue } from '@pagent-libs/sheets-core';
 import { extractFormulaRanges, columnIndexToLabel, adjustFormula, type FormulaRange } from '@pagent-libs/sheets-core';
+import { detectSeries, extrapolate } from '@pagent-libs/sheets-core';
 import { FilterManager, excelDateToJS, formatJSDate } from '@pagent-libs/sheets-core';
 import { RemoteSelectionOverlay } from './RemoteSelectionOverlay';
 
@@ -84,6 +85,8 @@ export const CanvasGrid = memo(function CanvasGrid({
   const [resizeStart, setResizeStart] = useState<{ pos: number; size: number } | null>(null);
   const [isFilling, setIsFilling] = useState(false);
   const [fillStart, setFillStart] = useState<CellPosition | null>(null);
+  // The selected block at the moment the fill drag began — the source pattern.
+  const [fillSourceRange, setFillSourceRange] = useState<Range | null>(null);
   const [resizeVersion, setResizeVersion] = useState(0);
   
   // Formula reference selection state
@@ -426,6 +429,14 @@ export const CanvasGrid = memo(function CanvasGrid({
     if (renderer.isFillHandleAtPoint(x, y) && selection.ranges.length > 0) {
       setIsFilling(true);
       setFillStart(selection.activeCell);
+      // Capture the source pattern (normalized) before the drag mutates it.
+      const r0 = selection.ranges[0];
+      setFillSourceRange({
+        startRow: Math.min(r0.startRow, r0.endRow),
+        endRow: Math.max(r0.startRow, r0.endRow),
+        startCol: Math.min(r0.startCol, r0.endCol),
+        endCol: Math.max(r0.startCol, r0.endCol),
+      });
       e.preventDefault();
       return;
     }
@@ -662,91 +673,135 @@ export const CanvasGrid = memo(function CanvasGrid({
     }
     
     if (isFilling && fillStart && selection.ranges.length > 0) {
-      // Perform fill operation
-      const sourceCell = sheet.getCell(fillStart.row, fillStart.col);
-      const fillRange = selection.ranges[0];
-      
-      if (sourceCell || fillStart) {
-        const sourceFormula = sourceCell?.formula;
-        const sourceValue = sourceCell?.value;
-        const sourceStyleId = sourceCell?.styleId;
-        const sourceFormatId = sourceCell?.formatId;
-        
-        // Use batch to record single history entry for all fill operations
-        workbook.batch(() => {
-          // Fill all cells in the range
+      const raw = selection.ranges[0];
+      const fillRange: Range = {
+        startRow: Math.min(raw.startRow, raw.endRow),
+        endRow: Math.max(raw.startRow, raw.endRow),
+        startCol: Math.min(raw.startCol, raw.endCol),
+        endCol: Math.max(raw.startCol, raw.endCol),
+      };
+      const src: Range = fillSourceRange ?? {
+        startRow: fillStart.row,
+        endRow: fillStart.row,
+        startCol: fillStart.col,
+        endCol: fillStart.col,
+      };
+
+      const grewVertically =
+        fillRange.startRow < src.startRow || fillRange.endRow > src.endRow;
+      const grewHorizontally =
+        fillRange.startCol < src.startCol || fillRange.endCol > src.endCol;
+
+      // Copy/extrapolate one source line into its target cells. `axis` is the
+      // direction of the fill; `lineIndex` is the fixed column (vertical) or
+      // row (horizontal) of this line.
+      const fillLine = (axis: 'vertical' | 'horizontal', lineIndex: number) => {
+        const srcStart = axis === 'vertical' ? src.startRow : src.startCol;
+        const srcEnd = axis === 'vertical' ? src.endRow : src.endCol;
+        const targetStart = axis === 'vertical' ? fillRange.startRow : fillRange.startCol;
+        const targetEnd = axis === 'vertical' ? fillRange.endRow : fillRange.endCol;
+        const len = srcEnd - srcStart + 1;
+
+        const sourceCells: (Cell | undefined)[] = [];
+        const sourceValues: CellValue[] = [];
+        for (let i = 0; i < len; i++) {
+          const sr = axis === 'vertical' ? srcStart + i : lineIndex;
+          const sc = axis === 'vertical' ? lineIndex : srcStart + i;
+          const cell = sheet.getCell(sr, sc);
+          sourceCells.push(cell);
+          sourceValues.push(cell?.value ?? null);
+        }
+        // A formula in the run disables series extrapolation — formulas are
+        // tiled and rebased per cell instead.
+        const hasFormula = sourceCells.some((c) => c?.formula);
+        const series = hasFormula ? { kind: 'copy' as const } : detectSeries(sourceValues);
+
+        for (let pos = targetStart; pos <= targetEnd; pos++) {
+          if (pos >= srcStart && pos <= srcEnd) continue; // leave the source intact
+          const r = axis === 'vertical' ? pos : lineIndex;
+          const c = axis === 'vertical' ? lineIndex : pos;
+          const offset = pos - srcStart;
+          const tileIdx = ((offset % len) + len) % len;
+          const srcCell = sourceCells[tileIdx];
+          const srcRow = axis === 'vertical' ? srcStart + tileIdx : lineIndex;
+          const srcCol = axis === 'vertical' ? lineIndex : srcStart + tileIdx;
+
+          if (srcCell?.formula) {
+            workbook.setFormula(
+              undefined, r, c,
+              adjustFormula(srcCell.formula, workbook, undefined, srcRow, srcCol, r, c)
+            );
+          } else {
+            workbook.setCellValue(undefined, r, c, extrapolate(series, sourceValues, offset));
+          }
+          if (srcCell?.styleId || srcCell?.formatId) {
+            const existing = sheet.getCell(r, c);
+            workbook.setCell(undefined, r, c, {
+              ...existing,
+              styleId: srcCell.styleId,
+              formatId: srcCell.formatId,
+            });
+          }
+        }
+      };
+
+      // Use batch to record a single history entry for the whole fill.
+      workbook.batch(() => {
+        if (grewVertically && !grewHorizontally) {
+          for (let c = src.startCol; c <= src.endCol; c++) fillLine('vertical', c);
+        } else if (grewHorizontally && !grewVertically) {
+          for (let r = src.startRow; r <= src.endRow; r++) fillLine('horizontal', r);
+        } else {
+          // Diagonal drag (or no growth) — copy the anchor across the range.
+          const anchor = sheet.getCell(fillStart.row, fillStart.col);
           for (let r = fillRange.startRow; r <= fillRange.endRow; r++) {
             for (let c = fillRange.startCol; c <= fillRange.endCol; c++) {
-              // Skip the source cell
               if (r === fillStart.row && c === fillStart.col) continue;
-              
-              if (sourceFormula) {
-                // Adjust formula for relative references (AST-aware rebasing)
-                const adjustedFormula = adjustFormula(
-                  sourceFormula,
-                  workbook,
-                  undefined,
-                  fillStart.row,
-                  fillStart.col,
-                  r,
-                  c
+              if (anchor?.formula) {
+                workbook.setFormula(
+                  undefined, r, c,
+                  adjustFormula(anchor.formula, workbook, undefined, fillStart.row, fillStart.col, r, c)
                 );
-                workbook.setFormula(undefined, r, c, adjustedFormula);
-
-                
-                // Also copy style and format if present
-                if (sourceStyleId || sourceFormatId) {
-                  const existingCell = sheet.getCell(r, c);
-                  workbook.setCell(undefined, r, c, {
-                    ...existingCell,
-                    styleId: sourceStyleId,
-                    formatId: sourceFormatId,
-                  });
-                }
-              } else if (sourceValue !== null && sourceValue !== undefined) {
-                // Copy value as-is
-                workbook.setCellValue(undefined, r, c, sourceValue);
-                
-                // Also copy style and format if present
-                if (sourceStyleId || sourceFormatId) {
-                  const existingCell = sheet.getCell(r, c);
-                  workbook.setCell(undefined, r, c, {
-                    ...existingCell,
-                    styleId: sourceStyleId,
-                    formatId: sourceFormatId,
-                  });
-                }
               } else {
-                // Source is empty, clear target cell
-                workbook.setCellValue(undefined, r, c, null);
+                workbook.setCellValue(undefined, r, c, anchor?.value ?? null);
+              }
+              if (anchor?.styleId || anchor?.formatId) {
+                const existing = sheet.getCell(r, c);
+                workbook.setCell(undefined, r, c, {
+                  ...existing,
+                  styleId: anchor.styleId,
+                  formatId: anchor.formatId,
+                });
               }
             }
           }
-        });
-        
-        // Update selection to the filled range and trigger re-render
-        const newSelection: Selection = {
-          ranges: [fillRange],
-          activeCell: { row: fillRange.endRow, col: fillRange.endCol },
-        };
-        setSelection(newSelection);
-        onSelectionChange?.(newSelection);
-        onActiveCellChange?.({ row: fillRange.endRow, col: fillRange.endCol });
-        onContentChange?.();
-      }
-      
+        }
+      });
+
+      // Update selection to the filled range and trigger re-render
+      const newSelection: Selection = {
+        ranges: [fillRange],
+        activeCell: { row: fillRange.endRow, col: fillRange.endCol },
+      };
+      setSelection(newSelection);
+      onSelectionChange?.(newSelection);
+      onActiveCellChange?.({ row: fillRange.endRow, col: fillRange.endCol });
+      onContentChange?.();
+
       setIsFilling(false);
       setFillStart(null);
+      setFillSourceRange(null);
     } else if (isFilling) {
       setIsFilling(false);
       setFillStart(null);
+      setFillSourceRange(null);
     }
     
     if (isSelectingFormulaRef) {
       setIsSelectingFormulaRef(false);
       setFormulaRefStart(null);
     }
-  }, [isResizing, isSelecting, isFilling, isSelectingFormulaRef, fillStart, selection, sheet, workbook, onSelectionChange, onActiveCellChange, onContentChange]);
+  }, [isResizing, isSelecting, isFilling, isSelectingFormulaRef, fillStart, fillSourceRange, selection, sheet, workbook, onSelectionChange, onActiveCellChange, onContentChange]);
   
   const formatCellValueForEditing = useCallback((cellData: Cell | undefined): string => {
     if (!cellData) return '';
