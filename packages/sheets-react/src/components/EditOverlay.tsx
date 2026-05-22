@@ -5,6 +5,7 @@ import { excelDateToJS } from '@pagent-libs/sheets-core';
 export interface EditOverlayRef {
   insertAtCursor: (text: string, replaceExisting?: boolean) => void;
   getCursorPosition: () => number;
+  setSelection: (start: number, end?: number) => void;
   focus: () => void;
 }
 
@@ -24,6 +25,10 @@ export interface EditOverlayProps {
   onBlurCapture?: () => void;
   isEditingFormula?: boolean;
   cellFormat?: CellFormat;
+  /** Intercepts a keydown before the editor acts on it; return true if consumed. */
+  interceptKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => boolean;
+  /** Reports the caret offset whenever it moves. */
+  onSelectionChange?: (caret: number) => void;
 }
 
 export const EditOverlay = memo(forwardRef<EditOverlayRef, EditOverlayProps>(function EditOverlay({
@@ -42,6 +47,8 @@ export const EditOverlay = memo(forwardRef<EditOverlayRef, EditOverlayProps>(fun
   onBlurCapture,
   isEditingFormula = false,
   cellFormat,
+  interceptKeyDown,
+  onSelectionChange,
 }, ref) {
   const inputRef = useRef<HTMLInputElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
@@ -144,6 +151,16 @@ export const EditOverlay = memo(forwardRef<EditOverlayRef, EditOverlayProps>(fun
     getCursorPosition: () => {
       return inputRef.current?.selectionStart ?? 0;
     },
+    setSelection: (start: number, end: number = start) => {
+      // Deferred so it lands after React commits any pending value change.
+      requestAnimationFrame(() => {
+        const input = inputRef.current;
+        if (input) {
+          input.focus();
+          input.setSelectionRange(start, end);
+        }
+      });
+    },
     focus: () => {
       const inputToFocus = showDateTimePicker ? datetimeInputRef.current :
                           showDatePicker ? dateInputRef.current :
@@ -193,6 +210,8 @@ export const EditOverlay = memo(forwardRef<EditOverlayRef, EditOverlayProps>(fun
   // Use e.currentTarget.value to get the most current value from the DOM
   // rather than relying on the prop value which may be stale due to React's batching
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    // The formula-assist popup gets first refusal on navigation keys.
+    if (interceptKeyDown?.(e)) return;
     if (e.key === 'Enter') {
       e.preventDefault();
       lastInsertRef.current = null;
@@ -207,14 +226,20 @@ export const EditOverlay = memo(forwardRef<EditOverlayRef, EditOverlayProps>(fun
       onCommit(e.currentTarget.value);
       // Let parent handle tab navigation
     }
-  }, [onCommit, onCancel]);
-  
+  }, [onCommit, onCancel, interceptKeyDown]);
+
   // Handle input change
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     // Clear last insert ref when user types manually
     lastInsertRef.current = null;
     onChange(e.target.value);
-  }, [onChange]);
+    onSelectionChange?.(e.target.selectionStart ?? e.target.value.length);
+  }, [onChange, onSelectionChange]);
+
+  // Report caret moves (arrows, clicks) so formula-assist tracks the position.
+  const reportSelection = useCallback((e: React.SyntheticEvent<HTMLInputElement>) => {
+    onSelectionChange?.(e.currentTarget.selectionStart ?? 0);
+  }, [onSelectionChange]);
 
   // Handle date/time picker changes
   const handlePickerChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -380,6 +405,8 @@ export const EditOverlay = memo(forwardRef<EditOverlayRef, EditOverlayProps>(fun
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          onKeyUp={reportSelection}
+          onMouseUp={reportSelection}
           onBlur={handleBlur}
           onFocus={onFocus}
           style={{
@@ -420,6 +447,8 @@ export const EditOverlay = memo(forwardRef<EditOverlayRef, EditOverlayProps>(fun
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          onKeyUp={reportSelection}
+          onMouseUp={reportSelection}
           onBlur={handleBlur}
           onFocus={onFocus}
           placeholder="Manual entry..."
