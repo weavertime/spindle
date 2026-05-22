@@ -205,3 +205,27 @@ export function matchesCriterion(value: unknown, criterion: unknown): boolean {
       return false;
   }
 }
+
+/** Normalise a value into a 2D matrix so table/array functions can index it. */
+export function toMatrix(v: unknown): unknown[][] {
+  if (Array.isArray(v)) {
+    if (v.length > 0 && Array.isArray(v[0])) return v as unknown[][];
+    return [v as unknown[]];
+  }
+  return [[v]];
+}
+
+/** Three-way comparison: numeric when both sides are numbers, else lexical. */
+export function compareValues(a: unknown, b: unknown): number {
+  if (typeof a === 'number' && typeof b === 'number') {
+    return a < b ? -1 : a > b ? 1 : 0;
+  }
+  const na = Number(a);
+  const nb = Number(b);
+  if (!isNaN(na) && !isNaN(nb) && a != null && b != null && a !== '' && b !== '') {
+    return na < nb ? -1 : na > nb ? 1 : 0;
+  }
+  const sa = toText(a).toLowerCase();
+  const sb = toText(b).toLowerCase();
+  return sa < sb ? -1 : sa > sb ? 1 : 0;
+}

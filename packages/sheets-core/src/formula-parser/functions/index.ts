@@ -10,6 +10,7 @@ import { dateFunctions } from './date';
 import { informationEagerFunctions, informationLazyFunctions } from './information';
 import { financialFunctions } from './financial';
 import { referenceFunctions } from './reference';
+import { arrayFunctions } from './array';
 
 export type { EagerFn, LazyFn, RefFn } from './helpers';
 
@@ -23,6 +24,7 @@ export const eagerFunctions: Record<string, EagerFn> = {
   ...dateFunctions,
   ...informationEagerFunctions,
   ...financialFunctions,
+  ...arrayFunctions,
 };
 
 /** Functions that receive argument thunks so they can short-circuit. */
