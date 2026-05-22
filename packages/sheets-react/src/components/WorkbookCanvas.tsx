@@ -834,9 +834,9 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
         onAlignRight={() => applyStyleToSelection((s) => ({ ...s, textAlign: 'right' as const }))}
         onVerticalAlign={(align) => applyStyleToSelection((s) => ({ ...s, verticalAlign: align }))}
         onTextWrap={() => applyStyleToSelection((s) => ({ ...s, textWrap: !s?.textWrap }))}
-        onTextRotation={() => {
-          // Text rotation not yet implemented
-        }}
+        onTextRotation={(angle) =>
+          applyStyleToSelection((s) => ({ ...s, textRotation: angle }))
+        }
         onFormatCurrency={() => applyFormatToSelection({ type: 'currency' })}
         onFormatPercentage={() => applyFormatToSelection({ type: 'percentage' })}
         onFormatNumber={() => applyFormatToSelection({ type: 'number' })}
@@ -880,6 +880,7 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
                   align: style?.textAlign,
                   verticalAlign: style?.verticalAlign,
                   textWrap: style?.textWrap,
+                  textRotation: style?.textRotation,
                   format: format?.type,
                   hyperlink: cell?.hyperlink,
                 };

@@ -54,6 +54,7 @@ export interface TextStyle {
   textAlign: 'left' | 'center' | 'right';
   verticalAlign: 'top' | 'middle' | 'bottom';
   textDecoration?: 'none' | 'underline' | 'line-through';
+  textRotation?: number; // degrees, -90..90; 0/undefined = horizontal
 }
 
 /**

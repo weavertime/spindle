@@ -19,6 +19,7 @@ export interface CellStyle {
   borderLeft?: string;
   textWrap?: boolean;
   textDecoration?: 'none' | 'underline' | 'line-through';
+  textRotation?: number; // degrees, -90..90; 0/undefined = horizontal
 }
 
 export type FormatType =
