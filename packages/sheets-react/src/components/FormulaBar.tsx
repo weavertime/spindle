@@ -1,6 +1,9 @@
 import React, { memo, useCallback, useState, useEffect, useRef } from 'react';
 import { useWorkbook } from '../context/WorkbookContext';
 import { columnIndexToLabel } from '@pagent-libs/sheets-core';
+import { FormulaAutocomplete } from './FormulaAutocomplete';
+import { FormulaSignatureHint } from './FormulaSignatureHint';
+import { useFormulaAssist } from '../hooks/useFormulaAssist';
 
 interface FormulaBarProps {
   activeCell: { row: number; col: number } | null;
@@ -15,6 +18,7 @@ export const FormulaBar = memo(function FormulaBar({
   const [inputValue, setInputValue] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [readOnly, setReadOnly] = useState(false);
+  const [caret, setCaret] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Update input value when active cell changes
@@ -42,9 +46,34 @@ export const FormulaBar = memo(function FormulaBar({
     }
   }, [activeCell, workbook, isEditing]);
 
+  // Formula autocomplete + parameter help for the formula bar.
+  const onFormulaAccept = useCallback((nextValue: string, nextCaret: number) => {
+    setInputValue(nextValue);
+    setIsEditing(true);
+    setCaret(nextCaret);
+    requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (input) {
+        input.focus();
+        input.setSelectionRange(nextCaret, nextCaret);
+      }
+    });
+  }, []);
+  const formulaAssist = useFormulaAssist({
+    value: inputValue,
+    caret,
+    enabled: isEditing && inputValue.startsWith('=') && !readOnly,
+    onAccept: onFormulaAccept,
+  });
+
+  const reportSelection = useCallback((e: React.SyntheticEvent<HTMLInputElement>) => {
+    setCaret(e.currentTarget.selectionStart ?? 0);
+  }, []);
+
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(e.target.value);
     setIsEditing(true);
+    setCaret(e.target.selectionStart ?? e.target.value.length);
   }, []);
 
   const handleInputFocus = useCallback(() => {
@@ -60,6 +89,8 @@ export const FormulaBar = memo(function FormulaBar({
 
   const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
+      // The formula-assist popup gets first refusal on navigation keys.
+      if (formulaAssist.onKeyDown(e)) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         inputRef.current?.blur();
@@ -72,7 +103,7 @@ export const FormulaBar = memo(function FormulaBar({
         }
       }
     },
-    [activeCell, workbook]
+    [activeCell, workbook, formulaAssist]
   );
 
   const cellReference = activeCell
@@ -112,6 +143,7 @@ export const FormulaBar = memo(function FormulaBar({
         className="formula-input-container"
         style={{
           flex: 1,
+          position: 'relative',
           display: 'flex',
           alignItems: 'center',
           border: '1px solid rgba(15, 23, 42, 0.1)',
@@ -150,6 +182,8 @@ export const FormulaBar = memo(function FormulaBar({
             parent.style.boxShadow = 'none';
           }}
           onKeyDown={handleInputKeyDown}
+          onKeyUp={reportSelection}
+          onMouseUp={reportSelection}
           placeholder="Enter formula or value"
           style={{
             flex: 1,
@@ -163,6 +197,24 @@ export const FormulaBar = memo(function FormulaBar({
             fontFamily: 'inherit',
           }}
         />
+        {formulaAssist.mode === 'autocomplete' && (
+          <FormulaAutocomplete
+            suggestions={formulaAssist.suggestions}
+            highlightedIndex={formulaAssist.highlightedIndex}
+            top={36}
+            left={0}
+            onHover={formulaAssist.setHighlightedIndex}
+            onPick={formulaAssist.accept}
+          />
+        )}
+        {formulaAssist.mode === 'signature' && formulaAssist.signature && (
+          <FormulaSignatureHint
+            doc={formulaAssist.signature.doc}
+            activeArg={formulaAssist.signature.activeArg}
+            top={36}
+            left={0}
+          />
+        )}
       </div>
     </div>
   );

@@ -2,6 +2,9 @@ import React, { memo, useState, useCallback, useRef, useEffect } from 'react';
 import { useWorkbook } from '../context/WorkbookContext';
 import { CanvasGrid, type ContextMenuType } from './CanvasGrid';
 import { EditOverlay, type EditOverlayRef } from './EditOverlay';
+import { FormulaAutocomplete } from './FormulaAutocomplete';
+import { FormulaSignatureHint } from './FormulaSignatureHint';
+import { useFormulaAssist } from '../hooks/useFormulaAssist';
 import { FormulaBar } from './FormulaBar';
 import { Toolbar } from './Toolbar';
 import { SheetTabs } from './SheetTabs';
@@ -35,6 +38,7 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
   const [activeCell, setActiveCell] = useState<CellPosition | null>(null);
   const [editingCell, setEditingCell] = useState<CellPosition | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [caret, setCaret] = useState(0);
   const [editingCellFormat, setEditingCellFormat] = useState<CellFormat | undefined>(undefined);
   const [dimensionVersion, setDimensionVersion] = useState(0);
   const [showComments, setShowComments] = useState(false);
@@ -77,6 +81,19 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
   
   // Check if we're editing a formula
   const isEditingFormula = editingCell !== null && editValue.startsWith('=');
+
+  // Formula autocomplete + parameter help for the in-cell editor.
+  const onFormulaAccept = useCallback((nextValue: string, nextCaret: number) => {
+    setEditValue(nextValue);
+    setCaret(nextCaret);
+    editOverlayRef.current?.setSelection(nextCaret);
+  }, []);
+  const formulaAssist = useFormulaAssist({
+    value: editValue,
+    caret,
+    enabled: isEditingFormula,
+    onAccept: onFormulaAccept,
+  });
   
   // Check if we're on a different sheet than where editing started
   // Use workbook.activeSheetId directly to get the current value immediately (not via state)
@@ -304,6 +321,7 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
 
     setEditingCell(cell);
     setEditValue(value);
+    setCaret(value.length);
     setEditingCellFormat(cellFormat);
     // Track which sheet the edit started on (for cross-sheet formula references)
     setOriginalEditingSheetId(workbook.activeSheetId);
@@ -917,8 +935,34 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
             height={editPosition.height}
             isEditingFormula={isEditingFormula}
             cellFormat={editingCellFormat}
+            interceptKeyDown={formulaAssist.onKeyDown}
+            onSelectionChange={setCaret}
           />
         )}
+
+        {/* Formula autocomplete / parameter help, anchored below the editor */}
+        {editingCell && editPosition && !isOnDifferentSheet && formulaAssist.mode === 'autocomplete' && (
+          <FormulaAutocomplete
+            suggestions={formulaAssist.suggestions}
+            highlightedIndex={formulaAssist.highlightedIndex}
+            top={editPosition.y + editPosition.height}
+            left={editPosition.x}
+            onHover={formulaAssist.setHighlightedIndex}
+            onPick={formulaAssist.accept}
+          />
+        )}
+        {editingCell &&
+          editPosition &&
+          !isOnDifferentSheet &&
+          formulaAssist.mode === 'signature' &&
+          formulaAssist.signature && (
+            <FormulaSignatureHint
+              doc={formulaAssist.signature.doc}
+              activeArg={formulaAssist.signature.activeArg}
+              top={editPosition.y + editPosition.height}
+              left={editPosition.x}
+            />
+          )}
         
         {/* Floating Formula Input - shown when editing formula on a different sheet */}
         {isEditingFormula && isOnDifferentSheet && editingCell && floatingInputPos && (
