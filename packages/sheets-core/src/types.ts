@@ -340,12 +340,12 @@ export interface FormulaGraph {
   removeFormula(cellKey: string): void;
   markClean(cellKey: string, value: CellValue): void;
   /**
-   * Collect every cell to recompute after `changedKey` changed — its transitive
+   * Collect every cell to recompute after the `seeds` changed — their transitive
    * dependents (single-cell and range-based) plus all volatile cells — along
    * with the dependency edges among them.
    */
   collectDirty(
-    changedKey: string,
+    seeds: string[],
     resolveCell: CellResolver
   ): { dirty: Set<string>; edges: Map<string, Set<string>> };
   /** Order a dirty set so dependencies precede dependents; cyclic nodes can't be ordered. */

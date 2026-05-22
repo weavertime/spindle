@@ -128,7 +128,7 @@ export class FormulaGraphImpl implements FormulaGraph {
   }
 
   collectDirty(
-    changedKey: string,
+    seeds: string[],
     resolveCell: CellResolver
   ): { dirty: Set<string>; edges: Map<string, Set<string>> } {
     const dirty = new Set<string>();
@@ -146,9 +146,11 @@ export class FormulaGraphImpl implements FormulaGraph {
       }
     };
 
-    // Seeds: direct dependents of the changed cell, and every volatile formula.
-    for (const formulaKey of this.directDependents(changedKey, resolveCell)) {
-      enqueue(formulaKey);
+    // Seeds: direct dependents of every changed cell, and every volatile formula.
+    for (const seed of seeds) {
+      for (const formulaKey of this.directDependents(seed, resolveCell)) {
+        enqueue(formulaKey);
+      }
     }
     for (const volatileKey of this.volatileNodes) {
       enqueue(volatileKey);
