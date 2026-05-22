@@ -34,20 +34,11 @@ categories. Functions and their metadata live in
 
 Gaps against Excel / Google Sheets in the non-formula feature set.
 
-### Wired but not implemented
-
-- [ ] **Merge cells** — toolbar button exists; the `onMergeCells` handler
-      in `WorkbookCanvas.tsx` is a no-op
-- [ ] **Text rotation** — toolbar button exists; the handler is a no-op
-- [ ] **Autofill / fill handle** — the selection renderer draws the handle,
-      but drag-to-fill and series fill are not functional
-
 ### Not present
 
 - [ ] **Conditional formatting** — value- and formula-driven cell styling
 - [ ] **Data validation** — dropdown lists, input restrictions
 - [ ] **Named ranges** — and their use in formulas
-- [ ] **Find & replace**
 - [ ] **Charts** — bar / line / pie, etc.
 - [ ] **Pivot tables**
 - [ ] **Cell & sheet protection** — locked cells, protected ranges
@@ -64,7 +55,8 @@ Gaps against Excel / Google Sheets in the non-formula feature set.
 
 Real-time collaboration, comments and comment threads, freeze panes,
 single-column sort, per-column filters, cell styles (fonts, colors,
-borders, alignment, wrap), number formats, hyperlinks, hide/show and
-insert/delete rows and columns, multiple sheets, undo/redo, CSV export,
-the 146-function formula engine with dynamic arrays, and formula
-autocomplete with parameter help.
+borders, alignment, wrap, rotation), number formats, hyperlinks,
+hide/show and insert/delete rows and columns, merged cells, multiple
+sheets, undo/redo, find & replace, autofill (copy and numeric series),
+CSV export, the 146-function formula engine with dynamic arrays, and
+formula autocomplete with parameter help.
