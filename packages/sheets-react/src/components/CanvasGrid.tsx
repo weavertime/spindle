@@ -8,7 +8,7 @@ import {
   type CursorType,
   type FormulaRangeHighlight,
 } from '@pagent-libs/sheets-core';
-import type { Selection, Range, Cell } from '@pagent-libs/sheets-core';
+import type { Selection, Range, Cell, CellValue } from '@pagent-libs/sheets-core';
 import { extractFormulaRanges, columnIndexToLabel, adjustFormula, type FormulaRange } from '@pagent-libs/sheets-core';
 import { FilterManager, excelDateToJS, formatJSDate } from '@pagent-libs/sheets-core';
 import { RemoteSelectionOverlay } from './RemoteSelectionOverlay';
@@ -259,6 +259,13 @@ export const CanvasGrid = memo(function CanvasGrid({
         const cell = sheet.getCell(row, col);
         if (cell) {
           cells.set(`${row}:${col}`, cell);
+        } else {
+          // A cell with no stored data may still be filled by a dynamic-array
+          // spill — show a transient, display-only cell for the spilled value.
+          const spilled = workbook.getSpilledValue(undefined, row, col);
+          if (spilled !== undefined) {
+            cells.set(`${row}:${col}`, { value: spilled as CellValue });
+          }
         }
       }
     }

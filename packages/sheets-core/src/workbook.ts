@@ -260,6 +260,25 @@ export class WorkbookImpl implements Workbook {
     return cell?.value ?? null;
   }
 
+  /** The value shown at a cell filled by a dynamic-array spill, if any. */
+  getSpilledValue(sheetId: string | undefined, row: number, col: number): unknown | undefined {
+    return this.getSpillIndex(sheetId).spilledValueAt(row, col);
+  }
+
+  /** Whether a cell is filled by a spill it does not itself anchor (read-only). */
+  isSpilledCell(sheetId: string | undefined, row: number, col: number): boolean {
+    return this.getSpillIndex(sheetId).isCovered(row, col);
+  }
+
+  /** The anchor position of the spill covering a cell, if any. */
+  getSpillAnchor(
+    sheetId: string | undefined,
+    row: number,
+    col: number
+  ): { row: number; col: number } | undefined {
+    return this.getSpillIndex(sheetId).anchorOf(row, col);
+  }
+
   setFormula(sheetId: string | undefined, row: number, col: number, formula: string): void {
     // Record history before making changes (unless we're undoing/redoing or in a batch)
     if (!this.isUndoing && !this.isRedoing && !this.isBatching) {
