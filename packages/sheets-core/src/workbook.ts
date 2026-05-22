@@ -549,20 +549,30 @@ export class WorkbookImpl implements Workbook {
   }
 
   /**
-   * Recalculate all cells that depend on the given cell
+   * Recalculate every cell that transitively depends on the given cell.
+   * Each dependent is evaluated exactly once, in topological order, so a cell
+   * reachable by several paths is not recomputed several times. Cells in (or
+   * downstream of) a dependency cycle are reported as #CIRCULAR!.
    */
   private recalculateDependents(cellKey: string, sheetId: string | undefined): void {
-    const dependents = this.formulaGraph.getDependents(cellKey);
+    const dirty = this.formulaGraph.markDirtyDependents(cellKey);
+    if (dirty.size === 0) return;
+
     const sheet = this.getSheet(sheetId);
+    const { ordered, cyclic } = this.formulaGraph.topologicalOrder(dirty);
 
-    for (const dependentKey of dependents) {
-      // Invalidate dependent
-      this.formulaGraph.invalidate(dependentKey);
+    for (const key of ordered) {
+      const indices = sheet.stableKeyToIndices(key);
+      if (indices) {
+        this.evaluateFormula(sheetId, indices.row, indices.col);
+      }
+    }
 
-      // Recalculate dependent (translate stable graph key back to current indices)
-      const indices = sheet.stableKeyToIndices(dependentKey);
+    for (const key of cyclic) {
+      const indices = sheet.stableKeyToIndices(key);
       if (!indices) continue;
-      this.evaluateFormula(sheetId, indices.row, indices.col);
+      this.formulaGraph.markClean(key, '#CIRCULAR!' as CellValue);
+      this.setCell(sheetId, indices.row, indices.col, { value: '#CIRCULAR!' as CellValue });
     }
   }
 

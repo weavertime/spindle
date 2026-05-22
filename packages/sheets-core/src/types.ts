@@ -321,6 +321,10 @@ export interface FormulaGraph {
   getDependencies(cellKey: string): Set<string>;
   invalidate(cellKey: string): void;
   getDirtyCells(): Set<string>;
+  /** Mark every transitive dependent of a cell dirty, and return that set. */
+  markDirtyDependents(cellKey: string): Set<string>;
+  /** Order a dirty set so dependencies precede dependents; cyclic nodes can't be ordered. */
+  topologicalOrder(dirty: Set<string>): { ordered: string[]; cyclic: string[] };
 }
 
 export type EventType =
