@@ -7,4 +7,5 @@ export * from './formula-adjust';
 export * from './formula-ranges';
 export * from './stable-ast';
 export * from './functions/catalog';
+export * from './formula-context';
 
