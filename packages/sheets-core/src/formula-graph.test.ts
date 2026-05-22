@@ -1,20 +1,13 @@
 import { FormulaGraphImpl } from './formula-graph';
 
 /**
- * Build a graph with exact dependency / dependent edges. Used directly (rather
- * than via addFormula) so cyclic graphs — which addFormula cannot wire, since
- * it only back-links to already-existing dependencies — can be tested.
+ * Build a graph from `[cell, dependencies]` pairs. Order does not matter — the
+ * reverse index is keyed by dependency, so cyclic graphs wire up correctly too.
  */
-function graphOf(spec: Record<string, { deps?: string[]; dependents?: string[] }>): FormulaGraphImpl {
+function graphOf(edges: Array<[cell: string, deps: string[]]>): FormulaGraphImpl {
   const g = new FormulaGraphImpl();
-  for (const [cellKey, edges] of Object.entries(spec)) {
-    g.nodes.set(cellKey, {
-      cellKey,
-      formula: '=x',
-      dependencies: new Set(edges.deps ?? []),
-      dependents: new Set(edges.dependents ?? []),
-      isDirty: false,
-    });
+  for (const [cell, deps] of edges) {
+    g.addFormula(cell, '=x', new Set(deps));
   }
   return g;
 }
@@ -22,37 +15,44 @@ function graphOf(spec: Record<string, { deps?: string[]; dependents?: string[] }
 describe('markDirtyDependents', () => {
   it('collects every transitive dependent and marks it dirty', () => {
     // A <- B <- C
-    const g = graphOf({
-      A: { dependents: ['B'] },
-      B: { deps: ['A'], dependents: ['C'] },
-      C: { deps: ['B'] },
-    });
+    const g = graphOf([
+      ['A', []],
+      ['B', ['A']],
+      ['C', ['B']],
+    ]);
+    g.markClean('B', 1);
+    g.markClean('C', 1);
+
     const dirty = g.markDirtyDependents('A');
 
     expect([...dirty].sort()).toEqual(['B', 'C']);
     expect(g.nodes.get('B')?.isDirty).toBe(true);
     expect(g.nodes.get('C')?.isDirty).toBe(true);
-    // The changed cell itself is not in its own dependent set.
     expect(dirty.has('A')).toBe(false);
   });
 
+  it('finds dependents of a plain value cell that is not itself a formula', () => {
+    // F reads value cell V; V is never added as a formula.
+    const g = graphOf([['F', ['V']]]);
+    expect([...g.markDirtyDependents('V')]).toEqual(['F']);
+  });
+
   it('terminates on a dependency cycle', () => {
-    const g = graphOf({
-      A: { deps: ['B'], dependents: ['B'] },
-      B: { deps: ['A'], dependents: ['A'] },
-    });
-    const dirty = g.markDirtyDependents('A');
-    expect([...dirty].sort()).toEqual(['A', 'B']);
+    const g = graphOf([
+      ['A', ['B']],
+      ['B', ['A']],
+    ]);
+    expect([...g.markDirtyDependents('A')].sort()).toEqual(['A', 'B']);
   });
 });
 
 describe('topologicalOrder', () => {
   it('orders a chain dependencies-first', () => {
-    const g = graphOf({
-      A: { dependents: ['B'] },
-      B: { deps: ['A'], dependents: ['C'] },
-      C: { deps: ['B'] },
-    });
+    const g = graphOf([
+      ['A', []],
+      ['B', ['A']],
+      ['C', ['B']],
+    ]);
     const { ordered, cyclic } = g.topologicalOrder(new Set(['B', 'C']));
     expect(ordered).toEqual(['B', 'C']);
     expect(cyclic).toEqual([]);
@@ -64,12 +64,12 @@ describe('topologicalOrder', () => {
     // B   C
     //  \ /
     //   D
-    const g = graphOf({
-      A: { dependents: ['B', 'C'] },
-      B: { deps: ['A'], dependents: ['D'] },
-      C: { deps: ['A'], dependents: ['D'] },
-      D: { deps: ['B', 'C'] },
-    });
+    const g = graphOf([
+      ['A', []],
+      ['B', ['A']],
+      ['C', ['A']],
+      ['D', ['B', 'C']],
+    ]);
     const dirty = g.markDirtyDependents('A');
     const { ordered, cyclic } = g.topologicalOrder(dirty);
 
@@ -82,11 +82,11 @@ describe('topologicalOrder', () => {
 
   it('reports a cycle and its downstream as cyclic, not ordered', () => {
     // A <-> B cycle; C depends on B but is not itself in the cycle.
-    const g = graphOf({
-      A: { deps: ['B'], dependents: ['B'] },
-      B: { deps: ['A'], dependents: ['A', 'C'] },
-      C: { deps: ['B'] },
-    });
+    const g = graphOf([
+      ['A', ['B']],
+      ['B', ['A']],
+      ['C', ['B']],
+    ]);
     const { ordered, cyclic } = g.topologicalOrder(new Set(['A', 'B', 'C']));
     expect(ordered).toEqual([]);
     expect([...cyclic].sort()).toEqual(['A', 'B', 'C']);
@@ -95,16 +95,28 @@ describe('topologicalOrder', () => {
 
 describe('invalidate', () => {
   it('does not stack-overflow on a dependency cycle', () => {
-    const g = graphOf({
-      A: { deps: ['B'], dependents: ['B'] },
-      B: { deps: ['A'], dependents: ['A'] },
-    });
+    const g = graphOf([
+      ['A', ['B']],
+      ['B', ['A']],
+    ]);
     g.markClean('A', 1);
     g.markClean('B', 1);
 
     expect(() => g.invalidate('A')).not.toThrow();
     expect(g.nodes.get('A')?.isDirty).toBe(true);
     expect(g.nodes.get('B')?.isDirty).toBe(true);
+  });
+});
+
+describe('re-adding a formula', () => {
+  it('drops reverse-index edges for dependencies it no longer reads', () => {
+    const g = new FormulaGraphImpl();
+    g.addFormula('F', '=A', new Set(['A']));
+    expect([...g.markDirtyDependents('A')]).toEqual(['F']);
+
+    g.addFormula('F', '=B', new Set(['B'])); // F now reads B instead of A
+    expect([...g.markDirtyDependents('A')]).toEqual([]);
+    expect([...g.markDirtyDependents('B')]).toEqual(['F']);
   });
 });
 

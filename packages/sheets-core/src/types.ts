@@ -308,7 +308,6 @@ export interface FormulaNode {
   cellKey: string;
   formula: string;
   dependencies: Set<string>; // cellKeys this formula depends on
-  dependents: Set<string>; // cellKeys that depend on this formula
   cachedValue?: CellValue;
   isDirty: boolean;
   volatile?: boolean; // recomputed on every recalc pass (RAND, NOW, OFFSET, …)
