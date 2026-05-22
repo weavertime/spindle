@@ -268,9 +268,32 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
         workbook.setCellValue(targetSheetId, currentEditingCell.row, currentEditingCell.col, null);
       } else {
         const numValue = Number(valueToCommit);
-        // If it's parsable as a number, store as number; otherwise store as text
-        const finalValue = !isNaN(numValue) && valueToCommit.trim() !== '' && isFinite(numValue) ? numValue : valueToCommit;
-        workbook.setCellValue(targetSheetId, currentEditingCell.row, currentEditingCell.col, finalValue);
+        const isNumber =
+          !isNaN(numValue) && valueToCommit.trim() !== '' && isFinite(numValue);
+        const dateSerial = isNumber ? null : parseDateString(valueToCommit);
+        if (isNumber) {
+          workbook.setCellValue(targetSheetId, currentEditingCell.row, currentEditingCell.col, numValue);
+        } else if (dateSerial !== null) {
+          // Recognise a typed date and store it as an Excel serial with a date
+          // format — matching how Excel / Google Sheets auto-detect on entry.
+          const dateFormat = /^\d{4}[/\-.]\d{1,2}[/\-.]\d{1,2}$/.test(valueToCommit.trim())
+            ? 'YYYY-MM-DD'
+            : 'MM/DD/YYYY';
+          const existing = workbook.getCell(targetSheetId, currentEditingCell.row, currentEditingCell.col);
+          // `format` is resolved into the pool by setCell (see applyFormatToSelection).
+          const dateCell = {
+            ...existing,
+            value: dateSerial,
+            formula: undefined,
+            formulaAst: undefined,
+            format: { type: 'date' as const, dateFormat },
+          };
+          workbook.batch(() => {
+            workbook.setCell(targetSheetId, currentEditingCell.row, currentEditingCell.col, dateCell);
+          });
+        } else {
+          workbook.setCellValue(targetSheetId, currentEditingCell.row, currentEditingCell.col, valueToCommit);
+        }
       }
       // Trigger re-render to show updated cell value
       setDimensionVersion(v => v + 1);
