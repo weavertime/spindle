@@ -1,61 +1,34 @@
 # Pagent-Sheets — Pending Items
 
 Tracks the gaps between the current spreadsheet implementation and the
-feature set users expect from Excel / Google Sheets. The two large areas
-are **formula coverage** and **feature parity**.
+feature set users expect from Excel / Google Sheets. **Formula coverage is
+now essentially complete** — the remaining work is **feature parity** in the
+non-formula feature set.
 
-> This supersedes the previous architecture-alignment TODO. The items it
-> listed — collaboration, freeze-pane API, CSV export — have all shipped.
+## Formula engine — done
 
-## Formula engine
+The engine ships **146 functions** across math, logical, text, lookup,
+statistical, date/time, information, financial, reference and array
+categories. Functions and their metadata live in
+`packages/sheets-core/src/formula-parser/functions/`.
 
-The engine currently implements **6** functions: `SUM`, `AVERAGE`,
-`COUNT`, `IF`, `MAX`, `MIN`. Excel and Google Sheets expose 400+. Building
-out the standard library is the single biggest gap.
+- [x] **Standard function library** — all categories above
+- [x] **Excel-grade recalculation** — topological dirty-propagation (each
+      cell computed once per pass), volatile functions, and complete
+      range-rectangle dependency tracking
+- [x] **Dynamic arrays / spill** — `SEQUENCE`, `UNIQUE`, `SORT`, `SORTBY`,
+      `FILTER`, `SPLIT`; a spilling formula fills a block of cells, with
+      `#SPILL!` on a blocked target
+- [x] **Formula autocomplete + parameter help** while editing a formula
 
-Functions are registered in
-`packages/sheets-core/src/formula-parser/parser.ts` via
-`this.functions.set(name, fn)`.
+### Remaining formula items
 
-### Standard function library
-
-- [ ] **Math & aggregation** — `SUMIF`, `SUMIFS`, `COUNTIF`, `COUNTIFS`,
-      `COUNTA`, `COUNTBLANK`, `AVERAGEIF`, `AVERAGEIFS`, `ROUND`,
-      `ROUNDUP`, `ROUNDDOWN`, `MROUND`, `INT`, `TRUNC`, `ABS`, `MOD`,
-      `POWER`, `SQRT`, `EXP`, `LN`, `LOG`, `LOG10`, `SIGN`, `CEILING`,
-      `FLOOR`, `GCD`, `LCM`, `PRODUCT`, `SUMPRODUCT`, `SUBTOTAL`,
-      `AGGREGATE`, `RAND`, `RANDBETWEEN`
-- [ ] **Logical** — `AND`, `OR`, `NOT`, `XOR`, `IFERROR`, `IFNA`, `IFS`,
-      `SWITCH`, `TRUE`, `FALSE`
-- [ ] **Lookup & reference** — `VLOOKUP`, `HLOOKUP`, `XLOOKUP`, `INDEX`,
-      `MATCH`, `XMATCH`, `LOOKUP`, `OFFSET`, `INDIRECT`, `CHOOSE`, `ROW`,
-      `ROWS`, `COLUMN`, `COLUMNS`, `ADDRESS`, `HYPERLINK`
-- [ ] **Text** — `CONCAT`, `CONCATENATE`, `TEXTJOIN`, `LEFT`, `RIGHT`,
-      `MID`, `LEN`, `FIND`, `SEARCH`, `SUBSTITUTE`, `REPLACE`, `UPPER`,
-      `LOWER`, `PROPER`, `TRIM`, `TEXT`, `VALUE`, `REPT`, `CHAR`, `CODE`,
-      `EXACT`, `SPLIT`
-- [ ] **Date & time** — `TODAY`, `NOW`, `DATE`, `TIME`, `YEAR`, `MONTH`,
-      `DAY`, `HOUR`, `MINUTE`, `SECOND`, `WEEKDAY`, `WEEKNUM`, `EOMONTH`,
-      `EDATE`, `DATEDIF`, `NETWORKDAYS`, `WORKDAY`, `DATEVALUE`,
-      `TIMEVALUE`
-- [ ] **Statistical** — `MEDIAN`, `MODE`, `STDEV`, `STDEVP`, `VAR`,
-      `VARP`, `PERCENTILE`, `QUARTILE`, `RANK`, `LARGE`, `SMALL`,
-      `CORREL`, `COVAR`
-- [ ] **Financial** — `PMT`, `FV`, `PV`, `NPV`, `IRR`, `RATE`, `NPER`,
-      `IPMT`, `PPMT`
-- [ ] **Information** — `ISBLANK`, `ISERROR`, `ISERR`, `ISNA`,
-      `ISNUMBER`, `ISTEXT`, `ISLOGICAL`, `ISREF`, `ISFORMULA`, `NA`,
-      `TYPE`, `CELL`, `ERROR.TYPE`, `N`
-
-### Engine-level
-
-- [ ] Standard error values — `#DIV/0!`, `#REF!`, `#VALUE!`, `#NAME?`,
-      `#N/A`, `#NUM!`, `#NULL!` — produced and propagated correctly
-- [ ] Cross-sheet references (`Sheet2!A1`) and 3D ranges — verify
-      end-to-end
-- [ ] Dynamic arrays / spill ranges — `FILTER`, `SORT`, `SORTBY`,
-      `UNIQUE`, `SEQUENCE`, `ARRAYFORMULA`
-- [ ] Verify operator coverage — `&` (concat), `^`, `%`, comparisons
+- [ ] **`AGGREGATE`** — 19 sub-functions plus the ignore-hidden /
+      ignore-errors option matrix
+- [ ] **`ARRAYFORMULA`** — full elementwise scalar broadcast (only a
+      minimal pass-through exists)
+- [ ] **`#SPILL!` auto-recovery** — a blocked anchor does not re-spill when
+      the blocking cell is cleared; the formula must be re-entered
 
 ## Feature parity
 
@@ -63,10 +36,10 @@ Gaps against Excel / Google Sheets in the non-formula feature set.
 
 ### Wired but not implemented
 
-- [ ] **Merge cells** — toolbar button exists; the `onMergeCells`
-      handler in `WorkbookCanvas.tsx` is a no-op
+- [ ] **Merge cells** — toolbar button exists; the `onMergeCells` handler
+      in `WorkbookCanvas.tsx` is a no-op
 - [ ] **Text rotation** — toolbar button exists; the handler is a no-op
-- [ ] **Autofill / fill handle** — the selection renderer draws hooks,
+- [ ] **Autofill / fill handle** — the selection renderer draws the handle,
       but drag-to-fill and series fill are not functional
 
 ### Not present
@@ -89,8 +62,9 @@ Gaps against Excel / Google Sheets in the non-formula feature set.
 
 ## Already shipped
 
-For reference, these are done: real-time collaboration, comments and
-comment threads, freeze panes, single-column sort, per-column filters,
-cell styles (fonts, colors, borders, alignment, wrap), number formats,
-hyperlinks, hide/show and insert/delete rows and columns, multiple
-sheets, undo/redo, and CSV export.
+Real-time collaboration, comments and comment threads, freeze panes,
+single-column sort, per-column filters, cell styles (fonts, colors,
+borders, alignment, wrap), number formats, hyperlinks, hide/show and
+insert/delete rows and columns, multiple sheets, undo/redo, CSV export,
+the 146-function formula engine with dynamic arrays, and formula
+autocomplete with parameter help.

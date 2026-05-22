@@ -210,7 +210,8 @@ export default MyDocumentEditor;
 **Spreadsheets:**
 - ✅ Virtual scrolling for performance
 - ✅ Cell editing with keyboard navigation
-- ✅ Formula support (100+ functions coming soon)
+- ✅ Formula engine — 146 functions, dynamic arrays (spill), and topological recalculation
+- ✅ Formula autocomplete with parameter help
 - ✅ Customizable dimensions and styling
 - ✅ Sparse data storage (only stores non-empty cells)
 

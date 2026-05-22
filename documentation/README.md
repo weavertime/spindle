@@ -107,7 +107,7 @@ function App() {
 ### Key Features
 
 - **Canvas Rendering**: 60fps performance for large datasets
-- **Formula Engine**: 100+ functions with dependency tracking
+- **Formula Engine**: 146 functions, dynamic arrays, topological recalculation, autocomplete
 - **Sparse Storage**: Efficient memory usage
 - **Freeze Panes**: Lock rows/columns while scrolling
 - **Sorting & Filtering**: Column operations
