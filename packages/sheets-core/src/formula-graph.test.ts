@@ -28,7 +28,7 @@ describe('collectDirty — single-cell dependencies', () => {
     g.markClean('B', 1);
     g.markClean('C', 1);
 
-    const { dirty } = g.collectDirty('A', resolve);
+    const { dirty } = g.collectDirty(['A'], resolve);
 
     expect([...dirty].sort()).toEqual(['B', 'C']);
     expect(g.nodes.get('B')?.isDirty).toBe(true);
@@ -39,17 +39,17 @@ describe('collectDirty — single-cell dependencies', () => {
   it('finds dependents of a plain value cell that is not itself a formula', () => {
     const g = new FormulaGraphImpl();
     g.addFormula('F', '=V', cellDeps('V')); // V is never added as a formula
-    expect([...g.collectDirty('V', resolve).dirty]).toEqual(['F']);
+    expect([...g.collectDirty(['V'], resolve).dirty]).toEqual(['F']);
   });
 
   it('drops reverse-index edges when a formula is re-added', () => {
     const g = new FormulaGraphImpl();
     g.addFormula('F', '=A', cellDeps('A'));
-    expect([...g.collectDirty('A', resolve).dirty]).toEqual(['F']);
+    expect([...g.collectDirty(['A'], resolve).dirty]).toEqual(['F']);
 
     g.addFormula('F', '=B', cellDeps('B')); // F now reads B instead of A
-    expect([...g.collectDirty('A', resolve).dirty]).toEqual([]);
-    expect([...g.collectDirty('B', resolve).dirty]).toEqual(['F']);
+    expect([...g.collectDirty(['A'], resolve).dirty]).toEqual([]);
+    expect([...g.collectDirty(['B'], resolve).dirty]).toEqual(['F']);
   });
 });
 
@@ -58,10 +58,10 @@ describe('collectDirty — range dependencies', () => {
     const g = new FormulaGraphImpl();
     g.addFormula('5:5', '=SUM(1:1:3:1)', rangeDeps('1:1', '3:1')); // range rows 1-3, col 1
 
-    expect([...g.collectDirty('2:1', resolve).dirty]).toEqual(['5:5']); // interior cell
-    expect([...g.collectDirty('1:1', resolve).dirty]).toEqual(['5:5']); // corner cell
-    expect([...g.collectDirty('9:1', resolve).dirty]).toEqual([]); // outside the range
-    expect([...g.collectDirty('2:2', resolve).dirty]).toEqual([]); // outside the column
+    expect([...g.collectDirty(['2:1'], resolve).dirty]).toEqual(['5:5']); // interior cell
+    expect([...g.collectDirty(['1:1'], resolve).dirty]).toEqual(['5:5']); // corner cell
+    expect([...g.collectDirty(['9:1'], resolve).dirty]).toEqual([]); // outside the range
+    expect([...g.collectDirty(['2:2'], resolve).dirty]).toEqual([]); // outside the column
   });
 
   it('walks transitively through a formula that sits inside a range', () => {
@@ -71,7 +71,7 @@ describe('collectDirty — range dependencies', () => {
     // F sums the range 1:1..3:1, which contains G's cell 2:1.
     g.addFormula('5:5', '=SUM(...)', rangeDeps('1:1', '3:1'));
 
-    const { dirty, edges } = g.collectDirty('9:9', resolve);
+    const { dirty, edges } = g.collectDirty(['9:9'], resolve);
     expect([...dirty].sort()).toEqual(['2:1', '5:5']);
     const { ordered } = g.topologicalOrder(dirty, edges);
     expect(ordered).toEqual(['2:1', '5:5']); // G before the F that ranges over it
@@ -91,7 +91,7 @@ describe('topologicalOrder', () => {
     g.addFormula('C', '=x', cellDeps('A'));
     g.addFormula('D', '=x', cellDeps('B', 'C'));
 
-    const { dirty, edges } = g.collectDirty('A', resolve);
+    const { dirty, edges } = g.collectDirty(['A'], resolve);
     const { ordered, cyclic } = g.topologicalOrder(dirty, edges);
 
     expect(cyclic).toEqual([]);
@@ -106,7 +106,7 @@ describe('topologicalOrder', () => {
     g.addFormula('A', '=B', cellDeps('B'));
     g.addFormula('B', '=A', cellDeps('A'));
 
-    const { dirty, edges } = g.collectDirty('A', resolve);
+    const { dirty, edges } = g.collectDirty(['A'], resolve);
     const { ordered, cyclic } = g.topologicalOrder(dirty, edges);
     expect(ordered).toEqual([]);
     expect([...cyclic].sort()).toEqual(['A', 'B']);
@@ -123,7 +123,7 @@ describe('volatile seeding', () => {
     g.markClean('D', 1);
 
     // An edit somewhere unrelated still recomputes the volatile cell.
-    const { dirty } = g.collectDirty('unrelated', resolve);
+    const { dirty } = g.collectDirty(['unrelated'], resolve);
     expect([...dirty].sort()).toEqual(['D', 'V']);
     expect(g.nodes.get('V')?.isDirty).toBe(true);
     expect(dirty.has('N')).toBe(false);
@@ -132,9 +132,9 @@ describe('volatile seeding', () => {
   it('drops a cell from the volatile set when re-added non-volatile', () => {
     const g = new FormulaGraphImpl();
     g.addFormula('V', '=NOW()', cellDeps(), true);
-    expect(g.collectDirty('x', resolve).dirty.has('V')).toBe(true);
+    expect(g.collectDirty(['x'], resolve).dirty.has('V')).toBe(true);
 
     g.addFormula('V', '=5', cellDeps()); // re-added, no longer volatile
-    expect(g.collectDirty('x', resolve).dirty.size).toBe(0);
+    expect(g.collectDirty(['x'], resolve).dirty.size).toBe(0);
   });
 });

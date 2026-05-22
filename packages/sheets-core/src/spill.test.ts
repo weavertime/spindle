@@ -62,4 +62,39 @@ describe('spill — workbook integration', () => {
     wb.setFormula(undefined, 0, 2, '=SUM(A1:A4)');
     expect(wb.getCellCalculatedValue(undefined, 0, 2)).toBe(10);
   });
+
+  it('deleting the anchor releases the spill and frees its cells', () => {
+    const wb = new WorkbookImpl('wb', 'Test');
+    wb.setFormula(undefined, 0, 0, '=SEQUENCE(3)');
+    expect(wb.isSpilledCell(undefined, 1, 0)).toBe(true);
+
+    wb.setCellValue(undefined, 0, 0, null); // delete the anchor formula
+    expect(wb.isSpilledCell(undefined, 1, 0)).toBe(false);
+    expect(wb.getSpilledValue(undefined, 1, 0)).toBeUndefined();
+    expect(wb.getCellCalculatedValue(undefined, 1, 0)).toBe(0);
+  });
+
+  it('writing a value over the anchor clears the formula and the spill', () => {
+    const wb = new WorkbookImpl('wb', 'Test');
+    wb.setFormula(undefined, 0, 0, '=SEQUENCE(3)');
+    wb.setCellValue(undefined, 0, 0, 'text');
+
+    const anchor = wb.getCell(undefined, 0, 0);
+    expect(anchor?.value).toBe('text');
+    expect(anchor?.formula).toBeUndefined();
+    expect(anchor?.formulaAst).toBeUndefined();
+    expect(wb.isSpilledCell(undefined, 1, 0)).toBe(false);
+  });
+
+  it('re-evaluating a blocked anchor spills once the blocker is cleared', () => {
+    const wb = new WorkbookImpl('wb', 'Test');
+    wb.setCellValue(undefined, 1, 0, 'blocker');
+    wb.setFormula(undefined, 0, 0, '=SEQUENCE(3)');
+    expect(wb.getCellCalculatedValue(undefined, 0, 0)).toBe('#SPILL!');
+
+    wb.setCellValue(undefined, 1, 0, null); // clear the blocker
+    wb.setFormula(undefined, 0, 0, '=SEQUENCE(3)'); // re-enter the formula
+    expect(wb.getCellCalculatedValue(undefined, 0, 0)).toBe(1);
+    expect(wb.getSpilledValue(undefined, 1, 0)).toBe(2);
+  });
 });

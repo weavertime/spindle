@@ -246,8 +246,16 @@ export class WorkbookImpl implements Workbook {
     if (hadFormula) {
       this.formulaGraph.removeFormula(cellKey);
     }
+    // Release any spill this cell anchored — its overlay must go.
+    this.releaseSpill(sheetId, row, col);
 
-    this.setCell(sheetId, row, col, { value: value as string | number | boolean | null });
+    // Clear formula/formulaAst so a plain value never coexists with a stale
+    // formula on the same cell.
+    this.setCell(sheetId, row, col, {
+      value: value as string | number | boolean | null,
+      formula: undefined,
+      formulaAst: undefined,
+    });
 
     // Recalculate dependents of this cell
     if (hadFormula || this.getCell(sheetId, row, col)?.value !== undefined) {

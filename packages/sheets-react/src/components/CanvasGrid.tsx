@@ -256,16 +256,17 @@ export const CanvasGrid = memo(function CanvasGrid({
     // Only load visible cells
     for (let row = startRow; row < endRow; row++) {
       for (let col = startCol; col < endCol; col++) {
+        // A spill overlay takes precedence: a covered cell shows the spilled
+        // value via a transient, display-only cell — even when an emptied
+        // ({ value: null }) cell still lingers in storage.
+        const spilled = workbook.getSpilledValue(undefined, row, col);
+        if (spilled !== undefined) {
+          cells.set(`${row}:${col}`, { value: spilled as CellValue });
+          continue;
+        }
         const cell = sheet.getCell(row, col);
         if (cell) {
           cells.set(`${row}:${col}`, cell);
-        } else {
-          // A cell with no stored data may still be filled by a dynamic-array
-          // spill — show a transient, display-only cell for the spilled value.
-          const spilled = workbook.getSpilledValue(undefined, row, col);
-          if (spilled !== undefined) {
-            cells.set(`${row}:${col}`, { value: spilled as CellValue });
-          }
         }
       }
     }
@@ -1243,13 +1244,15 @@ export const CanvasGrid = memo(function CanvasGrid({
     // Copy/Paste/Cut/Undo/Redo - handled by global handler in WorkbookCanvas
     // This ensures these shortcuts work even when toolbar has focus
     
-    // Type to start editing
+    // Type to start editing. preventDefault stops the same keystroke from also
+    // landing in the freshly-focused edit input (which doubled the character).
     if (
       !editingCell &&
       !modifier &&
       key.length === 1 &&
       activeCell
     ) {
+      e.preventDefault();
       onCellEdit?.(activeCell, key);
     }
   }, [
