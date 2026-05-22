@@ -222,25 +222,59 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
     return undefined;
   }, [isDragging, handleFloatingDragMove, handleFloatingDragEnd]);
 
+  // Store a raw edited string into a cell: formula, blank, number, an
+  // auto-detected date, or text. Shared by the in-cell editor and formula bar.
+  const applyCellInput = useCallback(
+    (sheetId: string | undefined, row: number, col: number, raw: string) => {
+      if (raw.startsWith('=')) {
+        workbook.setFormula(sheetId, row, col, raw);
+        return;
+      }
+      if (raw === '') {
+        workbook.setCellValue(sheetId, row, col, null);
+        return;
+      }
+      const numValue = Number(raw);
+      if (!isNaN(numValue) && raw.trim() !== '' && isFinite(numValue)) {
+        workbook.setCellValue(sheetId, row, col, numValue);
+        return;
+      }
+      // Recognise a typed date and store it as an Excel serial with a date
+      // format — matching how Excel / Google Sheets auto-detect on entry.
+      const dateSerial = parseDateString(raw);
+      if (dateSerial !== null) {
+        const dateFormat = /^\d{4}[/\-.]\d{1,2}[/\-.]\d{1,2}$/.test(raw.trim())
+          ? 'YYYY-MM-DD'
+          : 'MM/DD/YYYY';
+        const existing = workbook.getCell(sheetId, row, col);
+        // `format` is resolved into the pool by setCell (see applyFormatToSelection).
+        const dateCell = {
+          ...existing,
+          value: dateSerial,
+          formula: undefined,
+          formulaAst: undefined,
+          format: { type: 'date' as const, dateFormat },
+        };
+        workbook.batch(() => {
+          workbook.setCell(sheetId, row, col, dateCell);
+        });
+        return;
+      }
+      workbook.setCellValue(sheetId, row, col, raw);
+    },
+    [workbook]
+  );
+
   // Handle formula bar changes
   const handleFormulaChange = useCallback(
     (formula: string) => {
       if (activeCell) {
-        if (formula.startsWith('=')) {
-          workbook.setFormula(undefined, activeCell.row, activeCell.col, formula);
-        } else if (formula === '') {
-          workbook.setCellValue(undefined, activeCell.row, activeCell.col, null);
-        } else {
-          const numValue = Number(formula);
-          // If it's parsable as a number, store as number; otherwise store as text
-          const valueToStore = !isNaN(numValue) && formula.trim() !== '' && isFinite(numValue) ? numValue : formula;
-          workbook.setCellValue(undefined, activeCell.row, activeCell.col, valueToStore);
-        }
+        applyCellInput(undefined, activeCell.row, activeCell.col, formula);
         // Trigger re-render to show updated cell value
         setDimensionVersion(v => v + 1);
       }
     },
-    [activeCell, workbook]
+    [activeCell, applyCellInput]
   );
 
   // Commit edit and close editor
@@ -262,39 +296,7 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
       workbook.isSpilledCell(targetSheetId, currentEditingCell.row, currentEditingCell.col);
 
     if (currentEditingCell && valueToCommit !== undefined && !isSpilled) {
-      if (valueToCommit.startsWith('=')) {
-        workbook.setFormula(targetSheetId, currentEditingCell.row, currentEditingCell.col, valueToCommit);
-      } else if (valueToCommit === '') {
-        workbook.setCellValue(targetSheetId, currentEditingCell.row, currentEditingCell.col, null);
-      } else {
-        const numValue = Number(valueToCommit);
-        const isNumber =
-          !isNaN(numValue) && valueToCommit.trim() !== '' && isFinite(numValue);
-        const dateSerial = isNumber ? null : parseDateString(valueToCommit);
-        if (isNumber) {
-          workbook.setCellValue(targetSheetId, currentEditingCell.row, currentEditingCell.col, numValue);
-        } else if (dateSerial !== null) {
-          // Recognise a typed date and store it as an Excel serial with a date
-          // format — matching how Excel / Google Sheets auto-detect on entry.
-          const dateFormat = /^\d{4}[/\-.]\d{1,2}[/\-.]\d{1,2}$/.test(valueToCommit.trim())
-            ? 'YYYY-MM-DD'
-            : 'MM/DD/YYYY';
-          const existing = workbook.getCell(targetSheetId, currentEditingCell.row, currentEditingCell.col);
-          // `format` is resolved into the pool by setCell (see applyFormatToSelection).
-          const dateCell = {
-            ...existing,
-            value: dateSerial,
-            formula: undefined,
-            formulaAst: undefined,
-            format: { type: 'date' as const, dateFormat },
-          };
-          workbook.batch(() => {
-            workbook.setCell(targetSheetId, currentEditingCell.row, currentEditingCell.col, dateCell);
-          });
-        } else {
-          workbook.setCellValue(targetSheetId, currentEditingCell.row, currentEditingCell.col, valueToCommit);
-        }
-      }
+      applyCellInput(targetSheetId, currentEditingCell.row, currentEditingCell.col, valueToCommit);
       // Trigger re-render to show updated cell value
       setDimensionVersion(v => v + 1);
     }
@@ -331,7 +333,7 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
       const canvas = canvasGridRef.current?.querySelector('canvas');
       canvas?.focus({ preventScroll: true });
     });
-  }, [editingCell, editValue, workbook, originalEditingSheetId]);
+  }, [editingCell, editValue, workbook, originalEditingSheetId, applyCellInput]);
 
   // Handle active cell change from canvas
   const handleActiveCellChange = useCallback((cell: CellPosition | null) => {
