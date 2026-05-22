@@ -56,7 +56,8 @@ Gaps against Excel / Google Sheets in the non-formula feature set.
 Real-time collaboration, comments and comment threads, freeze panes,
 single-column sort, per-column filters, cell styles (fonts, colors,
 borders, alignment, wrap, rotation), number formats, hyperlinks,
-hide/show and insert/delete rows and columns, merged cells, multiple
-sheets, undo/redo, find & replace, autofill (copy and numeric series),
-CSV export, the 146-function formula engine with dynamic arrays, and
+date entry auto-detection, hide/show and insert/delete rows and columns,
+merged cells, multiple sheets, undo/redo, find & replace, autofill
+(numbers, dates, month/weekday name lists and text patterns), CSV
+export, the 146-function formula engine with dynamic arrays, and
 formula autocomplete with parameter help.
