@@ -224,7 +224,12 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
     // Store the editing cell position before clearing state (needed for move to next cell)
     const currentEditingCell = editingCell;
     
-    if (currentEditingCell && valueToCommit !== undefined) {
+    // A spilled cell is read-only — its content comes from the anchor formula.
+    const isSpilled =
+      currentEditingCell !== null &&
+      workbook.isSpilledCell(targetSheetId, currentEditingCell.row, currentEditingCell.col);
+
+    if (currentEditingCell && valueToCommit !== undefined && !isSpilled) {
       if (valueToCommit.startsWith('=')) {
         workbook.setFormula(targetSheetId, currentEditingCell.row, currentEditingCell.col, valueToCommit);
       } else if (valueToCommit === '') {
@@ -288,6 +293,9 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
 
   // Handle cell edit start from canvas
   const handleCellEdit = useCallback((cell: CellPosition, value: string) => {
+    // A spilled cell is read-only — editing happens on the anchor formula.
+    if (workbook.isSpilledCell(undefined, cell.row, cell.col)) return;
+
     // Get cell format for date/time picker detection
     const sheet = workbook.getSheet();
     const formatPool = workbook.getFormatPool();

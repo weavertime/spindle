@@ -10,6 +10,7 @@ import { dateFunctions } from './date';
 import { informationEagerFunctions, informationLazyFunctions } from './information';
 import { financialFunctions } from './financial';
 import { referenceFunctions } from './reference';
+import { arrayFunctions } from './array';
 
 export type { EagerFn, LazyFn, RefFn } from './helpers';
 
@@ -23,6 +24,7 @@ export const eagerFunctions: Record<string, EagerFn> = {
   ...dateFunctions,
   ...informationEagerFunctions,
   ...financialFunctions,
+  ...arrayFunctions,
 };
 
 /** Functions that receive argument thunks so they can short-circuit. */
@@ -35,3 +37,16 @@ export const lazyFunctions: Record<string, LazyFn> = {
 export const refFunctions: Record<string, RefFn> = {
   ...referenceFunctions,
 };
+
+/**
+ * Functions whose result can change without any input changing. A formula
+ * containing one of these is recomputed on every recalculation pass.
+ */
+export const volatileFunctions: ReadonlySet<string> = new Set([
+  'RAND',
+  'RANDBETWEEN',
+  'NOW',
+  'TODAY',
+  'OFFSET',
+  'INDIRECT',
+]);

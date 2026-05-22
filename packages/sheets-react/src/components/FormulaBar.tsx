@@ -14,6 +14,7 @@ export const FormulaBar = memo(function FormulaBar({
   const { workbook } = useWorkbook();
   const [inputValue, setInputValue] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [readOnly, setReadOnly] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Update input value when active cell changes
@@ -25,9 +26,19 @@ export const FormulaBar = memo(function FormulaBar({
     }
 
     if (!isEditing) {
-      const cell = workbook.getCell(undefined, activeCell.row, activeCell.col);
-      const displayValue = cell?.formula || cell?.value?.toString() || '';
-      setInputValue(displayValue);
+      const anchor = workbook.getSpillAnchor(undefined, activeCell.row, activeCell.col);
+      const spilledNonAnchor =
+        anchor !== undefined && (anchor.row !== activeCell.row || anchor.col !== activeCell.col);
+      if (spilledNonAnchor) {
+        // A spilled cell shows the anchor's formula, read-only.
+        const anchorCell = workbook.getCell(undefined, anchor.row, anchor.col);
+        setInputValue(anchorCell?.formula || '');
+        setReadOnly(true);
+      } else {
+        const cell = workbook.getCell(undefined, activeCell.row, activeCell.col);
+        setInputValue(cell?.formula || cell?.value?.toString() || '');
+        setReadOnly(false);
+      }
     }
   }, [activeCell, workbook, isEditing]);
 
@@ -42,10 +53,10 @@ export const FormulaBar = memo(function FormulaBar({
 
   const handleInputBlur = useCallback(() => {
     setIsEditing(false);
-    if (activeCell && onFormulaChange) {
+    if (activeCell && onFormulaChange && !readOnly) {
       onFormulaChange(inputValue);
     }
-  }, [activeCell, inputValue, onFormulaChange]);
+  }, [activeCell, inputValue, onFormulaChange, readOnly]);
 
   const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -124,6 +135,7 @@ export const FormulaBar = memo(function FormulaBar({
           ref={inputRef}
           type="text"
           value={inputValue}
+          readOnly={readOnly}
           onChange={handleInputChange}
           onFocus={(e) => {
             handleInputFocus();
@@ -146,7 +158,8 @@ export const FormulaBar = memo(function FormulaBar({
             fontSize: '13px',
             padding: '4px 0',
             backgroundColor: 'transparent',
-            color: '#1e293b',
+            color: readOnly ? '#94a3b8' : '#1e293b',
+            fontStyle: readOnly ? 'italic' : 'normal',
             fontFamily: 'inherit',
           }}
         />

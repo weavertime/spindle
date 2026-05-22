@@ -8,7 +8,7 @@ import {
   type CursorType,
   type FormulaRangeHighlight,
 } from '@pagent-libs/sheets-core';
-import type { Selection, Range, Cell } from '@pagent-libs/sheets-core';
+import type { Selection, Range, Cell, CellValue } from '@pagent-libs/sheets-core';
 import { extractFormulaRanges, columnIndexToLabel, adjustFormula, type FormulaRange } from '@pagent-libs/sheets-core';
 import { FilterManager, excelDateToJS, formatJSDate } from '@pagent-libs/sheets-core';
 import { RemoteSelectionOverlay } from './RemoteSelectionOverlay';
@@ -256,6 +256,14 @@ export const CanvasGrid = memo(function CanvasGrid({
     // Only load visible cells
     for (let row = startRow; row < endRow; row++) {
       for (let col = startCol; col < endCol; col++) {
+        // A spill overlay takes precedence: a covered cell shows the spilled
+        // value via a transient, display-only cell — even when an emptied
+        // ({ value: null }) cell still lingers in storage.
+        const spilled = workbook.getSpilledValue(undefined, row, col);
+        if (spilled !== undefined) {
+          cells.set(`${row}:${col}`, { value: spilled as CellValue });
+          continue;
+        }
         const cell = sheet.getCell(row, col);
         if (cell) {
           cells.set(`${row}:${col}`, cell);
@@ -1236,13 +1244,15 @@ export const CanvasGrid = memo(function CanvasGrid({
     // Copy/Paste/Cut/Undo/Redo - handled by global handler in WorkbookCanvas
     // This ensures these shortcuts work even when toolbar has focus
     
-    // Type to start editing
+    // Type to start editing. preventDefault stops the same keystroke from also
+    // landing in the freshly-focused edit input (which doubled the character).
     if (
       !editingCell &&
       !modifier &&
       key.length === 1 &&
       activeCell
     ) {
+      e.preventDefault();
       onCellEdit?.(activeCell, key);
     }
   }, [

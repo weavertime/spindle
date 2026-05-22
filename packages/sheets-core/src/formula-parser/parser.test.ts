@@ -69,4 +69,8 @@ describe('parser integration', () => {
     expect(evaluate('=ROW(A5)')).toBe(5);
     expect(evaluate('=COLUMN(C1)')).toBe(3);
   });
+
+  it('evaluates array functions, usable as input to other functions', () => {
+    expect(evaluate('=SUM(SEQUENCE(4))')).toBe(10);
+  });
 });

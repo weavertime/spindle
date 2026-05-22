@@ -4,6 +4,8 @@ import type { Workbook, Sheet, Cell, Selection, CellValue, SortOrder, CellFormat
 import { SheetImpl } from './sheet';
 import { EventEmitter } from './event-emitter';
 import { FormulaGraphImpl } from './formula-graph';
+import { SpillIndex } from './spill';
+import type { SpillRegion } from './spill';
 import { StylePool } from './style-pool';
 import { FormatPool } from './format-pool';
 import { SortManager } from './features/sort';
@@ -25,6 +27,7 @@ import {
   fromStableAst,
   renderStableAst,
   collectStableDependencies,
+  formulaIsVolatile,
   StableRefDeletedError,
 } from './formula-parser/stable-ast';
 
@@ -56,6 +59,8 @@ export class WorkbookImpl implements Workbook {
 
   private events: EventEmitter = new EventEmitter();
   private formulaGraph: FormulaGraphImpl = new FormulaGraphImpl();
+  private spillIndexes: Map<string, SpillIndex> = new Map(); // per-sheet spill overlay
+  private spillSeeds: string[] = []; // footprint cells to recheck after a spill changes
   private stylePool: StylePool = new StylePool();
   private formatPool: FormatPool = new FormatPool();
   private formulaParser: FormulaParser = new FormulaParser();
@@ -241,12 +246,19 @@ export class WorkbookImpl implements Workbook {
     if (hadFormula) {
       this.formulaGraph.removeFormula(cellKey);
     }
+    // Release any spill this cell anchored — its overlay must go.
+    this.releaseSpill(sheetId, row, col);
 
-    this.setCell(sheetId, row, col, { value: value as string | number | boolean | null });
+    // Clear formula/formulaAst so a plain value never coexists with a stale
+    // formula on the same cell.
+    this.setCell(sheetId, row, col, {
+      value: value as string | number | boolean | null,
+      formula: undefined,
+      formulaAst: undefined,
+    });
 
-    // Invalidate dependents of this cell
+    // Recalculate dependents of this cell
     if (hadFormula || this.getCell(sheetId, row, col)?.value !== undefined) {
-      this.formulaGraph.invalidate(cellKey);
       this.recalculateDependents(cellKey, sheetId);
     }
   }
@@ -254,6 +266,25 @@ export class WorkbookImpl implements Workbook {
   getCellValue(sheetId: string | undefined, row: number, col: number): unknown {
     const cell = this.getCell(sheetId, row, col);
     return cell?.value ?? null;
+  }
+
+  /** The value shown at a cell filled by a dynamic-array spill, if any. */
+  getSpilledValue(sheetId: string | undefined, row: number, col: number): unknown | undefined {
+    return this.getSpillIndex(sheetId).spilledValueAt(row, col);
+  }
+
+  /** Whether a cell is filled by a spill it does not itself anchor (read-only). */
+  isSpilledCell(sheetId: string | undefined, row: number, col: number): boolean {
+    return this.getSpillIndex(sheetId).isCovered(row, col);
+  }
+
+  /** The anchor position of the spill covering a cell, if any. */
+  getSpillAnchor(
+    sheetId: string | undefined,
+    row: number,
+    col: number
+  ): { row: number; col: number } | undefined {
+    return this.getSpillIndex(sheetId).anchorOf(row, col);
   }
 
   setFormula(sheetId: string | undefined, row: number, col: number, formula: string): void {
@@ -279,9 +310,9 @@ export class WorkbookImpl implements Workbook {
 
     const resolver = this.buildSheetResolver();
     const formulaAst = toStableAst(parseResult.ast, resolver, sheet, row, col);
-    const stableDeps = collectStableDependencies(formulaAst, sheet);
+    const stableDeps = collectStableDependencies(formulaAst);
 
-    this.formulaGraph.addFormula(cellKey, formula, stableDeps);
+    this.formulaGraph.addFormula(cellKey, formula, stableDeps, formulaIsVolatile(formulaAst));
 
     // Store both AST (truth) and input string (display cache; gets refreshed
     // from the AST on every evaluation).
@@ -358,7 +389,11 @@ export class WorkbookImpl implements Workbook {
       // Evaluate formula
       return this.evaluateFormula(sheetId, row, col);
     }
-    
+
+    // A cell with no formula of its own may still be covered by a spill.
+    const spilled = this.getSpillIndex(sheetId).spilledValueAt(row, col);
+    if (spilled !== undefined) return spilled;
+
     // Return direct value
     // For empty cells, return 0 (standard spreadsheet behavior for numeric formulas)
     // For cells with values, return the actual value (string, number, boolean, etc.)
@@ -478,33 +513,35 @@ export class WorkbookImpl implements Workbook {
       };
 
       const result = this.formulaParser.evaluate(numericAst, evaluationContext, row, col);
-      
-      // Handle division by zero
+      this.evaluatingCells.delete(cellKey);
+
+      // An array result spills into a block of cells.
+      if (Array.isArray(result)) {
+        return this.applySpill(sheetId, row, col, cellKey, result as unknown[][], refreshedFormula);
+      }
+      // No longer an array result — release any spill region this cell anchored.
+      this.releaseSpill(sheetId, row, col);
+
+      // Handle division by zero / other non-finite results.
       if (typeof result === 'number' && !isFinite(result)) {
         const error = result === Infinity || result === -Infinity ? '#DIV/0!' : '#NUM!';
-        this.evaluatingCells.delete(cellKey);
         this.formulaGraph.markClean(cellKey, error);
         this.setCell(sheetId, row, col, { value: error });
         return error;
       }
 
-      // Store result with the refreshed display string. Keep formula AST.
-      const cellValue = result as CellValue;
-      this.evaluatingCells.delete(cellKey);
-      this.formulaGraph.markClean(cellKey, cellValue);
-
-      const currentCell = this.getCell(sheetId, row, col);
-      if (currentCell) {
-        this.setCell(sheetId, row, col, {
-          ...currentCell,
-          value: cellValue,
-          formula: refreshedFormula,
-        });
-      }
-
-      return result;
+      // Store the scalar result with the refreshed display string.
+      return this.storeFormulaResult(
+        sheetId,
+        row,
+        col,
+        cellKey,
+        result as CellValue,
+        refreshedFormula
+      );
     } catch (error) {
       this.evaluatingCells.delete(cellKey);
+      this.releaseSpill(sheetId, row, col);
       const errorMsg = error instanceof Error ? error.message : '#ERROR!';
       this.formulaGraph.markClean(cellKey, errorMsg as CellValue);
       this.setCell(sheetId, row, col, { value: errorMsg as CellValue });
@@ -549,21 +586,150 @@ export class WorkbookImpl implements Workbook {
   }
 
   /**
-   * Recalculate all cells that depend on the given cell
+   * Recalculate every cell that transitively depends on the given cell.
+   * Each dependent is evaluated exactly once per pass, in topological order, so
+   * a cell reachable by several paths is not recomputed several times. Cells in
+   * (or downstream of) a dependency cycle are reported as #CIRCULAR!.
+   *
+   * When a recomputed formula spills (or stops spilling), the cells in its
+   * footprint are fed back as seeds for another pass, so formulas that read a
+   * spilled cell pick up the change. The loop runs to a fixed point.
    */
   private recalculateDependents(cellKey: string, sheetId: string | undefined): void {
-    const dependents = this.formulaGraph.getDependents(cellKey);
     const sheet = this.getSheet(sheetId);
+    // Range dependencies are stored as stable corner-key rectangles; the graph
+    // resolves containment against the sheet's current row/column order.
+    const resolveCell = (key: string) => sheet.stableKeyToIndices(key);
 
-    for (const dependentKey of dependents) {
-      // Invalidate dependent
-      this.formulaGraph.invalidate(dependentKey);
+    let seeds = [cellKey, ...this.spillSeeds];
+    this.spillSeeds = [];
 
-      // Recalculate dependent (translate stable graph key back to current indices)
-      const indices = sheet.stableKeyToIndices(dependentKey);
-      if (!indices) continue;
-      this.evaluateFormula(sheetId, indices.row, indices.col);
+    for (let pass = 0; pass < 64 && seeds.length > 0; pass++) {
+      const { dirty, edges } = this.formulaGraph.collectDirty(seeds, resolveCell);
+      if (dirty.size === 0) break;
+
+      const { ordered, cyclic } = this.formulaGraph.topologicalOrder(dirty, edges);
+      for (const key of ordered) {
+        const indices = sheet.stableKeyToIndices(key);
+        if (indices) {
+          this.evaluateFormula(sheetId, indices.row, indices.col);
+        }
+      }
+      for (const key of cyclic) {
+        const indices = sheet.stableKeyToIndices(key);
+        if (!indices) continue;
+        this.formulaGraph.markClean(key, '#CIRCULAR!' as CellValue);
+        this.setCell(sheetId, indices.row, indices.col, { value: '#CIRCULAR!' as CellValue });
+      }
+
+      // Spill footprints touched this pass become the seeds for the next.
+      seeds = this.spillSeeds;
+      this.spillSeeds = [];
     }
+  }
+
+  /** The spill overlay for a sheet, created lazily. */
+  private getSpillIndex(sheetId: string | undefined): SpillIndex {
+    const id = this.getSheet(sheetId).id;
+    let index = this.spillIndexes.get(id);
+    if (!index) {
+      index = new SpillIndex();
+      this.spillIndexes.set(id, index);
+    }
+    return index;
+  }
+
+  /** Queue every cell of a spill region for the next recalculation pass. */
+  private pushSpillSeeds(sheetId: string | undefined, region: SpillRegion): void {
+    for (let r = 0; r < region.rows; r++) {
+      for (let c = 0; c < region.cols; c++) {
+        this.spillSeeds.push(this.graphKey(sheetId, region.anchorRow + r, region.anchorCol + c));
+      }
+    }
+  }
+
+  /** Release any spill region anchored at a cell (it no longer returns an array). */
+  private releaseSpill(sheetId: string | undefined, row: number, col: number): void {
+    const previous = this.getSpillIndex(sheetId).unregister(row, col);
+    if (previous) this.pushSpillSeeds(sheetId, previous);
+  }
+
+  /** Store a scalar formula result on its cell and mark the graph node clean. */
+  private storeFormulaResult(
+    sheetId: string | undefined,
+    row: number,
+    col: number,
+    cellKey: string,
+    value: CellValue,
+    refreshedFormula: string
+  ): unknown {
+    this.formulaGraph.markClean(cellKey, value);
+    const currentCell = this.getCell(sheetId, row, col);
+    if (currentCell) {
+      this.setCell(sheetId, row, col, { ...currentCell, value, formula: refreshedFormula });
+    }
+    return value;
+  }
+
+  /**
+   * Spill a formula's 2D array result into a block of cells. The anchor cell
+   * keeps the formula and shows the array's top-left value; the rest of the
+   * array is a derived overlay. A blocked target cell yields #SPILL!.
+   */
+  private applySpill(
+    sheetId: string | undefined,
+    row: number,
+    col: number,
+    cellKey: string,
+    array: unknown[][],
+    refreshedFormula: string
+  ): unknown {
+    const spill = this.getSpillIndex(sheetId);
+    const matrix = array.length > 0 && Array.isArray(array[0]) ? array : [array];
+    const rows = matrix.length;
+    const cols = matrix[0]?.length ?? 0;
+
+    const previous = spill.unregister(row, col);
+    if (previous) this.pushSpillSeeds(sheetId, previous);
+
+    // A 1x1 array is just a scalar.
+    if (rows <= 1 && cols <= 1) {
+      return this.storeFormulaResult(
+        sheetId,
+        row,
+        col,
+        cellKey,
+        (matrix[0]?.[0] ?? null) as CellValue,
+        refreshedFormula
+      );
+    }
+
+    // A target cell holding real content, or already covered by another
+    // spill, blocks this one.
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (r === 0 && c === 0) continue; // the anchor itself
+        const tr = row + r;
+        const tc = col + c;
+        const target = this.getCell(sheetId, tr, tc);
+        const occupied = !!(target && (target.value != null || target.formula || target.formulaAst));
+        if (occupied || spill.isCovered(tr, tc)) {
+          return this.storeFormulaResult(sheetId, row, col, cellKey, '#SPILL!', refreshedFormula);
+        }
+      }
+    }
+
+    const region: SpillRegion = { anchorRow: row, anchorCol: col, rows, cols, values: matrix };
+    spill.register(region);
+    this.pushSpillSeeds(sheetId, region);
+    return this.storeFormulaResult(
+      sheetId,
+      row,
+      col,
+      cellKey,
+      matrix[0][0] as CellValue,
+      refreshedFormula
+    );
   }
 
   /**
@@ -654,6 +820,7 @@ export class WorkbookImpl implements Workbook {
 
     // Rebuild formula graph. Prefer existing stable AST; parse + upgrade if absent.
     this.formulaGraph = new FormulaGraphImpl();
+    this.spillIndexes.clear(); // spill overlay is derived; re-evaluation rebuilds it
     const resolver = this.buildSheetResolver();
     for (const [sheetId, sheet] of this.sheets.entries()) {
       for (const [row, col, cell] of sheet.entries()) {
@@ -667,8 +834,8 @@ export class WorkbookImpl implements Workbook {
         }
         if (!ast) continue;
         const cellKey = this.graphKey(sheetId, row, col);
-        const deps = collectStableDependencies(ast, sheet);
-        this.formulaGraph.addFormula(cellKey, cell.formula ?? '', deps);
+        const deps = collectStableDependencies(ast);
+        this.formulaGraph.addFormula(cellKey, cell.formula ?? '', deps, formulaIsVolatile(ast));
       }
     }
 
@@ -884,6 +1051,7 @@ export class WorkbookImpl implements Workbook {
     // Clear existing state
     this.sheets.clear();
     this.formulaGraph = new FormulaGraphImpl();
+    this.spillIndexes.clear();
     this.stylePool.clear();
     this.undoStack.length = 0;
     this.redoStack.length = 0;
@@ -1144,8 +1312,8 @@ export class WorkbookImpl implements Workbook {
         }
         if (!ast) continue;
         const cellKey = this.graphKey(sheetId, row, col);
-        const deps = collectStableDependencies(ast, sheet);
-        this.formulaGraph.addFormula(cellKey, cell.formula ?? '', deps);
+        const deps = collectStableDependencies(ast);
+        this.formulaGraph.addFormula(cellKey, cell.formula ?? '', deps, formulaIsVolatile(ast));
         this.evaluateFormula(sheetId, row, col);
       }
     }

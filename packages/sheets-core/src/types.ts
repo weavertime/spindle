@@ -304,23 +304,55 @@ export interface SheetData {
   threads?: SheetCommentThread[];
 }
 
+/** A range dependency, stored as its two corner cell keys (stable ids). */
+export interface RangeDependency {
+  startKey: string; // "rowId:colId"
+  endKey: string; // "rowId:colId"
+}
+
+/** The dependencies a formula reads: single cells, plus ranges as rectangles. */
+export interface FormulaDependencies {
+  cells: Set<string>;
+  ranges: RangeDependency[];
+}
+
 export interface FormulaNode {
   cellKey: string;
   formula: string;
-  dependencies: Set<string>; // cellKeys this formula depends on
-  dependents: Set<string>; // cellKeys that depend on this formula
+  dependencies: Set<string>; // single-cell deps "rowId:colId"
+  rangeRects: RangeDependency[]; // range deps as stable corner-key rectangles
   cachedValue?: CellValue;
   isDirty: boolean;
+  volatile?: boolean; // recomputed on every recalc pass (RAND, NOW, OFFSET, …)
 }
+
+/** Resolves a stable cell key to its current numeric position. */
+export type CellResolver = (cellKey: string) => { row: number; col: number } | undefined;
 
 export interface FormulaGraph {
   nodes: Map<string, FormulaNode>;
-  addFormula(cellKey: string, formula: string, dependencies: Set<string>): void;
+  addFormula(
+    cellKey: string,
+    formula: string,
+    dependencies: FormulaDependencies,
+    volatile?: boolean
+  ): void;
   removeFormula(cellKey: string): void;
-  getDependents(cellKey: string): Set<string>;
-  getDependencies(cellKey: string): Set<string>;
-  invalidate(cellKey: string): void;
-  getDirtyCells(): Set<string>;
+  markClean(cellKey: string, value: CellValue): void;
+  /**
+   * Collect every cell to recompute after the `seeds` changed — their transitive
+   * dependents (single-cell and range-based) plus all volatile cells — along
+   * with the dependency edges among them.
+   */
+  collectDirty(
+    seeds: string[],
+    resolveCell: CellResolver
+  ): { dirty: Set<string>; edges: Map<string, Set<string>> };
+  /** Order a dirty set so dependencies precede dependents; cyclic nodes can't be ordered. */
+  topologicalOrder(
+    dirty: Set<string>,
+    edges: Map<string, Set<string>>
+  ): { ordered: string[]; cyclic: string[] };
 }
 
 export type EventType =
