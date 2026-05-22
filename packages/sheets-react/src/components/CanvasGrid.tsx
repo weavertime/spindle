@@ -700,6 +700,8 @@ export const CanvasGrid = memo(function CanvasGrid({
       const grewHorizontally =
         fillRange.startCol < src.startCol || fillRange.endCol > src.endCol;
 
+      const formatPool = workbook.getFormatPool();
+
       // Copy/extrapolate one source line into its target cells. `axis` is the
       // direction of the fill; `lineIndex` is the fixed column (vertical) or
       // row (horizontal) of this line.
@@ -722,7 +724,17 @@ export const CanvasGrid = memo(function CanvasGrid({
         // A formula in the run disables series extrapolation — formulas are
         // tiled and rebased per cell instead.
         const hasFormula = sourceCells.some((c) => c?.formula);
-        const series = hasFormula ? { kind: 'copy' as const } : detectSeries(sourceValues);
+        // Date-formatted cells enable month/year series detection.
+        const isDate =
+          !hasFormula &&
+          sourceCells.length > 0 &&
+          sourceCells.every((c) => {
+            const fmt = c?.formatId ? formatPool.get(c.formatId) : undefined;
+            return fmt?.type === 'date' || fmt?.type === 'datetime';
+          });
+        const series = hasFormula
+          ? { kind: 'copy' as const }
+          : detectSeries(sourceValues, { isDate });
 
         for (let pos = targetStart; pos <= targetEnd; pos++) {
           if (pos >= srcStart && pos <= srcEnd) continue; // leave the source intact
