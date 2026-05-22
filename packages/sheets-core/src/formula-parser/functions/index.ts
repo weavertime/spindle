@@ -50,3 +50,12 @@ export const volatileFunctions: ReadonlySet<string> = new Set([
   'OFFSET',
   'INDIRECT',
 ]);
+
+/** Every registered built-in function name (eager, lazy and reference). */
+export function getRegisteredFunctionNames(): Set<string> {
+  return new Set([
+    ...Object.keys(eagerFunctions),
+    ...Object.keys(lazyFunctions),
+    ...Object.keys(refFunctions),
+  ]);
+}
