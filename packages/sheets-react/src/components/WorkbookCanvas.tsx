@@ -415,6 +415,12 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
 
   // Handle direct sort by direction (for context menu)
   const handleSortColumnByDirection = useCallback((column: number, direction: 'asc' | 'desc') => {
+    // Sorting would scatter merged regions — refuse, matching Excel/Sheets.
+    if (workbook.getSheet().getMergedRegions().length > 0) {
+      window.alert('Cannot sort a sheet that contains merged cells. Unmerge them first.');
+      return;
+    }
+
     const sortOrder: SortOrder[] = [{ column, direction }];
 
     workbook.setSortOrder(sortOrder);
@@ -962,7 +968,27 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
         onFormatPercentage={() => applyFormatToSelection({ type: 'percentage' })}
         onFormatNumber={() => applyFormatToSelection({ type: 'number' })}
         onMergeCells={() => {
-          // Merge cells not yet implemented
+          const sel = workbook.getSelection();
+          if (sel.ranges.length === 0) return;
+          const raw = sel.ranges[0];
+          const range = {
+            startRow: Math.min(raw.startRow, raw.endRow),
+            endRow: Math.max(raw.startRow, raw.endRow),
+            startCol: Math.min(raw.startCol, raw.endCol),
+            endCol: Math.max(raw.startCol, raw.endCol),
+          };
+          const sheet = workbook.getSheet();
+          // Toggle: unmerge if the selection touches a merge, else merge.
+          const overlapsMerge = sheet.getMergedRegions().some((m) =>
+            m.startRow <= range.endRow && m.endRow >= range.startRow &&
+            m.startCol <= range.endCol && m.endCol >= range.startCol
+          );
+          if (overlapsMerge) {
+            workbook.unmergeCells(range);
+          } else {
+            workbook.mergeCells(range);
+          }
+          setDimensionVersion(v => v + 1);
         }}
         onHyperlink={(url) => {
           const selection = workbook.getSelection();

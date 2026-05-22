@@ -1,6 +1,6 @@
 // Canvas rendering types for pagent-sheets
 
-import type { Cell, CellStyle, CellFormat, Selection, ColumnFilter } from '../types';
+import type { Cell, CellStyle, CellFormat, Selection, ColumnFilter, Range } from '../types';
 
 /**
  * Rectangle bounds
@@ -238,6 +238,8 @@ export interface RenderState {
   filteredRows?: Set<number>;
   /** Cells with an open comment thread, keyed "row:col" — drives the corner marker. */
   commentedCells?: Set<string>;
+  /** Merged cell regions as numeric ranges (resolved from stable IDs). */
+  mergedRegions?: Range[];
 }
 
 /**

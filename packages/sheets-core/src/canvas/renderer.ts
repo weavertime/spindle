@@ -42,7 +42,10 @@ export class CanvasRenderer {
   
   // Current render state
   private renderState: RenderState | null = null;
-  
+  // Cells covered by a merged region ("row:col"), rebuilt each frame. Used to
+  // skip them in the cell loop — the merged-region pass draws them instead.
+  private mergedCellSet: Set<string> = new Set();
+
   // Sub-renderers
   private textRenderer: TextRenderer;
   private gridRenderer: GridRenderer;
@@ -315,7 +318,19 @@ export class CanvasRenderer {
     const { frozenWidth, frozenHeight } = this.freezeDimensions;
     const hasFrozenRows = this.frozenRows > 0;
     const hasFrozenCols = this.frozenCols > 0;
-    
+
+    // Rebuild the covered-cell lookup for this frame.
+    this.mergedCellSet.clear();
+    if (state.mergedRegions) {
+      for (const region of state.mergedRegions) {
+        for (let r = region.startRow; r <= region.endRow; r++) {
+          for (let c = region.startCol; c <= region.endCol; c++) {
+            this.mergedCellSet.add(`${r}:${c}`);
+          }
+        }
+      }
+    }
+
     // Calculate visible range
     this.calculateVisibleRange(state);
     
@@ -471,7 +486,10 @@ export class CanvasRenderer {
       effectiveScrollTop, effectiveScrollLeft,
       region
     );
-    
+
+    // Render merged regions on top of the grid lines (covers interior lines).
+    this.renderMergedRegions(state);
+
     // Render selection
     this.renderSelectionInRegion(
       state,
@@ -655,6 +673,13 @@ export class CanvasRenderer {
         
         const colWidth = state.colWidths.get(col) ?? this.defaultColWidth;
         const cellKey = `${row}:${col}`;
+
+        // Cells inside a merged region are drawn by the merged-region pass.
+        if (this.mergedCellSet.has(cellKey)) {
+          x += colWidth;
+          continue;
+        }
+
         const cell = state.cells.get(cellKey);
         const style = cell?.styleId ? state.styles.get(cell.styleId) : undefined;
         const format = cell?.formatId ? state.formats.get(cell.formatId) : undefined;
@@ -682,6 +707,49 @@ export class CanvasRenderer {
     }
   }
   
+  /**
+   * Draw merged regions on top of the grid lines — the union background plus
+   * the anchor cell's content spanning the whole region. Called inside each
+   * freeze region's clip; getCellBounds positions each region correctly and
+   * the clip restricts which ones are visible.
+   */
+  private renderMergedRegions(state: RenderState): void {
+    const regions = state.mergedRegions;
+    if (!regions || regions.length === 0) return;
+
+    for (const region of regions) {
+      const tl = this.getCellBounds(region.startRow, region.startCol);
+      const br = this.getCellBounds(region.endRow, region.endCol);
+      if (!tl || !br) continue;
+
+      const bounds: Rect = {
+        x: tl.x,
+        y: tl.y,
+        width: br.x + br.width - tl.x,
+        height: br.y + br.height - tl.y,
+      };
+      if (bounds.width <= 0 || bounds.height <= 0) continue;
+
+      const cellKey = `${region.startRow}:${region.startCol}`;
+      const cell = state.cells.get(cellKey);
+      const isEditing =
+        state.editingCell?.row === region.startRow &&
+        state.editingCell?.col === region.startCol;
+
+      if (isEditing) {
+        this.cellRenderer.renderEmptyCell(this.ctx, bounds);
+      } else {
+        const style = cell?.styleId ? state.styles.get(cell.styleId) : undefined;
+        const format = cell?.formatId ? state.formats.get(cell.formatId) : undefined;
+        this.cellRenderer.renderCell(this.ctx, cell, bounds, style, format);
+      }
+
+      if (state.commentedCells?.has(cellKey)) {
+        this.cellRenderer.renderCommentIndicator(this.ctx, bounds);
+      }
+    }
+  }
+
   /**
    * Render grid lines in a specific region
    */

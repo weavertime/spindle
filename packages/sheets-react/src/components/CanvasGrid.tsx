@@ -348,8 +348,9 @@ export const CanvasGrid = memo(function CanvasGrid({
       filters,
       filteredRows,
       commentedCells,
+      mergedRegions: sheet.getMergedRegions(),
     };
-    
+
     renderer.setState(renderState);
   }, [
     workbook,
@@ -514,19 +515,23 @@ export const CanvasGrid = memo(function CanvasGrid({
       
       setIsSelecting(true);
       setSelectionStart(cell);
-      
+
+      // Clicking inside a merged region selects the whole region; the active
+      // cell is the region's anchor (top-left).
+      const merge = sheet.getMergeAt(cell.row, cell.col);
+      const range: Range = merge ?? {
+        startRow: cell.row,
+        endRow: cell.row,
+        startCol: cell.col,
+        endCol: cell.col,
+      };
       const newSelection: Selection = {
-        ranges: [{
-          startRow: cell.row,
-          endRow: cell.row,
-          startCol: cell.col,
-          endCol: cell.col,
-        }],
-        activeCell: cell,
+        ranges: [range],
+        activeCell: merge ? { row: merge.startRow, col: merge.startCol } : cell,
       };
       setSelection(newSelection);
       onSelectionChange?.(newSelection);
-      onActiveCellChange?.(cell);
+      onActiveCellChange?.(newSelection.activeCell);
     }
   }, [sheet, selection, onSelectionChange, onActiveCellChange, isEditingFormula, onInsertCellReference, workbook, originalEditingSheetId]);
   
@@ -1242,8 +1247,30 @@ export const CanvasGrid = memo(function CanvasGrid({
           break;
       }
       
-      const newCell = { row: newRow, col: newCol };
-      
+      let newCell: CellPosition = { row: newRow, col: newCol };
+
+      // Merge-aware navigation for a plain move: entering a region lands on
+      // its anchor; moving again steps clear of the whole region.
+      if (!shiftKey) {
+        const merge = sheet.getMergeAt(newRow, newCol);
+        if (merge) {
+          const onThisMerge =
+            activeCell?.row === merge.startRow && activeCell?.col === merge.startCol;
+          if (onThisMerge) {
+            if (key === 'ArrowDown') newRow = Math.min(sheet.rowCount - 1, merge.endRow + 1);
+            else if (key === 'ArrowUp') newRow = Math.max(0, merge.startRow - 1);
+            else if (key === 'ArrowRight') newCol = Math.min(sheet.colCount - 1, merge.endCol + 1);
+            else if (key === 'ArrowLeft') newCol = Math.max(0, merge.startCol - 1);
+            const stepped = sheet.getMergeAt(newRow, newCol);
+            newCell = stepped
+              ? { row: stepped.startRow, col: stepped.startCol }
+              : { row: newRow, col: newCol };
+          } else {
+            newCell = { row: merge.startRow, col: merge.startCol };
+          }
+        }
+      }
+
       if (shiftKey) {
         // Extend selection
         const start = selectionStart ?? activeCell ?? { row: 0, col: 0 };
@@ -1262,14 +1289,16 @@ export const CanvasGrid = memo(function CanvasGrid({
           setSelectionStart(activeCell ?? { row: 0, col: 0 });
         }
       } else {
-        // Move active cell
+        // Move active cell — select the whole region when it is merged.
+        const targetMerge = sheet.getMergeAt(newCell.row, newCell.col);
+        const range: Range = targetMerge ?? {
+          startRow: newCell.row,
+          endRow: newCell.row,
+          startCol: newCell.col,
+          endCol: newCell.col,
+        };
         const newSelection: Selection = {
-          ranges: [{
-            startRow: newRow,
-            endRow: newRow,
-            startCol: newCol,
-            endCol: newCol,
-          }],
+          ranges: [range],
           activeCell: newCell,
         };
         setSelection(newSelection);
