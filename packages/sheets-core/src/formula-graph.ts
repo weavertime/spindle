@@ -1,17 +1,25 @@
 // Formula dependency graph for incremental recalculation.
 
-import type { FormulaGraph, FormulaNode, CellValue } from './types';
+import type {
+  FormulaGraph,
+  FormulaNode,
+  FormulaDependencies,
+  RangeDependency,
+  CellResolver,
+  CellValue,
+} from './types';
 
 export class FormulaGraphImpl implements FormulaGraph {
   nodes: Map<string, FormulaNode> = new Map();
 
   /**
-   * Reverse index: for every referenced cell key — a formula cell *or* a
-   * plain-value cell — the set of formulas that read it. This is the single
-   * source of truth for "what depends on X", so a change to a value cell, or
-   * to any cell inside a referenced range, correctly triggers a recalc.
+   * Reverse index for single-cell dependencies: for any referenced cell key —
+   * a formula cell *or* a plain-value cell — the formulas that read it.
    */
   private cellDependents: Map<string, Set<string>> = new Map();
+
+  /** Formula keys that have at least one range dependency (scanned for containment). */
+  private rangeFormulas: Set<string> = new Set();
 
   /** Cell keys of volatile formulas — kept in sync so recalc need not scan. */
   private volatileNodes: Set<string> = new Set();
@@ -19,24 +27,25 @@ export class FormulaGraphImpl implements FormulaGraph {
   addFormula(
     cellKey: string,
     formula: string,
-    dependencies: Set<string>,
+    dependencies: FormulaDependencies,
     volatile = false
   ): void {
     // If this cell was already a formula, unlink its previous dependencies
-    // first so re-adding it leaves no stale reverse-index entries.
+    // first so re-adding it leaves no stale index entries.
     const existing = this.nodes.get(cellKey);
-    if (existing) this.unlink(cellKey, existing.dependencies);
+    if (existing) this.unlink(cellKey, existing);
 
     const node: FormulaNode = {
       cellKey,
       formula,
-      dependencies: new Set(dependencies),
+      dependencies: new Set(dependencies.cells),
+      rangeRects: dependencies.ranges.slice(),
       isDirty: true,
       volatile,
     };
     this.nodes.set(cellKey, node);
 
-    for (const depKey of dependencies) {
+    for (const depKey of node.dependencies) {
       let set = this.cellDependents.get(depKey);
       if (!set) {
         set = new Set();
@@ -45,6 +54,9 @@ export class FormulaGraphImpl implements FormulaGraph {
       set.add(cellKey);
     }
 
+    if (node.rangeRects.length > 0) this.rangeFormulas.add(cellKey);
+    else this.rangeFormulas.delete(cellKey);
+
     if (volatile) this.volatileNodes.add(cellKey);
     else this.volatileNodes.delete(cellKey);
   }
@@ -52,14 +64,15 @@ export class FormulaGraphImpl implements FormulaGraph {
   removeFormula(cellKey: string): void {
     const node = this.nodes.get(cellKey);
     if (!node) return;
-    this.unlink(cellKey, node.dependencies);
+    this.unlink(cellKey, node);
     this.nodes.delete(cellKey);
+    this.rangeFormulas.delete(cellKey);
     this.volatileNodes.delete(cellKey);
   }
 
-  /** Drop `cellKey` from the reverse-index entry of each of its dependencies. */
-  private unlink(cellKey: string, dependencies: Set<string>): void {
-    for (const depKey of dependencies) {
+  /** Drop a formula from every index that points at it. */
+  private unlink(cellKey: string, node: FormulaNode): void {
+    for (const depKey of node.dependencies) {
       const set = this.cellDependents.get(depKey);
       if (!set) continue;
       set.delete(cellKey);
@@ -67,81 +80,121 @@ export class FormulaGraphImpl implements FormulaGraph {
     }
   }
 
-  getDependents(cellKey: string): Set<string> {
-    return new Set(this.cellDependents.get(cellKey) ?? []);
-  }
-
-  getDependencies(cellKey: string): Set<string> {
+  markClean(cellKey: string, value: CellValue): void {
     const node = this.nodes.get(cellKey);
-    return node ? new Set(node.dependencies) : new Set();
-  }
-
-  invalidate(cellKey: string): void {
-    // Iterative + visited-guarded: a dependency cycle must not stack-overflow.
-    const stack: string[] = [cellKey];
-    const seen = new Set<string>();
-    while (stack.length > 0) {
-      const key = stack.pop();
-      if (key === undefined || seen.has(key)) continue;
-      seen.add(key);
-      const node = this.nodes.get(key);
-      if (node) {
-        node.isDirty = true;
-        node.cachedValue = undefined;
-      }
-      for (const dependentKey of this.cellDependents.get(key) ?? []) {
-        if (!seen.has(dependentKey)) stack.push(dependentKey);
-      }
+    if (node) {
+      node.isDirty = false;
+      node.cachedValue = value;
     }
   }
 
-  markDirtyDependents(cellKey: string): Set<string> {
-    const dirty = new Set<string>();
-    const stack: string[] = [...(this.cellDependents.get(cellKey) ?? [])];
-    while (stack.length > 0) {
-      const key = stack.pop();
-      if (key === undefined || dirty.has(key)) continue;
-      dirty.add(key);
-      const node = this.nodes.get(key);
-      if (node) {
-        node.isDirty = true;
-        node.cachedValue = undefined;
-      }
-      for (const dependentKey of this.cellDependents.get(key) ?? []) {
-        if (!dirty.has(dependentKey)) stack.push(dependentKey);
-      }
-    }
-    return dirty;
+  /** Is `idx` inside the rectangle, resolving its corner keys to indices now? */
+  private rectContains(
+    rect: RangeDependency,
+    idx: { row: number; col: number },
+    resolveCell: CellResolver
+  ): boolean {
+    const a = resolveCell(rect.startKey);
+    const b = resolveCell(rect.endKey);
+    if (!a || !b) return false;
+    return (
+      idx.row >= Math.min(a.row, b.row) &&
+      idx.row <= Math.max(a.row, b.row) &&
+      idx.col >= Math.min(a.col, b.col) &&
+      idx.col <= Math.max(a.col, b.col)
+    );
   }
 
-  markDirtyVolatile(): Set<string> {
-    const dirty = new Set<string>();
-    for (const key of this.volatileNodes) {
-      const node = this.nodes.get(key);
-      if (!node) continue;
-      node.isDirty = true;
-      node.cachedValue = undefined;
-      dirty.add(key);
-      for (const dependentKey of this.markDirtyDependents(key)) {
-        dirty.add(dependentKey);
-      }
-    }
-    return dirty;
-  }
-
-  topologicalOrder(dirty: Set<string>): { ordered: string[]; cyclic: string[] } {
-    // Kahn's algorithm over the subgraph induced by `dirty`. A node's in-degree
-    // counts only its dependencies that are themselves in the dirty set.
-    const inDegree = new Map<string, number>();
-    for (const key of dirty) {
-      const node = this.nodes.get(key);
-      let degree = 0;
-      if (node) {
-        for (const dep of node.dependencies) {
-          if (dirty.has(dep)) degree++;
+  /** Formulas that directly depend on `key` — via a single ref or a range. */
+  private directDependents(key: string, resolveCell: CellResolver): Set<string> {
+    const result = new Set(this.cellDependents.get(key) ?? []);
+    if (this.rangeFormulas.size > 0) {
+      const idx = resolveCell(key);
+      if (idx) {
+        for (const formulaKey of this.rangeFormulas) {
+          if (result.has(formulaKey)) continue;
+          const node = this.nodes.get(formulaKey);
+          if (!node) continue;
+          for (const rect of node.rangeRects) {
+            if (this.rectContains(rect, idx, resolveCell)) {
+              result.add(formulaKey);
+              break;
+            }
+          }
         }
       }
-      inDegree.set(key, degree);
+    }
+    return result;
+  }
+
+  collectDirty(
+    changedKey: string,
+    resolveCell: CellResolver
+  ): { dirty: Set<string>; edges: Map<string, Set<string>> } {
+    const dirty = new Set<string>();
+    const edges = new Map<string, Set<string>>();
+    const frontier: string[] = [];
+
+    const enqueue = (key: string): void => {
+      if (dirty.has(key)) return;
+      dirty.add(key);
+      frontier.push(key);
+      const node = this.nodes.get(key);
+      if (node) {
+        node.isDirty = true;
+        node.cachedValue = undefined;
+      }
+    };
+
+    // Seeds: direct dependents of the changed cell, and every volatile formula.
+    for (const formulaKey of this.directDependents(changedKey, resolveCell)) {
+      enqueue(formulaKey);
+    }
+    for (const volatileKey of this.volatileNodes) {
+      enqueue(volatileKey);
+    }
+
+    while (frontier.length > 0) {
+      const key = frontier.pop();
+      if (key === undefined) continue;
+      for (const dependent of this.directDependents(key, resolveCell)) {
+        // `dependent` depends on `key`; both are dirty, so this is a real edge.
+        let deps = edges.get(dependent);
+        if (!deps) {
+          deps = new Set();
+          edges.set(dependent, deps);
+        }
+        deps.add(key);
+        enqueue(dependent);
+      }
+    }
+
+    return { dirty, edges };
+  }
+
+  topologicalOrder(
+    dirty: Set<string>,
+    edges: Map<string, Set<string>>
+  ): { ordered: string[]; cyclic: string[] } {
+    // Kahn's algorithm over the explicit dependency edges of the dirty set.
+    const inDegree = new Map<string, number>();
+    const dependentsOf = new Map<string, string[]>();
+    for (const key of dirty) inDegree.set(key, 0);
+
+    for (const [formula, deps] of edges) {
+      if (!dirty.has(formula)) continue;
+      let degree = 0;
+      for (const dep of deps) {
+        if (!dirty.has(dep)) continue;
+        degree++;
+        let list = dependentsOf.get(dep);
+        if (!list) {
+          list = [];
+          dependentsOf.set(dep, list);
+        }
+        list.push(formula);
+      }
+      inDegree.set(formula, degree);
     }
 
     const queue: string[] = [];
@@ -155,12 +208,10 @@ export class FormulaGraphImpl implements FormulaGraph {
       const key = queue[head];
       head++;
       ordered.push(key);
-      for (const dependentKey of this.cellDependents.get(key) ?? []) {
-        const degree = inDegree.get(dependentKey);
-        if (degree === undefined) continue;
-        const next = degree - 1;
-        inDegree.set(dependentKey, next);
-        if (next === 0) queue.push(dependentKey);
+      for (const dependent of dependentsOf.get(key) ?? []) {
+        const next = (inDegree.get(dependent) ?? 0) - 1;
+        inDegree.set(dependent, next);
+        if (next === 0) queue.push(dependent);
       }
     }
 
@@ -170,23 +221,5 @@ export class FormulaGraphImpl implements FormulaGraph {
       if (degree > 0) cyclic.push(key);
     }
     return { ordered, cyclic };
-  }
-
-  getDirtyCells(): Set<string> {
-    const dirty = new Set<string>();
-    for (const [key, node] of this.nodes) {
-      if (node.isDirty) {
-        dirty.add(key);
-      }
-    }
-    return dirty;
-  }
-
-  markClean(cellKey: string, value: CellValue): void {
-    const node = this.nodes.get(cellKey);
-    if (node) {
-      node.isDirty = false;
-      node.cachedValue = value;
-    }
   }
 }

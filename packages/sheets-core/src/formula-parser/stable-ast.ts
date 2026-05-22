@@ -10,7 +10,7 @@
 // pointing at the same logical cells. Display text is regenerated from the
 // AST on every evaluation so the user sees the up-to-date A1 spelling.
 
-import type { Sheet } from '../types';
+import type { Sheet, FormulaDependencies, RangeDependency } from '../types';
 import { columnIndexToLabel } from './cell-reference';
 import { volatileFunctions } from './functions';
 import type { CellReference, ParsedFormulaNode } from './types';
@@ -355,45 +355,28 @@ function rebaseRef(
  * Cross-sheet refs are skipped — the in-sheet graph doesn't track them
  * (matches the pre-existing limitation of the numeric-key path).
  */
-export function collectStableDependencies(
-  node: StableFormulaNode,
-  currentSheet: Sheet,
-): Set<string> {
-  const out = new Set<string>();
+export function collectStableDependencies(node: StableFormulaNode): FormulaDependencies {
+  const cells = new Set<string>();
+  const ranges: RangeDependency[] = [];
   const visit = (n: StableFormulaNode): void => {
     if (n.cellRef && !n.cellRef.sheetName) {
-      out.add(`${n.cellRef.rowId}:${n.cellRef.colId}`);
+      cells.add(`${n.cellRef.rowId}:${n.cellRef.colId}`);
     }
+    // A range is kept as its two corner keys — a rectangle. Containment is
+    // tested at recalc time, so a cell that is empty when the formula is
+    // entered, or a row/column inserted into the range later, is still tracked.
     if (n.rangeRef && !n.rangeRef.start.sheetName && !n.rangeRef.end.sheetName) {
-      const startRow = currentSheet.getRowIndex(n.rangeRef.start.rowId);
-      const endRow = currentSheet.getRowIndex(n.rangeRef.end.rowId);
-      const startCol = currentSheet.getColIndex(n.rangeRef.start.colId);
-      const endCol = currentSheet.getColIndex(n.rangeRef.end.colId);
-      if (
-        startRow !== undefined &&
-        endRow !== undefined &&
-        startCol !== undefined &&
-        endCol !== undefined
-      ) {
-        const minRow = Math.min(startRow, endRow);
-        const maxRow = Math.max(startRow, endRow);
-        const minCol = Math.min(startCol, endCol);
-        const maxCol = Math.max(startCol, endCol);
-        for (let r = minRow; r <= maxRow; r++) {
-          for (let c = minCol; c <= maxCol; c++) {
-            const rowId = currentSheet.getRowId(r);
-            const colId = currentSheet.getColId(c);
-            if (rowId && colId) out.add(`${rowId}:${colId}`);
-          }
-        }
-      }
+      ranges.push({
+        startKey: `${n.rangeRef.start.rowId}:${n.rangeRef.start.colId}`,
+        endKey: `${n.rangeRef.end.rowId}:${n.rangeRef.end.colId}`,
+      });
     }
     for (const a of n.args ?? []) visit(a);
     if (n.left) visit(n.left);
     if (n.right) visit(n.right);
   };
   visit(node);
-  return out;
+  return { cells, ranges };
 }
 
 /** True when a formula contains a volatile function (RAND, NOW, OFFSET, …). */

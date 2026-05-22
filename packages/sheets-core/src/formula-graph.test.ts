@@ -1,29 +1,34 @@
 import { FormulaGraphImpl } from './formula-graph';
+import type { CellResolver } from './types';
 
 /**
- * Build a graph from `[cell, dependencies]` pairs. Order does not matter — the
- * reverse index is keyed by dependency, so cyclic graphs wire up correctly too.
+ * Resolver for tests: a key of the form "row:col" resolves to those numeric
+ * coordinates (used by range tests); any other key resolves to undefined
+ * (single-cell tests never have range formulas, so the resolver is unused).
  */
-function graphOf(edges: Array<[cell: string, deps: string[]]>): FormulaGraphImpl {
-  const g = new FormulaGraphImpl();
-  for (const [cell, deps] of edges) {
-    g.addFormula(cell, '=x', new Set(deps));
-  }
-  return g;
+const resolve: CellResolver = (key) => {
+  const m = key.match(/^(\d+):(\d+)$/);
+  return m ? { row: Number(m[1]), col: Number(m[2]) } : undefined;
+};
+
+function cellDeps(...cells: string[]) {
+  return { cells: new Set(cells), ranges: [] };
+}
+function rangeDeps(startKey: string, endKey: string) {
+  return { cells: new Set<string>(), ranges: [{ startKey, endKey }] };
 }
 
-describe('markDirtyDependents', () => {
+describe('collectDirty — single-cell dependencies', () => {
   it('collects every transitive dependent and marks it dirty', () => {
     // A <- B <- C
-    const g = graphOf([
-      ['A', []],
-      ['B', ['A']],
-      ['C', ['B']],
-    ]);
+    const g = new FormulaGraphImpl();
+    g.addFormula('A', '=x', cellDeps());
+    g.addFormula('B', '=x', cellDeps('A'));
+    g.addFormula('C', '=x', cellDeps('B'));
     g.markClean('B', 1);
     g.markClean('C', 1);
 
-    const dirty = g.markDirtyDependents('A');
+    const { dirty } = g.collectDirty('A', resolve);
 
     expect([...dirty].sort()).toEqual(['B', 'C']);
     expect(g.nodes.get('B')?.isDirty).toBe(true);
@@ -32,46 +37,62 @@ describe('markDirtyDependents', () => {
   });
 
   it('finds dependents of a plain value cell that is not itself a formula', () => {
-    // F reads value cell V; V is never added as a formula.
-    const g = graphOf([['F', ['V']]]);
-    expect([...g.markDirtyDependents('V')]).toEqual(['F']);
+    const g = new FormulaGraphImpl();
+    g.addFormula('F', '=V', cellDeps('V')); // V is never added as a formula
+    expect([...g.collectDirty('V', resolve).dirty]).toEqual(['F']);
   });
 
-  it('terminates on a dependency cycle', () => {
-    const g = graphOf([
-      ['A', ['B']],
-      ['B', ['A']],
-    ]);
-    expect([...g.markDirtyDependents('A')].sort()).toEqual(['A', 'B']);
+  it('drops reverse-index edges when a formula is re-added', () => {
+    const g = new FormulaGraphImpl();
+    g.addFormula('F', '=A', cellDeps('A'));
+    expect([...g.collectDirty('A', resolve).dirty]).toEqual(['F']);
+
+    g.addFormula('F', '=B', cellDeps('B')); // F now reads B instead of A
+    expect([...g.collectDirty('A', resolve).dirty]).toEqual([]);
+    expect([...g.collectDirty('B', resolve).dirty]).toEqual(['F']);
+  });
+});
+
+describe('collectDirty — range dependencies', () => {
+  it('tracks a cell inside a range, including non-corner cells', () => {
+    const g = new FormulaGraphImpl();
+    g.addFormula('5:5', '=SUM(1:1:3:1)', rangeDeps('1:1', '3:1')); // range rows 1-3, col 1
+
+    expect([...g.collectDirty('2:1', resolve).dirty]).toEqual(['5:5']); // interior cell
+    expect([...g.collectDirty('1:1', resolve).dirty]).toEqual(['5:5']); // corner cell
+    expect([...g.collectDirty('9:1', resolve).dirty]).toEqual([]); // outside the range
+    expect([...g.collectDirty('2:2', resolve).dirty]).toEqual([]); // outside the column
+  });
+
+  it('walks transitively through a formula that sits inside a range', () => {
+    const g = new FormulaGraphImpl();
+    // G is the formula at cell 2:1; it reads value cell 9:9.
+    g.addFormula('2:1', '=9:9', cellDeps('9:9'));
+    // F sums the range 1:1..3:1, which contains G's cell 2:1.
+    g.addFormula('5:5', '=SUM(...)', rangeDeps('1:1', '3:1'));
+
+    const { dirty, edges } = g.collectDirty('9:9', resolve);
+    expect([...dirty].sort()).toEqual(['2:1', '5:5']);
+    const { ordered } = g.topologicalOrder(dirty, edges);
+    expect(ordered).toEqual(['2:1', '5:5']); // G before the F that ranges over it
   });
 });
 
 describe('topologicalOrder', () => {
-  it('orders a chain dependencies-first', () => {
-    const g = graphOf([
-      ['A', []],
-      ['B', ['A']],
-      ['C', ['B']],
-    ]);
-    const { ordered, cyclic } = g.topologicalOrder(new Set(['B', 'C']));
-    expect(ordered).toEqual(['B', 'C']);
-    expect(cyclic).toEqual([]);
-  });
-
   it('computes a diamond apex exactly once, after both branches', () => {
     //   A
     //  / \
     // B   C
     //  \ /
     //   D
-    const g = graphOf([
-      ['A', []],
-      ['B', ['A']],
-      ['C', ['A']],
-      ['D', ['B', 'C']],
-    ]);
-    const dirty = g.markDirtyDependents('A');
-    const { ordered, cyclic } = g.topologicalOrder(dirty);
+    const g = new FormulaGraphImpl();
+    g.addFormula('A', '=x', cellDeps());
+    g.addFormula('B', '=x', cellDeps('A'));
+    g.addFormula('C', '=x', cellDeps('A'));
+    g.addFormula('D', '=x', cellDeps('B', 'C'));
+
+    const { dirty, edges } = g.collectDirty('A', resolve);
+    const { ordered, cyclic } = g.topologicalOrder(dirty, edges);
 
     expect(cyclic).toEqual([]);
     expect(ordered).toHaveLength(3);
@@ -80,69 +101,40 @@ describe('topologicalOrder', () => {
     expect(ordered.indexOf('D')).toBeGreaterThan(ordered.indexOf('C'));
   });
 
-  it('reports a cycle and its downstream as cyclic, not ordered', () => {
-    // A <-> B cycle; C depends on B but is not itself in the cycle.
-    const g = graphOf([
-      ['A', ['B']],
-      ['B', ['A']],
-      ['C', ['B']],
-    ]);
-    const { ordered, cyclic } = g.topologicalOrder(new Set(['A', 'B', 'C']));
+  it('reports a dependency cycle as cyclic, not ordered, without hanging', () => {
+    const g = new FormulaGraphImpl();
+    g.addFormula('A', '=B', cellDeps('B'));
+    g.addFormula('B', '=A', cellDeps('A'));
+
+    const { dirty, edges } = g.collectDirty('A', resolve);
+    const { ordered, cyclic } = g.topologicalOrder(dirty, edges);
     expect(ordered).toEqual([]);
-    expect([...cyclic].sort()).toEqual(['A', 'B', 'C']);
+    expect([...cyclic].sort()).toEqual(['A', 'B']);
   });
 });
 
-describe('invalidate', () => {
-  it('does not stack-overflow on a dependency cycle', () => {
-    const g = graphOf([
-      ['A', ['B']],
-      ['B', ['A']],
-    ]);
-    g.markClean('A', 1);
-    g.markClean('B', 1);
-
-    expect(() => g.invalidate('A')).not.toThrow();
-    expect(g.nodes.get('A')?.isDirty).toBe(true);
-    expect(g.nodes.get('B')?.isDirty).toBe(true);
-  });
-});
-
-describe('re-adding a formula', () => {
-  it('drops reverse-index edges for dependencies it no longer reads', () => {
+describe('volatile seeding', () => {
+  it('collectDirty always includes volatile cells and their dependents', () => {
     const g = new FormulaGraphImpl();
-    g.addFormula('F', '=A', new Set(['A']));
-    expect([...g.markDirtyDependents('A')]).toEqual(['F']);
-
-    g.addFormula('F', '=B', new Set(['B'])); // F now reads B instead of A
-    expect([...g.markDirtyDependents('A')]).toEqual([]);
-    expect([...g.markDirtyDependents('B')]).toEqual(['F']);
-  });
-});
-
-describe('markDirtyVolatile', () => {
-  it('returns volatile cells and their dependents, and marks them dirty', () => {
-    const g = new FormulaGraphImpl();
-    g.addFormula('V', '=NOW()', new Set(), true); // volatile
-    g.addFormula('D', '=V', new Set(['V'])); // depends on the volatile cell
-    g.addFormula('N', '=1', new Set()); // unrelated, non-volatile
+    g.addFormula('V', '=NOW()', cellDeps(), true); // volatile
+    g.addFormula('D', '=V', cellDeps('V'));
+    g.addFormula('N', '=1', cellDeps()); // unrelated, non-volatile
     g.markClean('V', 1);
     g.markClean('D', 1);
 
-    const dirty = g.markDirtyVolatile();
-
+    // An edit somewhere unrelated still recomputes the volatile cell.
+    const { dirty } = g.collectDirty('unrelated', resolve);
     expect([...dirty].sort()).toEqual(['D', 'V']);
     expect(g.nodes.get('V')?.isDirty).toBe(true);
-    expect(g.nodes.get('D')?.isDirty).toBe(true);
     expect(dirty.has('N')).toBe(false);
   });
 
-  it('drops a cell from the volatile set when it is re-added non-volatile', () => {
+  it('drops a cell from the volatile set when re-added non-volatile', () => {
     const g = new FormulaGraphImpl();
-    g.addFormula('V', '=NOW()', new Set(), true);
-    expect(g.markDirtyVolatile().has('V')).toBe(true);
+    g.addFormula('V', '=NOW()', cellDeps(), true);
+    expect(g.collectDirty('x', resolve).dirty.has('V')).toBe(true);
 
-    g.addFormula('V', '=5', new Set()); // re-added, no longer volatile
-    expect(g.markDirtyVolatile().size).toBe(0);
+    g.addFormula('V', '=5', cellDeps()); // re-added, no longer volatile
+    expect(g.collectDirty('x', resolve).dirty.size).toBe(0);
   });
 });

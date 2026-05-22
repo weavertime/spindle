@@ -245,9 +245,8 @@ export class WorkbookImpl implements Workbook {
 
     this.setCell(sheetId, row, col, { value: value as string | number | boolean | null });
 
-    // Invalidate dependents of this cell
+    // Recalculate dependents of this cell
     if (hadFormula || this.getCell(sheetId, row, col)?.value !== undefined) {
-      this.formulaGraph.invalidate(cellKey);
       this.recalculateDependents(cellKey, sheetId);
     }
   }
@@ -280,7 +279,7 @@ export class WorkbookImpl implements Workbook {
 
     const resolver = this.buildSheetResolver();
     const formulaAst = toStableAst(parseResult.ast, resolver, sheet, row, col);
-    const stableDeps = collectStableDependencies(formulaAst, sheet);
+    const stableDeps = collectStableDependencies(formulaAst);
 
     this.formulaGraph.addFormula(cellKey, formula, stableDeps, formulaIsVolatile(formulaAst));
 
@@ -556,16 +555,14 @@ export class WorkbookImpl implements Workbook {
    * downstream of) a dependency cycle are reported as #CIRCULAR!.
    */
   private recalculateDependents(cellKey: string, sheetId: string | undefined): void {
-    const dirty = this.formulaGraph.markDirtyDependents(cellKey);
-
-    // Volatile formulas (RAND, NOW, OFFSET, …) recompute on every recalc pass.
-    for (const volatileKey of this.formulaGraph.markDirtyVolatile()) {
-      dirty.add(volatileKey);
-    }
+    const sheet = this.getSheet(sheetId);
+    // Range dependencies are stored as stable corner-key rectangles; the graph
+    // resolves containment against the sheet's current row/column order.
+    const resolveCell = (key: string) => sheet.stableKeyToIndices(key);
+    const { dirty, edges } = this.formulaGraph.collectDirty(cellKey, resolveCell);
     if (dirty.size === 0) return;
 
-    const sheet = this.getSheet(sheetId);
-    const { ordered, cyclic } = this.formulaGraph.topologicalOrder(dirty);
+    const { ordered, cyclic } = this.formulaGraph.topologicalOrder(dirty, edges);
 
     for (const key of ordered) {
       const indices = sheet.stableKeyToIndices(key);
@@ -683,7 +680,7 @@ export class WorkbookImpl implements Workbook {
         }
         if (!ast) continue;
         const cellKey = this.graphKey(sheetId, row, col);
-        const deps = collectStableDependencies(ast, sheet);
+        const deps = collectStableDependencies(ast);
         this.formulaGraph.addFormula(cellKey, cell.formula ?? '', deps, formulaIsVolatile(ast));
       }
     }
@@ -1160,7 +1157,7 @@ export class WorkbookImpl implements Workbook {
         }
         if (!ast) continue;
         const cellKey = this.graphKey(sheetId, row, col);
-        const deps = collectStableDependencies(ast, sheet);
+        const deps = collectStableDependencies(ast);
         this.formulaGraph.addFormula(cellKey, cell.formula ?? '', deps, formulaIsVolatile(ast));
         this.evaluateFormula(sheetId, row, col);
       }
