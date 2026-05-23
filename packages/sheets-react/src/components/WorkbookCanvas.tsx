@@ -243,9 +243,12 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
       // format — matching how Excel / Google Sheets auto-detect on entry.
       const dateSerial = parseDateString(raw);
       if (dateSerial !== null) {
-        const dateFormat = /^\d{4}[/\-.]\d{1,2}[/\-.]\d{1,2}$/.test(raw.trim())
-          ? 'YYYY-MM-DD'
-          : 'MM/DD/YYYY';
+        // Pick a display pattern matching the user's input style: slashes
+        // round-trip as MM/DD/YYYY, dashes/dots as DD-MM-YYYY, ISO as YYYY-MM-DD.
+        const trimmed = raw.trim();
+        let dateFormat = 'MM/DD/YYYY';
+        if (/^\d{4}[/.-]/.test(trimmed)) dateFormat = 'YYYY-MM-DD';
+        else if (/^\d{1,2}[.-]/.test(trimmed)) dateFormat = 'DD-MM-YYYY';
         const existing = workbook.getCell(sheetId, row, col);
         // `format` is resolved into the pool by setCell (see applyFormatToSelection).
         const dateCell = {

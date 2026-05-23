@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useState, useEffect, useRef } from 'react';
 import { useWorkbook } from '../context/WorkbookContext';
-import { columnIndexToLabel } from '@pagent-libs/sheets-core';
+import { columnIndexToLabel, excelDateToJS, formatJSDate } from '@pagent-libs/sheets-core';
+import type { Cell, WorkbookImpl } from '@pagent-libs/sheets-core';
 import { FormulaAutocomplete } from './FormulaAutocomplete';
 import { FormulaSignatureHint } from './FormulaSignatureHint';
 import { useFormulaAssist } from '../hooks/useFormulaAssist';
@@ -8,6 +9,28 @@ import { useFormulaAssist } from '../hooks/useFormulaAssist';
 interface FormulaBarProps {
   activeCell: { row: number; col: number } | null;
   onFormulaChange?: (formula: string) => void;
+}
+
+/**
+ * The text shown in the formula bar for a cell. Date-formatted cells render
+ * their value using the cell's date pattern (so the user sees "1/12/2020",
+ * not the underlying serial number).
+ */
+function getFormulaBarText(cell: Cell | undefined, workbook: WorkbookImpl): string {
+  if (!cell) return '';
+  if (cell.formula) return cell.formula;
+  if (cell.value === null || cell.value === undefined) return '';
+  if (typeof cell.value === 'number' && cell.formatId) {
+    const format = workbook.getFormatPool().get(cell.formatId);
+    if (format && (format.type === 'date' || format.type === 'datetime')) {
+      try {
+        return formatJSDate(excelDateToJS(cell.value), format.dateFormat || 'MM/DD/YYYY');
+      } catch {
+        // fall through to raw value
+      }
+    }
+  }
+  return String(cell.value);
 }
 
 export const FormulaBar = memo(function FormulaBar({
@@ -40,7 +63,7 @@ export const FormulaBar = memo(function FormulaBar({
         setReadOnly(true);
       } else {
         const cell = workbook.getCell(undefined, activeCell.row, activeCell.col);
-        setInputValue(cell?.formula || cell?.value?.toString() || '');
+        setInputValue(getFormulaBarText(cell, workbook));
         setReadOnly(false);
       }
     }
@@ -99,7 +122,7 @@ export const FormulaBar = memo(function FormulaBar({
         setIsEditing(false);
         if (activeCell) {
           const cell = workbook.getCell(undefined, activeCell.row, activeCell.col);
-          setInputValue(cell?.formula || cell?.value?.toString() || '');
+          setInputValue(getFormulaBarText(cell, workbook));
         }
       }
     },

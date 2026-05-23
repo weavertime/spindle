@@ -342,65 +342,45 @@ export function jsToExcelDate(date: Date): number {
 export function parseDateString(dateStr: string): number | null {
   const trimmed = dateStr.trim();
 
-  // Try various date formats
-  const patterns = [
-    // YYYY/MM/DD or YYYY-MM-DD or YYYY.MM.DD
-    /^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})$/,
-    // DD-MM-YYYY or DD/MM/YYYY or DD.MM.YYYY
-    /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/,
-    // MM/DD/YYYY (US format)
-    /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/,
-  ];
+  // The separator picks the convention when start digits are ambiguous:
+  //   YYYY{sep}MM{sep}DD  — ISO style, any separator
+  //   MM/DD/YYYY          — slashes are the US convention
+  //   DD-MM-YYYY / DD.MM.YYYY — dashes and dots are European
+  const iso = trimmed.match(/^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})$/);
+  const us = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const eu = trimmed.match(/^(\d{1,2})[\-.](\d{1,2})[\-.](\d{4})$/);
 
-  for (const pattern of patterns) {
-    const match = trimmed.match(pattern);
-    if (match) {
-      let year: number, month: number, day: number;
-
-      if (pattern === patterns[0]) {
-        // YYYY/MM/DD format
-        [, year, month, day] = match.map(Number);
-      } else if (pattern === patterns[1] || pattern === patterns[2]) {
-        // DD-MM-YYYY or MM/DD/YYYY format - need to determine which one
-        const first = Number(match[1]);
-        const second = Number(match[2]);
-        const third = Number(match[3]);
-
-        if (pattern === patterns[2]) {
-          // MM/DD/YYYY format
-          month = first;
-          day = second;
-          year = third;
-        } else {
-          // DD-MM-YYYY format (assuming European style)
-          day = first;
-          month = second;
-          year = third;
-        }
-      } else {
-        // DD-MM-YYYY format
-        [, day, month, year] = match.map(Number);
-      }
-
-      // Validate date
-      if (year >= 1900 && year <= 9999 &&
-          month >= 1 && month <= 12 &&
-          day >= 1 && day <= 31) {
-        try {
-          const date = new Date(year, month - 1, day);
-          // Verify the date is valid (handles invalid dates like Feb 30)
-          if (date.getFullYear() === year &&
-              date.getMonth() === month - 1 &&
-              date.getDate() === day) {
-            return jsToExcelDate(date);
-          }
-        } catch {
-          // Invalid date
-        }
-      }
-    }
+  let year: number, month: number, day: number;
+  if (iso) {
+    year = Number(iso[1]); month = Number(iso[2]); day = Number(iso[3]);
+  } else if (us) {
+    month = Number(us[1]); day = Number(us[2]); year = Number(us[3]);
+  } else if (eu) {
+    day = Number(eu[1]); month = Number(eu[2]); year = Number(eu[3]);
+  } else {
+    return null;
   }
 
+  if (
+    year < 1900 || year > 9999 ||
+    month < 1 || month > 12 ||
+    day < 1 || day > 31
+  ) {
+    return null;
+  }
+
+  // Anchor the date at UTC midnight so jsToExcelDate produces an exact
+  // integer serial — local-time construction would drift by a day in some
+  // timezones (the floor in jsToExcelDate rounds the fractional offset).
+  const date = new Date(Date.UTC(year, month - 1, day));
+  // Reject invalid dates that JS silently shifts (e.g. Feb 30 → Mar 2).
+  if (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  ) {
+    return jsToExcelDate(date);
+  }
   return null;
 }
 
@@ -408,9 +388,12 @@ export function parseDateString(dateStr: string): number | null {
  * Format JavaScript Date according to pattern
  */
 export function formatJSDate(date: Date, pattern: string): string {
-  const year = date.getFullYear();
-  const month = date.getMonth() + 1; // 0-based to 1-based
-  const day = date.getDate();
+  // Excel serials are timezone-agnostic and excelDateToJS produces a UTC
+  // anchor, so read the UTC components — using local would drift by a day in
+  // negative-offset timezones.
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + 1; // 0-based to 1-based
+  const day = date.getUTCDate();
 
   switch (pattern) {
     case 'MM/DD/YYYY':
@@ -432,9 +415,10 @@ export function formatJSDate(date: Date, pattern: string): string {
  * Format JavaScript Date time according to pattern
  */
 function formatJSTime(date: Date, pattern: string): string {
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
-  const seconds = date.getSeconds();
+  // UTC components, matching formatJSDate (see comment there).
+  const hours = date.getUTCHours();
+  const minutes = date.getUTCMinutes();
+  const seconds = date.getUTCSeconds();
 
   switch (pattern) {
     case 'HH:mm:ss':

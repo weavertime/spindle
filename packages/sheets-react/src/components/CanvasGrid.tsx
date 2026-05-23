@@ -11,7 +11,7 @@ import {
 import type { Selection, Range, Cell, CellValue } from '@pagent-libs/sheets-core';
 import { extractFormulaRanges, columnIndexToLabel, adjustFormula, type FormulaRange } from '@pagent-libs/sheets-core';
 import { detectSeries, extrapolate } from '@pagent-libs/sheets-core';
-import { FilterManager, excelDateToJS, formatJSDate } from '@pagent-libs/sheets-core';
+import { FilterManager } from '@pagent-libs/sheets-core';
 import { RemoteSelectionOverlay } from './RemoteSelectionOverlay';
 
 export type ContextMenuType =
@@ -825,30 +825,12 @@ export const CanvasGrid = memo(function CanvasGrid({
   
   const formatCellValueForEditing = useCallback((cellData: Cell | undefined): string => {
     if (!cellData) return '';
-
-    if (cellData.formula) {
-      return cellData.formula;
-    }
-
-    if (cellData.value === null || cellData.value === undefined) {
-      return '';
-    }
-
-    // Get the format from formatId
-    const format = cellData.formatId ? workbook.getFormatPool().get(cellData.formatId) : undefined;
-
-    // If cell has date/time formatting and value is a number, format it back to readable date
-    if (format?.type && ['date', 'time', 'datetime'].includes(format.type) && typeof cellData.value === 'number') {
-      try {
-        const jsDate = excelDateToJS(cellData.value);
-        // Format back to a readable date string (DD-MM-YYYY for European style)
-        return formatJSDate(jsDate, 'DD-MM-YYYY');
-      } catch {
-        // If date conversion fails, fall back to string representation
-        return String(cellData.value);
-      }
-    }
-
+    if (cellData.formula) return cellData.formula;
+    if (cellData.value === null || cellData.value === undefined) return '';
+    // The editor sees the raw value. For date-formatted cells the EditOverlay
+    // shows a calendar picker that converts the serial — formatting the date
+    // to text here would break the picker (parseFloat reads only the leading
+    // digits of e.g. "30-11-2020").
     return String(cellData.value);
   }, []);
 
