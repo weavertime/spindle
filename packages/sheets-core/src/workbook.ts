@@ -1,6 +1,6 @@
 // Workbook model
 
-import type { Workbook, Sheet, Cell, Range, Selection, CellValue, SortOrder, CellFormat, CellStyle, EventType, EventHandler } from './types';
+import type { Workbook, Sheet, Cell, Range, MergedRegion, Selection, CellValue, SortOrder, CellFormat, CellStyle, EventType, EventHandler } from './types';
 import { SheetImpl } from './sheet';
 import { EventEmitter } from './event-emitter';
 import { FormulaGraphImpl } from './formula-graph';
@@ -20,6 +20,7 @@ import {
   getSheetYTypes,
   ensureSheetYMap,
   threadKey,
+  mergedRegionKey,
 } from './collab/y-schema';
 import type { CommentStore, CommentMutationEvent, SheetCommentThread } from './comments';
 import {
@@ -1747,10 +1748,15 @@ export class WorkbookImpl implements Workbook {
       setOrDelete(t.meta, 'frozenCols', sheet.config.frozenCols);
       setOrDelete(t.meta, 'showGridLines', sheet.config.showGridLines);
       setOrDelete(t.meta, 'sortOrder', sheet.config.sortOrder);
-      // Mirror merged regions as a whole array — concurrent merges by
-      // different peers fall back to last-writer-wins (matches sortOrder).
-      const regions = sheet.config.mergedRegions;
-      setOrDelete(t.meta, 'mergedRegions', regions && regions.length > 0 ? regions : undefined);
+      // Merged regions: keyed by composite stable-ID key so concurrent
+      // merges of different ranges by different peers both survive.
+      const mergedByKey = new Map<string, MergedRegion>();
+      if (sheet.config.mergedRegions) {
+        for (const r of sheet.config.mergedRegions) {
+          mergedByKey.set(mergedRegionKey(r), r);
+        }
+      }
+      syncMapToY(t.mergedRegions, mergedByKey);
     });
   }
 
