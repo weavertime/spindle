@@ -446,6 +446,7 @@ interface ToolbarProps {
     align?: 'left' | 'center' | 'right';
     verticalAlign?: 'top' | 'middle' | 'bottom';
     textWrap?: boolean;
+    textRotation?: number;
     format?: FormatType;
     hyperlink?: string;
   };
@@ -491,6 +492,7 @@ export const Toolbar = memo(function Toolbar({
   const [showColorPicker, setShowColorPicker] = useState<'font' | 'background' | null>(null);
   const [showBorderMenu, setShowBorderMenu] = useState(false);
   const [showVerticalAlignMenu, setShowVerticalAlignMenu] = useState(false);
+  const [showRotationMenu, setShowRotationMenu] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showHyperlinkModal, setShowHyperlinkModal] = useState(false);
   const [showFreezeMenu, setShowFreezeMenu] = useState(false);
@@ -1045,9 +1047,39 @@ export const Toolbar = memo(function Toolbar({
       </ToolbarButton>
 
       {/* Text Rotation */}
-      <ToolbarButton onClick={() => onTextRotation?.(45)} tooltip="Rotate text">
-        <RotateCw size={18} strokeWidth={2} />
-      </ToolbarButton>
+      <div style={{ position: 'relative' }}>
+        <ToolbarButton
+          onClick={() => setShowRotationMenu(!showRotationMenu)}
+          active={showRotationMenu || !!selectedFormat?.textRotation}
+          tooltip="Rotate text"
+        >
+          <RotateCw size={18} strokeWidth={2} />
+        </ToolbarButton>
+        <DropdownMenu
+          isOpen={showRotationMenu}
+          onClose={() => setShowRotationMenu(false)}
+          width={150}
+        >
+          {([
+            { angle: 0, label: 'None' },
+            { angle: 45, label: 'Tilt up (45°)' },
+            { angle: -45, label: 'Tilt down (-45°)' },
+            { angle: 90, label: 'Rotate up (90°)' },
+            { angle: -90, label: 'Rotate down (-90°)' },
+          ] as const).map(({ angle, label }) => (
+            <DropdownItem
+              key={angle}
+              onClick={() => {
+                onTextRotation?.(angle);
+                setShowRotationMenu(false);
+              }}
+              active={(selectedFormat?.textRotation ?? 0) === angle}
+            >
+              {label}
+            </DropdownItem>
+          ))}
+        </DropdownMenu>
+      </div>
 
       <Divider />
 

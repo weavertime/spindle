@@ -39,8 +39,8 @@ export class CellRenderer {
       if (displayValue) {
         const textStyle = this.cellStyleToTextStyle(style);
         
-        // Check if text wrapping is enabled
-        if (style?.textWrap) {
+        // Rotation takes precedence over wrapping; renderText handles rotation.
+        if (style?.textWrap && !style?.textRotation) {
           this.textRenderer.renderWrappedText(ctx, displayValue, bounds, textStyle);
         } else {
           this.textRenderer.renderText(ctx, displayValue, bounds, textStyle);
@@ -146,6 +146,7 @@ export class CellRenderer {
       textAlign: style.textAlign,
       verticalAlign: style.verticalAlign,
       textDecoration: style.textDecoration,
+      textRotation: style.textRotation,
     };
   }
   

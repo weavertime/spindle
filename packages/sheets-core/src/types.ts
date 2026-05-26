@@ -19,6 +19,7 @@ export interface CellStyle {
   borderLeft?: string;
   textWrap?: boolean;
   textDecoration?: 'none' | 'underline' | 'line-through';
+  textRotation?: number; // degrees, -90..90; 0/undefined = horizontal
 }
 
 export type FormatType =
@@ -97,6 +98,17 @@ export interface Selection {
   activeCell: { row: number; col: number };
 }
 
+/**
+ * A merged cell region, anchored by the stable IDs of its two corner cells so
+ * it survives insert/delete/sort (mirrors how comments anchor).
+ */
+export interface MergedRegion {
+  startRowId: string;
+  startColId: string;
+  endRowId: string;
+  endColId: string;
+}
+
 export interface SortOrder {
   column: number;
   direction: 'asc' | 'desc';
@@ -136,6 +148,7 @@ export interface SheetConfig {
   showGridLines?: boolean;
   sortOrder?: SortOrder[];           // criteria still reference numeric columns (revisit in v2)
   filters?: Map<string, ColumnFilter>; // colId -> filter
+  mergedRegions?: MergedRegion[];    // merged cell regions, keyed by stable IDs
 }
 
 export interface Sheet {
@@ -201,6 +214,13 @@ export interface Sheet {
   hasFilter(column: number): boolean;
   clearAllFilters(): void;
 
+  // Merged cells. Ranges are returned/accepted as numeric indices; storage is
+  // by stable ID so regions survive insert/delete/sort.
+  getMergedRegions(): Range[];
+  mergeCells(range: Range): void;
+  unmergeCells(range: Range): void;
+  getMergeAt(row: number, col: number): Range | undefined;
+
   // Order-map plumbing (used by sort, history snapshot/restore, and the
   // future CRDT binding). Cells are not touched by these calls.
   replaceOrderMaps(rowOrder: Map<number, string>, colOrder: Map<number, string>): void;
@@ -233,6 +253,10 @@ export interface Workbook {
   clearFilter(column: number, sheetId?: string): void;
   getFilters(sheetId?: string): Map<number, ColumnFilter>;
   clearAllFilters(sheetId?: string): void;
+
+  // Merged cells
+  mergeCells(range: Range, sheetId?: string): void;
+  unmergeCells(range: Range, sheetId?: string): void;
 
   // Data serialization/deserialization
   getData(): WorkbookData;
@@ -297,6 +321,8 @@ export interface SheetData {
     showGridLines?: boolean;
     sortOrder?: SortOrder[];
     filters?: Array<[number | string, ColumnFilter]>;
+    /** Merged regions, always keyed by stable IDs (no numeric legacy form). */
+    mergedRegions?: MergedRegion[];
   };
   rowCount: number;
   colCount: number;

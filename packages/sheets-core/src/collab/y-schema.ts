@@ -29,6 +29,7 @@ import type {
   CellFormat,
   CellStyle,
   ColumnFilter,
+  MergedRegion,
   Selection,
   SheetData,
   SortOrder,
@@ -54,6 +55,17 @@ export interface SheetYTypes {
   hiddenRows: Y.Map<true>;
   hiddenCols: Y.Map<true>;
   filters: Y.Map<ColumnFilter>;
+  /**
+   * Merged cell regions, keyed by the composite stable-ID corner key
+   * (see `mergedRegionKey`). Per-region keying lets concurrent merges of
+   * different ranges converge — peers don't fight over a single array.
+   */
+  mergedRegions: Y.Map<MergedRegion>;
+}
+
+/** Composite key uniquely identifying a merged region by its four stable corners. */
+export function mergedRegionKey(r: MergedRegion): string {
+  return `${r.startRowId}:${r.startColId}:${r.endRowId}:${r.endColId}`;
 }
 
 export interface WorkbookYTypes {
@@ -102,6 +114,7 @@ export function getSheetYTypes(sheetMap: Y.Map<unknown>): SheetYTypes {
     hiddenRows: sheetMap.get('hiddenRows') as Y.Map<true>,
     hiddenCols: sheetMap.get('hiddenCols') as Y.Map<true>,
     filters: sheetMap.get('filters') as Y.Map<ColumnFilter>,
+    mergedRegions: sheetMap.get('mergedRegions') as Y.Map<MergedRegion>,
   };
 }
 
@@ -134,6 +147,7 @@ export function ensureSheetYMap(
   sheetMap.set('hiddenRows', new Y.Map<true>());
   sheetMap.set('hiddenCols', new Y.Map<true>());
   sheetMap.set('filters', new Y.Map<ColumnFilter>());
+  sheetMap.set('mergedRegions', new Y.Map<MergedRegion>());
   return sheetMap;
 }
 
@@ -152,6 +166,7 @@ export const createSheetYMap = (): Y.Map<unknown> => {
   sheetMap.set('hiddenRows', new Y.Map<true>());
   sheetMap.set('hiddenCols', new Y.Map<true>());
   sheetMap.set('filters', new Y.Map<ColumnFilter>());
+  sheetMap.set('mergedRegions', new Y.Map<MergedRegion>());
   return sheetMap;
 };
 
@@ -220,6 +235,11 @@ function hydrateSheetYMap(sheetMap: Y.Map<unknown>, data: SheetData): void {
   }
   if (data.config.sortOrder) {
     t.meta.set('sortOrder', data.config.sortOrder);
+  }
+  if (data.config.mergedRegions) {
+    for (const region of data.config.mergedRegions) {
+      t.mergedRegions.set(mergedRegionKey(region), region);
+    }
   }
 
   // rowOrder / colOrder: wire format is sparse Array<[idx, id]>; store as
@@ -378,6 +398,13 @@ function serializeSheetYMap(sheetMap: Y.Map<unknown>): SheetData {
   const filters: Array<[string, ColumnFilter]> = [];
   for (const [k, v] of t.filters.entries()) filters.push([k, v]);
 
+  // Read merged regions back as an array, sorted by composite key so every
+  // peer agrees on iteration order (drives selection / first-match lookups).
+  const mergedRegionEntries: Array<[string, MergedRegion]> = [];
+  for (const [k, v] of t.mergedRegions.entries()) mergedRegionEntries.push([k, v]);
+  mergedRegionEntries.sort(([a], [b]) => a.localeCompare(b));
+  const mergedRegions = mergedRegionEntries.map(([, v]) => v);
+
   return {
     id: (t.meta.get('id') as string) ?? '',
     name: (t.meta.get('name') as string) ?? '',
@@ -396,6 +423,7 @@ function serializeSheetYMap(sheetMap: Y.Map<unknown>): SheetData {
       defaultColWidth: t.meta.get('defaultColWidth') as number | undefined,
       sortOrder: t.meta.get('sortOrder') as SortOrder[] | undefined,
       filters: filters.length ? filters : undefined,
+      mergedRegions: mergedRegions.length ? mergedRegions : undefined,
     },
     rowCount: (t.meta.get('rowCount') as number) ?? 1000,
     colCount: (t.meta.get('colCount') as number) ?? 100,

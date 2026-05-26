@@ -8,11 +8,21 @@
 //     Cells stay attached to their stable IDs across inserts and sorts; the
 //     numeric index a cell appears at changes, but its identity does not.
 
-import type { Sheet, SheetConfig, Cell, Range, SortOrder } from './types';
+import type { Sheet, SheetConfig, Cell, Range, SortOrder, MergedRegion } from './types';
 import { CommentStore } from './comments';
 import { getStableCellKey, parseStableCellKey } from './utils/cell-key';
 import { generateId } from './utils/id';
 import { getRangeCells } from './utils/range';
+
+/** Whether two normalized numeric ranges (inclusive bounds) overlap. */
+function rangesIntersect(a: Range, b: Range): boolean {
+  return (
+    a.startRow <= b.endRow &&
+    a.endRow >= b.startRow &&
+    a.startCol <= b.endCol &&
+    a.endCol >= b.startCol
+  );
+}
 
 export class SheetImpl implements Sheet {
   id: string;
@@ -343,6 +353,14 @@ export class SheetImpl implements Sheet {
       if (this.config.hiddenCols) for (const id of ids) this.config.hiddenCols.delete(id);
       if (this.config.filters) for (const id of ids) this.config.filters.delete(id);
     }
+    // Drop merged regions whose removed corner row/col no longer exists.
+    if (this.config.mergedRegions) {
+      this.config.mergedRegions = this.config.mergedRegions.filter((region) =>
+        isRow
+          ? !ids.has(region.startRowId) && !ids.has(region.endRowId)
+          : !ids.has(region.startColId) && !ids.has(region.endColId)
+      );
+    }
   }
 
   isRowHidden(row: number): boolean {
@@ -567,6 +585,100 @@ export class SheetImpl implements Sheet {
 
   clearAllFilters(): void {
     this.config.filters = undefined;
+    this.notifyStructureChange();
+  }
+
+  // ============================================
+  // Merged cells
+  // ============================================
+
+  /** Resolve a stored region to a normalized numeric range, or null if orphaned. */
+  private regionToRange(region: MergedRegion): Range | null {
+    const r0 = this.rowIdToIndex.get(region.startRowId);
+    const c0 = this.colIdToIndex.get(region.startColId);
+    const r1 = this.rowIdToIndex.get(region.endRowId);
+    const c1 = this.colIdToIndex.get(region.endColId);
+    if (r0 === undefined || c0 === undefined || r1 === undefined || c1 === undefined) {
+      return null;
+    }
+    return {
+      startRow: Math.min(r0, r1),
+      endRow: Math.max(r0, r1),
+      startCol: Math.min(c0, c1),
+      endCol: Math.max(c0, c1),
+    };
+  }
+
+  getMergedRegions(): Range[] {
+    const regions = this.config.mergedRegions;
+    if (!regions) return [];
+    const out: Range[] = [];
+    for (const region of regions) {
+      const span = this.regionToRange(region);
+      if (span) out.push(span);
+    }
+    return out;
+  }
+
+  getMergeAt(row: number, col: number): Range | undefined {
+    for (const span of this.getMergedRegions()) {
+      if (
+        row >= span.startRow && row <= span.endRow &&
+        col >= span.startCol && col <= span.endCol
+      ) {
+        return span;
+      }
+    }
+    return undefined;
+  }
+
+  mergeCells(range: Range): void {
+    const target: Range = {
+      startRow: Math.min(range.startRow, range.endRow),
+      endRow: Math.max(range.startRow, range.endRow),
+      startCol: Math.min(range.startCol, range.endCol),
+      endCol: Math.max(range.startCol, range.endCol),
+    };
+    // A single cell cannot be merged.
+    if (target.startRow === target.endRow && target.startCol === target.endCol) return;
+
+    // Drop any existing region that overlaps the new one (and any orphans).
+    const kept = (this.config.mergedRegions ?? []).filter((region) => {
+      const span = this.regionToRange(region);
+      return span !== null && !rangesIntersect(span, target);
+    });
+    // Clear the covered (non-anchor) cells — only the anchor keeps its content.
+    for (let r = target.startRow; r <= target.endRow; r++) {
+      for (let c = target.startCol; c <= target.endCol; c++) {
+        if (r === target.startRow && c === target.startCol) continue;
+        this.deleteCell(r, c);
+      }
+    }
+    kept.push({
+      startRowId: this.ensureRowId(target.startRow),
+      startColId: this.ensureColId(target.startCol),
+      endRowId: this.ensureRowId(target.endRow),
+      endColId: this.ensureColId(target.endCol),
+    });
+    this.config.mergedRegions = kept;
+    this.notifyStructureChange();
+  }
+
+  unmergeCells(range: Range): void {
+    const regions = this.config.mergedRegions;
+    if (!regions || regions.length === 0) return;
+    const target: Range = {
+      startRow: Math.min(range.startRow, range.endRow),
+      endRow: Math.max(range.startRow, range.endRow),
+      startCol: Math.min(range.startCol, range.endCol),
+      endCol: Math.max(range.startCol, range.endCol),
+    };
+    const kept = regions.filter((region) => {
+      const span = this.regionToRange(region);
+      return span !== null && !rangesIntersect(span, target);
+    });
+    if (kept.length === regions.length) return; // nothing changed
+    this.config.mergedRegions = kept;
     this.notifyStructureChange();
   }
 

@@ -1,6 +1,6 @@
 // Workbook model
 
-import type { Workbook, Sheet, Cell, Selection, CellValue, SortOrder, CellFormat, CellStyle, EventType, EventHandler } from './types';
+import type { Workbook, Sheet, Cell, Range, MergedRegion, Selection, CellValue, SortOrder, CellFormat, CellStyle, EventType, EventHandler } from './types';
 import { SheetImpl } from './sheet';
 import { EventEmitter } from './event-emitter';
 import { FormulaGraphImpl } from './formula-graph';
@@ -20,6 +20,7 @@ import {
   getSheetYTypes,
   ensureSheetYMap,
   threadKey,
+  mergedRegionKey,
 } from './collab/y-schema';
 import type { CommentStore, CommentMutationEvent, SheetCommentThread } from './comments';
 import {
@@ -755,6 +756,9 @@ export class WorkbookImpl implements Workbook {
         colWidths: sheet.config.colWidths ? new Map(sheet.config.colWidths) : undefined,
         hiddenRows: sheet.config.hiddenRows ? new Set(sheet.config.hiddenRows) : undefined,
         hiddenCols: sheet.config.hiddenCols ? new Set(sheet.config.hiddenCols) : undefined,
+        mergedRegions: sheet.config.mergedRegions
+          ? sheet.config.mergedRegions.map((r) => ({ ...r }))
+          : undefined,
       };
 
       sheets.set(sheetId, {
@@ -1014,6 +1018,9 @@ export class WorkbookImpl implements Workbook {
         filters: sheet.config.filters
           ? Array.from(sheet.config.filters.entries()) as Array<[string, import('./types').ColumnFilter]>
           : undefined,
+        mergedRegions: sheet.config.mergedRegions
+          ? sheet.config.mergedRegions.map((r) => ({ ...r }))
+          : undefined,
       };
 
       const threads = sheet.comments.toJSON();
@@ -1181,6 +1188,10 @@ export class WorkbookImpl implements Workbook {
           const colId = useStable ? (key as string) : sheet.ensureColId(key as number);
           sheet.config.filters.set(colId, filter);
         }
+      }
+      // Merged regions are always stored by stable ID — pass through directly.
+      if (sheetData.config.mergedRegions) {
+        sheet.config.mergedRegions = sheetData.config.mergedRegions.map((r) => ({ ...r }));
       }
 
       sheet.comments.loadJSON(sheetData.threads);
@@ -1375,6 +1386,9 @@ export class WorkbookImpl implements Workbook {
     const targetSheetId = sheetId ?? this.activeSheetId;
     const sheet = this.sheets.get(targetSheetId);
     if (sheet) {
+      // Sorting permutes rows; a merged region's corners would scatter.
+      // Refuse the sort while any merged region exists (matches Excel/Sheets).
+      if (sheet.getMergedRegions().length > 0) return;
       const sortOrder = sheet.getSortOrder();
       if (sortOrder.length > 0) {
         // Record history before sorting
@@ -1450,6 +1464,32 @@ export class WorkbookImpl implements Workbook {
         this.recordHistory();
       }
       sheet.clearAllFilters();
+    }
+  }
+
+  // ============================================
+  // Merged cells
+  // ============================================
+
+  /** Merge a range of cells into a single region (records history). */
+  mergeCells(range: Range, sheetId?: string): void {
+    const sheet = this.sheets.get(sheetId ?? this.activeSheetId);
+    if (sheet) {
+      if (!this.isUndoing && !this.isRedoing && !this.isBatching) {
+        this.recordHistory();
+      }
+      sheet.mergeCells(range);
+    }
+  }
+
+  /** Remove any merged regions intersecting the range (records history). */
+  unmergeCells(range: Range, sheetId?: string): void {
+    const sheet = this.sheets.get(sheetId ?? this.activeSheetId);
+    if (sheet) {
+      if (!this.isUndoing && !this.isRedoing && !this.isBatching) {
+        this.recordHistory();
+      }
+      sheet.unmergeCells(range);
     }
   }
 
@@ -1708,6 +1748,15 @@ export class WorkbookImpl implements Workbook {
       setOrDelete(t.meta, 'frozenCols', sheet.config.frozenCols);
       setOrDelete(t.meta, 'showGridLines', sheet.config.showGridLines);
       setOrDelete(t.meta, 'sortOrder', sheet.config.sortOrder);
+      // Merged regions: keyed by composite stable-ID key so concurrent
+      // merges of different ranges by different peers both survive.
+      const mergedByKey = new Map<string, MergedRegion>();
+      if (sheet.config.mergedRegions) {
+        for (const r of sheet.config.mergedRegions) {
+          mergedByKey.set(mergedRegionKey(r), r);
+        }
+      }
+      syncMapToY(t.mergedRegions, mergedByKey);
     });
   }
 

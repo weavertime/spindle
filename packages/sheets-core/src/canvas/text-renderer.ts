@@ -136,10 +136,17 @@ export class TextRenderer {
     
     const font = this.buildFontString(style);
     const metrics = this.getFontMetrics(font);
-    
+
     ctx.font = font;
     ctx.fillStyle = style.color ?? this.theme.cellTextColor;
-    
+
+    // Rotated text follows a separate path (clipped to the cell, not truncated).
+    const rotation = style.textRotation ?? 0;
+    if (rotation !== 0) {
+      this.renderRotatedText(ctx, text, bounds, style, metrics, rotation);
+      return;
+    }
+
     // Calculate available width for text
     const availableWidth = bounds.width - padding * 2;
     
@@ -220,7 +227,52 @@ export class TextRenderer {
       ctx.stroke();
     }
   }
-  
+
+  /**
+   * Render text rotated by an angle. Drawn about the cell centre and clipped
+   * to the cell bounds — rotated text is not truncated or auto-fitted.
+   */
+  private renderRotatedText(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    bounds: Rect,
+    style: Partial<TextStyle>,
+    metrics: FontMetricsCache,
+    rotation: number
+  ): void {
+    // Canvas rotation is clockwise; a positive user angle should tilt text
+    // upward, so negate.
+    const rad = (-rotation * Math.PI) / 180;
+    const cx = bounds.x + bounds.width / 2;
+    const cy = bounds.y + bounds.height / 2;
+
+    ctx.save();
+    // Clip so rotated text cannot spill outside the cell.
+    ctx.beginPath();
+    ctx.rect(bounds.x, bounds.y, bounds.width, bounds.height);
+    ctx.clip();
+
+    ctx.translate(cx, cy);
+    ctx.rotate(rad);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 0, 0);
+
+    if (style.textDecoration && style.textDecoration !== 'none') {
+      const textWidth = ctx.measureText(text).width;
+      const dy =
+        style.textDecoration === 'underline' ? metrics.baseline * 0.4 : 0;
+      ctx.strokeStyle = style.color ?? this.theme.cellTextColor;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-textWidth / 2, dy);
+      ctx.lineTo(textWidth / 2, dy);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
   /**
    * Render wrapped text (for cells with text wrapping enabled)
    */

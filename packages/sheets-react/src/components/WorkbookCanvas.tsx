@@ -1,4 +1,4 @@
-import React, { memo, useState, useCallback, useRef, useEffect } from 'react';
+import React, { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useWorkbook } from '../context/WorkbookContext';
 import { CanvasGrid, type ContextMenuType } from './CanvasGrid';
 import { EditOverlay, type EditOverlayRef } from './EditOverlay';
@@ -13,9 +13,11 @@ import { ContextMenu } from './ContextMenu';
 import { HeaderContextMenu } from './HeaderContextMenu';
 import { FilterModal } from './FilterModal';
 import { FormatCellsModal } from './FormatCellsModal';
+import { FindReplaceModal, type FindReplaceState } from './FindReplaceModal';
 import type { CellPosition, Selection, CellFormat, ColumnFilter, CellStyle, SortOrder, FormatType } from '@pagent-libs/sheets-core';
 import { columnIndexToLabel } from '@pagent-libs/sheets-core';
 import { parseDateString } from '@pagent-libs/sheets-core';
+import { findMatches, computeReplacement } from '@pagent-libs/sheets-core';
 
 export interface WorkbookCanvasProps {
   className?: string;
@@ -71,6 +73,19 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
     currentFormat?: CellFormat;
     sampleValue?: number;
   } | null>(null);
+
+  // Find & replace state
+  const [findReplace, setFindReplace] = useState<FindReplaceState & { isOpen: boolean }>({
+    isOpen: false,
+    query: '',
+    replacement: '',
+    matchCase: false,
+    wholeCell: false,
+    searchFormulas: false,
+  });
+  const [activeMatchIndex, setActiveMatchIndex] = useState(-1);
+  // "Select + reveal a cell" function exposed by CanvasGrid.
+  const navigateRef = useRef<((cell: CellPosition) => void) | null>(null);
   
   // Clipboard handlers from CanvasGrid
   const clipboardHandlersRef = useRef<{
@@ -207,25 +222,62 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
     return undefined;
   }, [isDragging, handleFloatingDragMove, handleFloatingDragEnd]);
 
+  // Store a raw edited string into a cell: formula, blank, number, an
+  // auto-detected date, or text. Shared by the in-cell editor and formula bar.
+  const applyCellInput = useCallback(
+    (sheetId: string | undefined, row: number, col: number, raw: string) => {
+      if (raw.startsWith('=')) {
+        workbook.setFormula(sheetId, row, col, raw);
+        return;
+      }
+      if (raw === '') {
+        workbook.setCellValue(sheetId, row, col, null);
+        return;
+      }
+      const numValue = Number(raw);
+      if (!isNaN(numValue) && raw.trim() !== '' && isFinite(numValue)) {
+        workbook.setCellValue(sheetId, row, col, numValue);
+        return;
+      }
+      // Recognise a typed date and store it as an Excel serial with a date
+      // format — matching how Excel / Google Sheets auto-detect on entry.
+      const dateSerial = parseDateString(raw);
+      if (dateSerial !== null) {
+        // Pick a display pattern matching the user's input style: slashes
+        // round-trip as MM/DD/YYYY, dashes/dots as DD-MM-YYYY, ISO as YYYY-MM-DD.
+        const trimmed = raw.trim();
+        let dateFormat = 'MM/DD/YYYY';
+        if (/^\d{4}[/.-]/.test(trimmed)) dateFormat = 'YYYY-MM-DD';
+        else if (/^\d{1,2}[.-]/.test(trimmed)) dateFormat = 'DD-MM-YYYY';
+        const existing = workbook.getCell(sheetId, row, col);
+        // `format` is resolved into the pool by setCell (see applyFormatToSelection).
+        const dateCell = {
+          ...existing,
+          value: dateSerial,
+          formula: undefined,
+          formulaAst: undefined,
+          format: { type: 'date' as const, dateFormat },
+        };
+        workbook.batch(() => {
+          workbook.setCell(sheetId, row, col, dateCell);
+        });
+        return;
+      }
+      workbook.setCellValue(sheetId, row, col, raw);
+    },
+    [workbook]
+  );
+
   // Handle formula bar changes
   const handleFormulaChange = useCallback(
     (formula: string) => {
       if (activeCell) {
-        if (formula.startsWith('=')) {
-          workbook.setFormula(undefined, activeCell.row, activeCell.col, formula);
-        } else if (formula === '') {
-          workbook.setCellValue(undefined, activeCell.row, activeCell.col, null);
-        } else {
-          const numValue = Number(formula);
-          // If it's parsable as a number, store as number; otherwise store as text
-          const valueToStore = !isNaN(numValue) && formula.trim() !== '' && isFinite(numValue) ? numValue : formula;
-          workbook.setCellValue(undefined, activeCell.row, activeCell.col, valueToStore);
-        }
+        applyCellInput(undefined, activeCell.row, activeCell.col, formula);
         // Trigger re-render to show updated cell value
         setDimensionVersion(v => v + 1);
       }
     },
-    [activeCell, workbook]
+    [activeCell, applyCellInput]
   );
 
   // Commit edit and close editor
@@ -247,16 +299,7 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
       workbook.isSpilledCell(targetSheetId, currentEditingCell.row, currentEditingCell.col);
 
     if (currentEditingCell && valueToCommit !== undefined && !isSpilled) {
-      if (valueToCommit.startsWith('=')) {
-        workbook.setFormula(targetSheetId, currentEditingCell.row, currentEditingCell.col, valueToCommit);
-      } else if (valueToCommit === '') {
-        workbook.setCellValue(targetSheetId, currentEditingCell.row, currentEditingCell.col, null);
-      } else {
-        const numValue = Number(valueToCommit);
-        // If it's parsable as a number, store as number; otherwise store as text
-        const finalValue = !isNaN(numValue) && valueToCommit.trim() !== '' && isFinite(numValue) ? numValue : valueToCommit;
-        workbook.setCellValue(targetSheetId, currentEditingCell.row, currentEditingCell.col, finalValue);
-      }
+      applyCellInput(targetSheetId, currentEditingCell.row, currentEditingCell.col, valueToCommit);
       // Trigger re-render to show updated cell value
       setDimensionVersion(v => v + 1);
     }
@@ -293,7 +336,7 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
       const canvas = canvasGridRef.current?.querySelector('canvas');
       canvas?.focus({ preventScroll: true });
     });
-  }, [editingCell, editValue, workbook, originalEditingSheetId]);
+  }, [editingCell, editValue, workbook, originalEditingSheetId, applyCellInput]);
 
   // Handle active cell change from canvas
   const handleActiveCellChange = useCallback((cell: CellPosition | null) => {
@@ -400,6 +443,12 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
 
   // Handle direct sort by direction (for context menu)
   const handleSortColumnByDirection = useCallback((column: number, direction: 'asc' | 'desc') => {
+    // Sorting would scatter merged regions — refuse, matching Excel/Sheets.
+    if (workbook.getSheet().getMergedRegions().length > 0) {
+      window.alert('Cannot sort a sheet that contains merged cells. Unmerge them first.');
+      return;
+    }
+
     const sortOrder: SortOrder[] = [{ column, direction }];
 
     workbook.setSortOrder(sortOrder);
@@ -427,6 +476,106 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
   }) => {
     clipboardHandlersRef.current = handlers;
   }, []);
+
+  // Find & replace -----------------------------------------------------------
+  const handleNavigateReady = useCallback((navigate: (cell: CellPosition) => void) => {
+    navigateRef.current = navigate;
+  }, []);
+
+  // dimensionVersion is a dep so matches refresh after edits and replacements.
+  const findReplaceMatches = useMemo(() => {
+    if (!findReplace.isOpen || !findReplace.query) return [];
+    return findMatches(workbook.getSheet(), findReplace.query, {
+      matchCase: findReplace.matchCase,
+      wholeCell: findReplace.wholeCell,
+      searchFormulas: findReplace.searchFormulas,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [findReplace, workbook, dimensionVersion]);
+
+  // A changed match set invalidates the current position.
+  useEffect(() => {
+    setActiveMatchIndex(-1);
+  }, [findReplaceMatches]);
+
+  const handleFindReplaceChange = useCallback((patch: Partial<FindReplaceState>) => {
+    setFindReplace((fr) => ({ ...fr, ...patch }));
+  }, []);
+
+  const handleCloseFindReplace = useCallback(() => {
+    setFindReplace((fr) => ({ ...fr, isOpen: false }));
+  }, []);
+
+  const handleFindNext = useCallback(() => {
+    if (findReplaceMatches.length === 0) return;
+    const next = (activeMatchIndex + 1) % findReplaceMatches.length;
+    setActiveMatchIndex(next);
+    const m = findReplaceMatches[next];
+    navigateRef.current?.({ row: m.row, col: m.col });
+  }, [findReplaceMatches, activeMatchIndex]);
+
+  const handleFindPrev = useCallback(() => {
+    const n = findReplaceMatches.length;
+    if (n === 0) return;
+    const prev = (activeMatchIndex - 1 + n) % n;
+    setActiveMatchIndex(prev);
+    const m = findReplaceMatches[prev];
+    navigateRef.current?.({ row: m.row, col: m.col });
+  }, [findReplaceMatches, activeMatchIndex]);
+
+  const handleReplace = useCallback(() => {
+    if (!findReplace.query || findReplaceMatches.length === 0) return;
+    const idx = activeMatchIndex >= 0 ? activeMatchIndex : 0;
+    const m = findReplaceMatches[idx];
+    if (!m) return;
+    const result = computeReplacement(
+      workbook.getSheet().getCell(m.row, m.col),
+      findReplace.query,
+      findReplace.replacement,
+      {
+        matchCase: findReplace.matchCase,
+        wholeCell: findReplace.wholeCell,
+        searchFormulas: findReplace.searchFormulas,
+      }
+    );
+    if (result.kind === 'none') return;
+    workbook.batch(() => {
+      if (result.kind === 'value') {
+        workbook.setCellValue(undefined, m.row, m.col, result.value);
+      } else if (result.kind === 'formula') {
+        workbook.setFormula(undefined, m.row, m.col, result.formula);
+      }
+    });
+    setDimensionVersion((v) => v + 1);
+  }, [findReplace, findReplaceMatches, activeMatchIndex, workbook]);
+
+  const handleReplaceAll = useCallback(() => {
+    if (!findReplace.query) return;
+    const opts = {
+      matchCase: findReplace.matchCase,
+      wholeCell: findReplace.wholeCell,
+      searchFormulas: findReplace.searchFormulas,
+    };
+    const sheet = workbook.getSheet();
+    const matches = findMatches(sheet, findReplace.query, opts);
+    if (matches.length === 0) return;
+    workbook.batch(() => {
+      for (const m of matches) {
+        const result = computeReplacement(
+          sheet.getCell(m.row, m.col),
+          findReplace.query,
+          findReplace.replacement,
+          opts
+        );
+        if (result.kind === 'value') {
+          workbook.setCellValue(undefined, m.row, m.col, result.value);
+        } else if (result.kind === 'formula') {
+          workbook.setFormula(undefined, m.row, m.col, result.formula);
+        }
+      }
+    });
+    setDimensionVersion((v) => v + 1);
+  }, [findReplace, workbook]);
 
   // Cancel edit
   const cancelEdit = useCallback(() => {
@@ -655,6 +804,12 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
             }));
             break;
             
+          case 'f':
+            // Ctrl+F to open find & replace
+            e.preventDefault();
+            setFindReplace((fr) => ({ ...fr, isOpen: true }));
+            break;
+
           case 'a':
             // Ctrl+A to select all - only if focus is in container (not body)
             if (isInContainer) {
@@ -834,14 +989,34 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
         onAlignRight={() => applyStyleToSelection((s) => ({ ...s, textAlign: 'right' as const }))}
         onVerticalAlign={(align) => applyStyleToSelection((s) => ({ ...s, verticalAlign: align }))}
         onTextWrap={() => applyStyleToSelection((s) => ({ ...s, textWrap: !s?.textWrap }))}
-        onTextRotation={() => {
-          // Text rotation not yet implemented
-        }}
+        onTextRotation={(angle) =>
+          applyStyleToSelection((s) => ({ ...s, textRotation: angle }))
+        }
         onFormatCurrency={() => applyFormatToSelection({ type: 'currency' })}
         onFormatPercentage={() => applyFormatToSelection({ type: 'percentage' })}
         onFormatNumber={() => applyFormatToSelection({ type: 'number' })}
         onMergeCells={() => {
-          // Merge cells not yet implemented
+          const sel = workbook.getSelection();
+          if (sel.ranges.length === 0) return;
+          const raw = sel.ranges[0];
+          const range = {
+            startRow: Math.min(raw.startRow, raw.endRow),
+            endRow: Math.max(raw.startRow, raw.endRow),
+            startCol: Math.min(raw.startCol, raw.endCol),
+            endCol: Math.max(raw.startCol, raw.endCol),
+          };
+          const sheet = workbook.getSheet();
+          // Toggle: unmerge if the selection touches a merge, else merge.
+          const overlapsMerge = sheet.getMergedRegions().some((m) =>
+            m.startRow <= range.endRow && m.endRow >= range.startRow &&
+            m.startCol <= range.endCol && m.endCol >= range.startCol
+          );
+          if (overlapsMerge) {
+            workbook.unmergeCells(range);
+          } else {
+            workbook.mergeCells(range);
+          }
+          setDimensionVersion(v => v + 1);
         }}
         onHyperlink={(url) => {
           const selection = workbook.getSelection();
@@ -880,6 +1055,7 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
                   align: style?.textAlign,
                   verticalAlign: style?.verticalAlign,
                   textWrap: style?.textWrap,
+                  textRotation: style?.textRotation,
                   format: format?.type,
                   hyperlink: cell?.hyperlink,
                 };
@@ -919,6 +1095,7 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
           originalEditingSheetId={originalEditingSheetId ?? undefined}
           onContextMenu={handleContextMenu}
           onClipboardReady={handleClipboardReady}
+          onNavigateReady={handleNavigateReady}
         />
         
         {/* Edit Overlay - only show when on the original sheet */}
@@ -1404,6 +1581,25 @@ export const WorkbookCanvas = memo(function WorkbookCanvas({
             applyFormatToSelection(format);
             setFormatModal(null);
           }}
+        />
+      )}
+
+      {/* Find & Replace */}
+      {findReplace.isOpen && (
+        <FindReplaceModal
+          query={findReplace.query}
+          replacement={findReplace.replacement}
+          matchCase={findReplace.matchCase}
+          wholeCell={findReplace.wholeCell}
+          searchFormulas={findReplace.searchFormulas}
+          matchCount={findReplaceMatches.length}
+          activeMatchIndex={activeMatchIndex}
+          onChange={handleFindReplaceChange}
+          onFindNext={handleFindNext}
+          onFindPrev={handleFindPrev}
+          onReplace={handleReplace}
+          onReplaceAll={handleReplaceAll}
+          onClose={handleCloseFindReplace}
         />
       )}
     </div>
