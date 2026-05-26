@@ -29,6 +29,7 @@ import type {
   CellFormat,
   CellStyle,
   ColumnFilter,
+  MergedRegion,
   Selection,
   SheetData,
   SortOrder,
@@ -221,6 +222,9 @@ function hydrateSheetYMap(sheetMap: Y.Map<unknown>, data: SheetData): void {
   if (data.config.sortOrder) {
     t.meta.set('sortOrder', data.config.sortOrder);
   }
+  if (data.config.mergedRegions && data.config.mergedRegions.length > 0) {
+    t.meta.set('mergedRegions', data.config.mergedRegions);
+  }
 
   // rowOrder / colOrder: wire format is sparse Array<[idx, id]>; store as
   // Y.Map<rowId, idx>.
@@ -396,6 +400,7 @@ function serializeSheetYMap(sheetMap: Y.Map<unknown>): SheetData {
       defaultColWidth: t.meta.get('defaultColWidth') as number | undefined,
       sortOrder: t.meta.get('sortOrder') as SortOrder[] | undefined,
       filters: filters.length ? filters : undefined,
+      mergedRegions: t.meta.get('mergedRegions') as MergedRegion[] | undefined,
     },
     rowCount: (t.meta.get('rowCount') as number) ?? 1000,
     colCount: (t.meta.get('colCount') as number) ?? 100,

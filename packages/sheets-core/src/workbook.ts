@@ -1747,6 +1747,10 @@ export class WorkbookImpl implements Workbook {
       setOrDelete(t.meta, 'frozenCols', sheet.config.frozenCols);
       setOrDelete(t.meta, 'showGridLines', sheet.config.showGridLines);
       setOrDelete(t.meta, 'sortOrder', sheet.config.sortOrder);
+      // Mirror merged regions as a whole array — concurrent merges by
+      // different peers fall back to last-writer-wins (matches sortOrder).
+      const regions = sheet.config.mergedRegions;
+      setOrDelete(t.meta, 'mergedRegions', regions && regions.length > 0 ? regions : undefined);
     });
   }
 
