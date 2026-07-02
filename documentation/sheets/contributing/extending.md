@@ -1,6 +1,6 @@
 # Extending Pagent-Libs
 
-This guide explains how to extend pagent-libs with new features, formula functions, export formats, collaboration providers, and custom rendering.
+This guide explains how to extend Spindle with new features, formula functions, export formats, collaboration providers, and custom rendering.
 
 ## Adding New Features
 
@@ -559,4 +559,4 @@ For breaking changes:
 3. Consider deprecation warnings
 4. Update examples and demos
 
-This guide provides the foundation for extending pagent-libs while maintaining code quality and architectural consistency.
+This guide provides the foundation for extending Spindle while maintaining code quality and architectural consistency.

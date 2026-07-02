@@ -1,6 +1,6 @@
 # Pagent Sheets Demo
 
-Standalone demo website for testing pagent-sheets library functionality.
+Standalone demo website for testing Spindle Sheets library functionality.
 
 ## Features
 
@@ -45,7 +45,7 @@ The demo will run on `http://localhost:5175`
 
 ## Notes
 
-This is a standalone demo that doesn't require the pagent backend. It's perfect for:
+This is a standalone demo that doesn't require the Weaversuite backend. It's perfect for:
 - Testing library functionality
 - Demonstrating features
 - Performance testing

@@ -1,7 +1,7 @@
 {
   "name": "@weavertime/docs-react",
   "version": "0.2.0",
-  "description": "React components for pagent-docs",
+  "description": "React components for Spindle Docs",
   "repository": {
     "type": "git",
     "url": "https://github.com/weavertime/spindle.git",

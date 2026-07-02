@@ -1,6 +1,6 @@
 # @weavertime/sheets-react
 
-React components for pagent-sheets with Canvas-based rendering.
+React components for Spindle Sheets with Canvas-based rendering.
 
 ## Features
 

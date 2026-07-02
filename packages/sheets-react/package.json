@@ -1,7 +1,7 @@
 {
   "name": "@weavertime/sheets-react",
   "version": "0.2.0",
-  "description": "React components for pagent-sheets",
+  "description": "React components for Spindle Sheets",
   "repository": {
     "type": "git",
     "url": "https://github.com/weavertime/spindle.git",

@@ -118,7 +118,7 @@ function App() {
 ## Architecture Overview
 
 ```
-pagent-libs/
+spindle/
 ├── packages/
 │   ├── docs-core/          # Document engine
 │   │   ├── document.ts     # Document model

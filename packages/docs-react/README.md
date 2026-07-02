@@ -1,6 +1,6 @@
 # @weavertime/docs-react
 
-React components for pagent-docs with paginated document rendering.
+React components for Spindle Docs with paginated document rendering.
 
 ## Features
 

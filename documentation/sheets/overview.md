@@ -8,7 +8,7 @@ The library is structured as a monorepo with two main packages:
 
 ```mermaid
 graph TD
-    A[pagent-libs] --> B[@weavertime/sheets-core]
+    A[Spindle] --> B[@weavertime/sheets-core]
     A --> C[@weavertime/sheets-react]
     B --> D[Zero React dependencies]
     C --> E[React components]
@@ -67,7 +67,7 @@ TypeScript strict mode is enforced throughout:
 ## Package Structure
 
 ```
-pagent-libs/
+spindle/
 ├── packages/
 │   ├── core/                    # Framework-agnostic core
 │   │   ├── src/

@@ -1,4 +1,4 @@
-# pagent-libs
+# Spindle
 
 High-performance spreadsheet, docs and slides libraries for React, optimized for performance and bundle size.
 
@@ -11,9 +11,9 @@ Existing solutions were either:
 - **Incomplete** supporting only one document type
 - **Proprietary or restrictive** with mixed licensing models
 
-This inspired me to create **pagent-libs**—a forever-free, open-source library that delivers the full editing experience you'd expect from commercial suites like Google Workspace or Microsoft Office, but built for developers who value performance, flexibility, and complete control over their tools.
+This inspired me to create **Spindle**—a forever-free, open-source library that delivers the full editing experience you'd expect from commercial suites like Google Workspace or Microsoft Office, but built for developers who value performance, flexibility, and complete control over their tools.
 
-pagentapp.com will be a fully encrypted drive application powered by the pagent-libs editing experience.
+Weaversuite will be a fully encrypted drive application powered by the Spindle editing experience.
 
 ## Quick Start
 

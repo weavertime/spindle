@@ -134,7 +134,7 @@ const sampleDocumentData: DocumentData = {
           type: 'paragraph',
           content: [
             { type: 'text', text: 'This is a demonstration of the ' },
-            { type: 'text', text: 'pagent-docs', styleId: 'style_code' },
+            { type: 'text', text: 'Spindle Docs', styleId: 'style_code' },
             { type: 'text', text: ' document editor library. It provides a ' },
             { type: 'text', text: 'rich text editing', styleId: 'style_bold' },
             { type: 'text', text: ' experience similar to Google Docs.' },
@@ -647,7 +647,7 @@ function App() {
       <header className="app-header">
         <div className="header-left">
           <h1>Pagent Docs Demo</h1>
-          <p>Standalone demo of pagent-docs library - No backend required</p>
+          <p>Standalone demo of Spindle Docs library - No backend required</p>
         </div>
         <div className="header-right">
           <button className="header-button" onClick={handleNew}>

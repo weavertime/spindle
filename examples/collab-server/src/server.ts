@@ -1,4 +1,4 @@
-// Minimal WebSocket relay server for pagent-libs collaboration.
+// Minimal WebSocket relay server for Spindle collaboration.
 //
 // Wire protocol (matches @weavertime/transport-websocket):
 //   Connect:  ws://host:PORT/<roomId>

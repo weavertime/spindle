@@ -1,4 +1,4 @@
-// Core types for pagent-docs
+// Core types for Spindle Docs
 
 // ============================================================================
 // Page Configuration

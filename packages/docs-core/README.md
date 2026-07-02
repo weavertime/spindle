@@ -1,6 +1,6 @@
 # @weavertime/docs-core
 
-Core document editor engine for pagent-docs. Zero React dependencies.
+Core document editor engine for Spindle Docs. Zero React dependencies.
 
 ## Features
 

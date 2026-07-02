@@ -1,6 +1,6 @@
 # @weavertime/shared
 
-Shared utilities for pagent-libs packages. This package contains framework-agnostic utilities that can be used by both sheets-core and docs-core.
+Shared utilities for Spindle packages. This package contains framework-agnostic utilities that can be used by both sheets-core and docs-core.
 
 ## Exports
 

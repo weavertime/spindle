@@ -1,5 +1,5 @@
 // @weavertime/docs-react
-// React components for pagent-docs
+// React components for Spindle Docs
 
 // Context
 export { DocumentProvider, useDocument, useSelection, useSections, useHistory } from './context/DocumentContext';

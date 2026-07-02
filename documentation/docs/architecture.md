@@ -7,7 +7,7 @@ Pagent-Docs is a high-performance document editor library for React, providing a
 The library is structured as two packages with clear separation of concerns:
 
 ```
-pagent-libs/
+spindle/
 ├── packages/
 │   ├── docs-core/      # Framework-agnostic document engine
 │   └── docs-react/     # React components and layout engine
@@ -15,7 +15,7 @@ pagent-libs/
 
 ```mermaid
 graph TD
-    A[pagent-libs] --> B[@weavertime/docs-core]
+    A[Spindle] --> B[@weavertime/docs-core]
     A --> C[@weavertime/docs-react]
     B --> D[Document Model]
     B --> E[ProseMirror Integration]

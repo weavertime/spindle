@@ -1,6 +1,6 @@
 # @weavertime/sheets-core
 
-Core spreadsheet engine for pagent-sheets. Zero React dependencies.
+Core spreadsheet engine for Spindle Sheets. Zero React dependencies.
 
 ## Features
 

@@ -1,7 +1,7 @@
 {
   "name": "@weavertime/transport-websocket",
   "version": "0.2.0",
-  "description": "WebSocket-backed CollabProvider for pagent-libs collaboration",
+  "description": "WebSocket-backed CollabProvider for Spindle collaboration",
   "repository": {
     "type": "git",
     "url": "https://github.com/weavertime/spindle.git",

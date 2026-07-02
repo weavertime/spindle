@@ -1,4 +1,4 @@
-// Canvas rendering module for pagent-sheets
+// Canvas rendering module for Spindle Sheets
 
 // Types
 export * from './types';

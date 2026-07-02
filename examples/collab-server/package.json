@@ -1,7 +1,7 @@
 {
   "name": "spindle-collab-server",
   "version": "0.1.0",
-  "description": "Minimal WebSocket relay server for pagent-libs collaboration",
+  "description": "Minimal WebSocket relay server for Spindle collaboration",
   "private": true,
   "type": "module",
   "scripts": {

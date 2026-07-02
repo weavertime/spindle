@@ -1,7 +1,7 @@
 {
   "name": "@weavertime/shared",
   "version": "0.2.0",
-  "description": "Shared utilities for pagent-libs (EventEmitter, collaboration)",
+  "description": "Shared utilities for Spindle (EventEmitter, collaboration)",
   "repository": {
     "type": "git",
     "url": "https://github.com/weavertime/spindle.git",

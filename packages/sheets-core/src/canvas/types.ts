@@ -1,4 +1,4 @@
-// Canvas rendering types for pagent-sheets
+// Canvas rendering types for Spindle Sheets
 
 import type { Cell, CellStyle, CellFormat, Selection, ColumnFilter, Range } from '../types';
 

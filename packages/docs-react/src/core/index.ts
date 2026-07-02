@@ -1,5 +1,5 @@
 /**
- * Core components for the pagent-docs layout engine
+ * Core components for the Spindle Docs layout engine
  * 
  * This module exports two architectures:
  * 

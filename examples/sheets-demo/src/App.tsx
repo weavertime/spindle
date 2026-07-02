@@ -346,7 +346,7 @@ function App() {
     <div className="app">
       <header className="app-header">
         <h1>Pagent Sheets Demo</h1>
-        <p>Standalone demo of pagent-sheets library - No backend required</p>
+        <p>Standalone demo of Spindle Sheets library - No backend required</p>
         <button onClick={handleSave} style={{ marginTop: '10px', padding: '8px 16px' }}>
           Save Workbook Data
         </button>

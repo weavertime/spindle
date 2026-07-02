@@ -1,4 +1,4 @@
-// Core types for pagent-sheets
+// Core types for Spindle Sheets
 
 import type { CommentStore, SheetCommentThread } from './comments';
 

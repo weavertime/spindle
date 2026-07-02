@@ -1,7 +1,7 @@
 {
   "name": "@weavertime/sheets-core",
   "version": "0.2.0",
-  "description": "Core spreadsheet engine for pagent-sheets",
+  "description": "Core spreadsheet engine for Spindle Sheets",
   "repository": {
     "type": "git",
     "url": "https://github.com/weavertime/spindle.git",

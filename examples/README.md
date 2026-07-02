@@ -1,10 +1,10 @@
 # Examples
 
-This directory contains example implementations using pagent-sheets.
+This directory contains example implementations using Spindle Sheets.
 
 ## Demo
 
-A standalone demo website that showcases pagent-sheets functionality without requiring any backend or authentication.
+A standalone demo website that showcases Spindle Sheets functionality without requiring any backend or authentication.
 
 **Location**: `demo/`
 

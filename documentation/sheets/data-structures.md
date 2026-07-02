@@ -1,6 +1,6 @@
 # Data Structures Reference
 
-This document provides comprehensive reference for all data structures and type definitions used throughout the pagent-libs library.
+This document provides comprehensive reference for all data structures and type definitions used throughout the Spindle library.
 
 ## Core Types
 
@@ -608,4 +608,4 @@ type ContextMenuType =
   | { type: 'column'; index: number; x: number; y: number };
 ```
 
-These data structures provide the foundation for the entire pagent-libs architecture, enabling efficient storage, rendering, and manipulation of spreadsheet data.
+These data structures provide the foundation for the entire Spindle architecture, enabling efficient storage, rendering, and manipulation of spreadsheet data.

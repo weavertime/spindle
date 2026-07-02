@@ -1,7 +1,7 @@
 {
   "name": "@weavertime/docs-core",
   "version": "0.2.0",
-  "description": "Core document editor engine for pagent-docs",
+  "description": "Core document editor engine for Spindle Docs",
   "repository": {
     "type": "git",
     "url": "https://github.com/weavertime/spindle.git",

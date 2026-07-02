@@ -1,6 +1,6 @@
 # Real-Time Collaboration
 
-pagent-libs documents and spreadsheets can sync live between users. The
+Spindle documents and spreadsheets can sync live between users. The
 collaboration layer is built on [Yjs](https://yjs.dev) (a CRDT), but the
 library never exposes Yjs to you directly — you work with a small
 transport interface and an `attachCollab` call.
