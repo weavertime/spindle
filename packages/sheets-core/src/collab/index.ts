@@ -1,4 +1,4 @@
-// @pagent-libs/sheets-core/collab — Yjs-backed collaboration binding.
+// @weavertime/sheets-core/collab — Yjs-backed collaboration binding.
 
 export {
   getWorkbookYTypes,

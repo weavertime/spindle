@@ -1,14 +1,14 @@
 {
-  "name": "@pagent-libs/docs-react",
+  "name": "@weavertime/docs-react",
   "version": "0.2.0",
   "description": "React components for pagent-docs",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pagentapp/pagent-libs.git",
+    "url": "https://github.com/weavertime/spindle.git",
     "directory": "packages/docs-react"
   },
   "bugs": {
-    "url": "https://github.com/pagentapp/pagent-libs/issues"
+    "url": "https://github.com/weavertime/spindle/issues"
   },
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
@@ -49,7 +49,7 @@
     "react-dom": ">=18.0.0"
   },
   "dependencies": {
-    "@pagent-libs/docs-core": "^0.2.0",
+    "@weavertime/docs-core": "^0.2.0",
     "immer": "^10.0.0",
     "lucide-react": "^0.563.0",
     "prosemirror-commands": "^1.5.0",

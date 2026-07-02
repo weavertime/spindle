@@ -7,11 +7,11 @@ import {
   type ResizeHandle,
   type CursorType,
   type FormulaRangeHighlight,
-} from '@pagent-libs/sheets-core';
-import type { Selection, Range, Cell, CellValue } from '@pagent-libs/sheets-core';
-import { extractFormulaRanges, columnIndexToLabel, adjustFormula, type FormulaRange } from '@pagent-libs/sheets-core';
-import { detectSeries, extrapolate } from '@pagent-libs/sheets-core';
-import { FilterManager } from '@pagent-libs/sheets-core';
+} from '@weavertime/sheets-core';
+import type { Selection, Range, Cell, CellValue } from '@weavertime/sheets-core';
+import { extractFormulaRanges, columnIndexToLabel, adjustFormula, type FormulaRange } from '@weavertime/sheets-core';
+import { detectSeries, extrapolate } from '@weavertime/sheets-core';
+import { FilterManager } from '@weavertime/sheets-core';
 import { RemoteSelectionOverlay } from './RemoteSelectionOverlay';
 
 export type ContextMenuType =

@@ -22,7 +22,7 @@ pagentapp.com will be a fully encrypted drive application powered by the pagent-
 Add the packages to your React project:
 
 ```bash
-npm install @pagent-libs/core @pagent-libs/sheets
+npm install @weavertime/sheets-core @weavertime/sheets-react
 ```
 
 ### Basic Usage - Spreadsheets
@@ -31,8 +31,8 @@ Here's how to add a spreadsheet to your React application:
 
 ```tsx
 import React, { useState } from 'react';
-import { WorkbookProvider, WorkbookCanvas } from '@pagent-libs/sheets';
-import { WorkbookImpl } from '@pagent-libs/core';
+import { WorkbookProvider, WorkbookCanvas } from '@weavertime/sheets-react';
+import { WorkbookImpl } from '@weavertime/sheets-core';
 
 function MySpreadsheet() {
   // 1. Create a workbook instance
@@ -110,13 +110,13 @@ export default MySpreadsheet;
 Here's how to add a document editor to your React application:
 
 ```bash
-npm install @pagent-libs/docs-core @pagent-libs/docs-react
+npm install @weavertime/docs-core @weavertime/docs-react
 ```
 
 ```tsx
 import React, { useState } from 'react';
-import { DocumentImpl, type DocumentData } from '@pagent-libs/docs-core';
-import { DocumentProvider, DocumentEditor } from '@pagent-libs/docs-react';
+import { DocumentImpl, type DocumentData } from '@weavertime/docs-core';
+import { DocumentProvider, DocumentEditor } from '@weavertime/docs-react';
 
 // Document data in JSON format (can be loaded from backend/database)
 const initialDocumentData: DocumentData = {
@@ -237,8 +237,8 @@ a Yjs CRDT internally; you supply a transport (`CollabProvider`) and call
 `attachCollab`:
 
 ```ts
-import { WorkbookImpl } from '@pagent-libs/sheets-core';
-import { WebSocketProvider } from '@pagent-libs/transport-websocket';
+import { WorkbookImpl } from '@weavertime/sheets-core';
+import { WebSocketProvider } from '@weavertime/transport-websocket';
 
 const workbook = new WorkbookImpl('wb_1', 'Quarterly Plan');
 workbook.setData(savedJson);

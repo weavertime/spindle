@@ -1,14 +1,14 @@
 {
-  "name": "@pagent-libs/transport-websocket",
+  "name": "@weavertime/transport-websocket",
   "version": "0.2.0",
   "description": "WebSocket-backed CollabProvider for pagent-libs collaboration",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pagentapp/pagent-libs.git",
+    "url": "https://github.com/weavertime/spindle.git",
     "directory": "packages/transport-websocket"
   },
   "bugs": {
-    "url": "https://github.com/pagentapp/pagent-libs/issues"
+    "url": "https://github.com/weavertime/spindle/issues"
   },
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
@@ -42,7 +42,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@pagent-libs/shared": "^0.2.0"
+    "@weavertime/shared": "^0.2.0"
   },
   "devDependencies": {
     "@rollup/plugin-typescript": "^11.1.0",

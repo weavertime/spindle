@@ -1,6 +1,6 @@
 import React, { memo, useMemo } from 'react';
-import { PAGE_SIZES } from '@pagent-libs/docs-core';
-import type { Section, PageConfig } from '@pagent-libs/docs-core';
+import { PAGE_SIZES } from '@weavertime/docs-core';
+import type { Section, PageConfig } from '@weavertime/docs-core';
 import { useDocument } from '../context/DocumentContext';
 
 interface PageViewProps {

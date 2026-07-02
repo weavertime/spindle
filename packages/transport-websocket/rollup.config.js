@@ -15,7 +15,7 @@ export default defineConfig({
       sourcemap: true,
     },
   ],
-  external: ['@pagent-libs/shared'],
+  external: ['@weavertime/shared'],
   plugins: [
     typescript({
       tsconfig: './tsconfig.json',

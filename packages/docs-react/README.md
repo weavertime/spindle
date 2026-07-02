@@ -1,4 +1,4 @@
-# @pagent-libs/docs-react
+# @weavertime/docs-react
 
 React components for pagent-docs with paginated document rendering.
 
@@ -30,8 +30,8 @@ Lower-level component for custom implementations. Handles:
 ## Usage
 
 ```typescript
-import { DocumentProvider, DocumentEditor } from '@pagent-libs/docs-react';
-import { DocumentImpl } from '@pagent-libs/docs-core';
+import { DocumentProvider, DocumentEditor } from '@weavertime/docs-react';
+import { DocumentImpl } from '@weavertime/docs-core';
 
 const doc = new DocumentImpl('doc_1', 'My Document');
 
@@ -71,7 +71,7 @@ DocumentEditor (React)
 ## Hooks
 
 ```typescript
-import { useDocument, useSections, useHistory } from '@pagent-libs/docs-react';
+import { useDocument, useSections, useHistory } from '@weavertime/docs-react';
 
 // Access document model
 const { document, zoom, setZoom } = useDocument();

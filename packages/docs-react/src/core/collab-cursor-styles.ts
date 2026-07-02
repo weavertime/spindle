@@ -6,7 +6,7 @@
 // ensureCollabCursorStyles is idempotent — call it from any editor mount
 // path that may run with collab attached.
 
-const STYLE_ID = 'pagent-collab-cursor-styles';
+const STYLE_ID = 'spindle-collab-cursor-styles';
 
 const CSS = `
 /* y-prosemirror's default decoration cursor (used by ProseMirrorEditor). */
@@ -36,7 +36,7 @@ const CSS = `
 }
 
 /* TrueLayoutEditor's painted-page overlay equivalents (RemoteCursorOverlay). */
-.pagent-remote-caret {
+.spindle-remote-caret {
   position: absolute;
   pointer-events: none;
   border-left: 2px solid currentColor;
@@ -48,7 +48,7 @@ const CSS = `
 /* Background color is set inline from the peer's user.color — using
    the CSS currentColor keyword here would evaluate against the label's
    own color: white and make the label invisible. */
-.pagent-remote-caret-label {
+.spindle-remote-caret-label {
   position: absolute;
   top: -1.35em;
   left: -2px;
@@ -63,7 +63,7 @@ const CSS = `
   line-height: 1.3;
   pointer-events: none;
 }
-.pagent-remote-selection-rect {
+.spindle-remote-selection-rect {
   position: absolute;
   pointer-events: none;
   z-index: 9;

@@ -1,4 +1,4 @@
-# @pagent-libs/shared
+# @weavertime/shared
 
 Shared utilities for pagent-libs packages. This package contains framework-agnostic utilities that can be used by both sheets-core and docs-core.
 
@@ -10,7 +10,7 @@ Shared utilities for pagent-libs packages. This package contains framework-agnos
 ## Usage
 
 ```typescript
-import { EventEmitter } from '@pagent-libs/shared';
+import { EventEmitter } from '@weavertime/shared';
 
 // Create an event emitter with specific event types
 type MyEventTypes = 'change' | 'update' | 'delete';

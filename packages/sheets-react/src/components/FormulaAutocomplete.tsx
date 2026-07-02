@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef } from 'react';
-import type { FunctionDoc } from '@pagent-libs/sheets-core';
+import type { FunctionDoc } from '@weavertime/sheets-core';
 
 interface FormulaAutocompleteProps {
   suggestions: FunctionDoc[];

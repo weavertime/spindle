@@ -1,6 +1,6 @@
 # Docs Data Structures
 
-Complete type definitions for the `@pagent-libs/docs-core` package.
+Complete type definitions for the `@weavertime/docs-core` package.
 
 ## Document Structure
 
@@ -515,7 +515,7 @@ interface ParagraphStylePool {
 ### Usage
 
 ```typescript
-import { TextStylePoolImpl } from '@pagent-libs/docs-core';
+import { TextStylePoolImpl } from '@weavertime/docs-core';
 
 const pool = new TextStylePoolImpl();
 
@@ -604,7 +604,7 @@ if (doc.canRedo()) {
 
 ## Layout Types (React Package)
 
-Types from `@pagent-libs/docs-react` for the layout engine:
+Types from `@weavertime/docs-react` for the layout engine:
 
 ### FlowBlock
 
@@ -698,7 +698,7 @@ import {
   createHeading,
   createListItem,
   createTable,
-} from '@pagent-libs/docs-core';
+} from '@weavertime/docs-core';
 
 // Create paragraph
 const para = createParagraphFromText('Hello, world!');
@@ -716,7 +716,7 @@ const table = createTable(3, 3); // 3 rows, 3 columns
 ### Creating Documents
 
 ```typescript
-import { DocumentImpl, createDocument, createSection } from '@pagent-libs/docs-core';
+import { DocumentImpl, createDocument, createSection } from '@weavertime/docs-core';
 
 // Using class
 const doc = new DocumentImpl('doc_1', 'My Document');

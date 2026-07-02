@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { WorkbookProvider, WorkbookCanvas } from '@pagent-libs/sheets-react';
-import { WorkbookImpl } from '@pagent-libs/sheets-core';
-import type { CommentAuthor, SheetCommentEvent } from '@pagent-libs/sheets-core';
-import { InMemoryProvider, type CollabIdentity, type CollabStatus } from '@pagent-libs/shared';
-import { WebSocketProvider } from '@pagent-libs/transport-websocket';
+import { WorkbookProvider, WorkbookCanvas } from '@weavertime/sheets-react';
+import { WorkbookImpl } from '@weavertime/sheets-core';
+import type { CommentAuthor, SheetCommentEvent } from '@weavertime/sheets-core';
+import { InMemoryProvider, type CollabIdentity, type CollabStatus } from '@weavertime/shared';
+import { WebSocketProvider } from '@weavertime/transport-websocket';
 import './App.css';
 
 // Sample directory of users that can be @-mentioned in comments.

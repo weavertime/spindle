@@ -11,12 +11,12 @@
 // event for the UI, and emit a `commentEvent` the host app can hook for
 // notifications.
 
-import type { Comment, CommentThread } from '@pagent-libs/shared';
+import type { Comment, CommentThread } from '@weavertime/shared';
 import { generateId } from './utils/id';
 
 // Re-export the shared comment vocabulary so consumers of sheets-core get the
-// full set of types without depending on @pagent-libs/shared directly.
-export type { Comment, CommentThread, CommentStatus } from '@pagent-libs/shared';
+// full set of types without depending on @weavertime/shared directly.
+export type { Comment, CommentThread, CommentStatus } from '@weavertime/shared';
 
 /** Stable-ID pointer to the cell a thread is anchored to. */
 export interface CellCommentAnchor {

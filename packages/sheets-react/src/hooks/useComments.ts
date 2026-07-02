@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { columnIndexToLabel } from '@pagent-libs/sheets-core';
-import type { SheetCommentThread } from '@pagent-libs/sheets-core';
+import { columnIndexToLabel } from '@weavertime/sheets-core';
+import type { SheetCommentThread } from '@weavertime/sheets-core';
 import { useWorkbook } from '../context/WorkbookContext';
 
 export interface UseCommentsResult {

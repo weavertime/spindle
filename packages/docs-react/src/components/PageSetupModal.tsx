@@ -1,6 +1,6 @@
 import { memo, useState, useEffect } from 'react';
-import type { PageConfig, PageSizeKey } from '@pagent-libs/docs-core';
-import { PAGE_SIZES } from '@pagent-libs/docs-core';
+import type { PageConfig, PageSizeKey } from '@weavertime/docs-core';
+import { PAGE_SIZES } from '@weavertime/docs-core';
 
 interface PageSetupModalProps {
   isOpen: boolean;

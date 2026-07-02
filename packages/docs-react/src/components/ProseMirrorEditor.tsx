@@ -10,8 +10,8 @@ import {
   activeMarksPluginKey,
   type DocsCommands,
   type ActiveState,
-} from '@pagent-libs/docs-core';
-import type { CollabHandle } from '@pagent-libs/docs-core/collab';
+} from '@weavertime/docs-core';
+import type { CollabHandle } from '@weavertime/docs-core/collab';
 
 // ProseMirror CSS (basic styles)
 const proseMirrorStyles = `

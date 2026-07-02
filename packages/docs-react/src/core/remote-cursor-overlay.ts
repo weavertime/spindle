@@ -182,9 +182,9 @@ export class RemoteCursorOverlay {
     let peer = this.peers.get(clientId);
     if (!peer) {
       const caretEl = document.createElement('div');
-      caretEl.className = 'pagent-remote-caret';
+      caretEl.className = 'spindle-remote-caret';
       const labelEl = document.createElement('div');
-      labelEl.className = 'pagent-remote-caret-label';
+      labelEl.className = 'spindle-remote-caret-label';
       caretEl.appendChild(labelEl);
       this.container.appendChild(caretEl);
       peer = { caretEl, labelEl, selectionEls: [] };
@@ -209,7 +209,7 @@ export class RemoteCursorOverlay {
       const rects = this.localOverlay.getRectsForRange(from, to);
       for (const rect of rects) {
         const el = document.createElement('div');
-        el.className = 'pagent-remote-selection-rect';
+        el.className = 'spindle-remote-selection-rect';
         this.positionRect(el, rect, color, layout);
         this.container.appendChild(el);
         peer.selectionEls.push(el);

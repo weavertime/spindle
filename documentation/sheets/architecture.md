@@ -40,7 +40,7 @@ graph TD
 State management uses React Context with event-driven updates:
 
 ```typescript
-// packages/sheets/src/context/WorkbookContext.tsx
+// packages/sheets-react/src/context/WorkbookContext.tsx
 interface WorkbookContextValue {
   workbook: WorkbookImpl;
   updateWorkbook: (updater: (wb: WorkbookImpl) => void) => void;
@@ -86,7 +86,7 @@ export function WorkbookProvider({ workbook: initialWorkbook, children }) {
 WorkbookCanvas is the root component that orchestrates all UI elements:
 
 ```typescript
-// packages/sheets/src/components/WorkbookCanvas.tsx
+// packages/sheets-react/src/components/WorkbookCanvas.tsx
 export const WorkbookCanvas = memo(function WorkbookCanvas({
   className,
   style,
@@ -220,7 +220,7 @@ const handleCellCancel = useCallback(() => {
 CanvasGrid bridges React with the canvas rendering system:
 
 ```typescript
-// packages/sheets/src/components/CanvasGrid.tsx
+// packages/sheets-react/src/components/CanvasGrid.tsx
 export const CanvasGrid = memo(function CanvasGrid({
   width,
   height,
@@ -334,7 +334,7 @@ const handleScroll = useCallback((newScrollTop: number, newScrollLeft: number) =
 EditOverlay provides DOM-based text input over the canvas:
 
 ```typescript
-// packages/sheets/src/components/EditOverlay.tsx
+// packages/sheets-react/src/components/EditOverlay.tsx
 export const EditOverlay = memo(forwardRef<EditOverlayRef, EditOverlayProps>(
   function EditOverlay({
     cell,

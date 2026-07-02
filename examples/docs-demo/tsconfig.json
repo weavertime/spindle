@@ -16,8 +16,8 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@pagent-libs/docs-core": ["../../packages/docs-core/src"],
-      "@pagent-libs/docs-react": ["../../packages/docs-react/src"]
+      "@weavertime/docs-core": ["../../packages/docs-core/src"],
+      "@weavertime/docs-react": ["../../packages/docs-react/src"]
     }
   },
   "include": ["src"],

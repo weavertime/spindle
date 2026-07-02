@@ -1,4 +1,4 @@
-# @pagent-sheets/react
+# @weavertime/sheets-react
 
 React components for pagent-sheets with Canvas-based rendering.
 
@@ -29,8 +29,8 @@ DOM-based input overlay for cell editing.
 ## Usage
 
 ```typescript
-import { Workbook, WorkbookProvider } from '@pagent-sheets/react';
-import { WorkbookImpl } from '@pagent-sheets/core';
+import { Workbook, WorkbookProvider } from '@weavertime/sheets-react';
+import { WorkbookImpl } from '@weavertime/sheets-core';
 
 const workbook = new WorkbookImpl('workbook_1', 'My Workbook');
 

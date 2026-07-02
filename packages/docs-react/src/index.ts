@@ -1,4 +1,4 @@
-// @pagent-libs/docs-react
+// @weavertime/docs-react
 // React components for pagent-docs
 
 // Context

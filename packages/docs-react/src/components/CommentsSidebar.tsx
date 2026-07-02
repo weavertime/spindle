@@ -1,6 +1,6 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { X, Check, RotateCcw, Trash2, MessageSquare } from 'lucide-react';
-import type { Comment, CommentAuthor, DocsCommentThread } from '@pagent-libs/docs-core';
+import type { Comment, CommentAuthor, DocsCommentThread } from '@weavertime/docs-core';
 import { useDocument } from '../context/DocumentContext';
 
 // ============================================================================

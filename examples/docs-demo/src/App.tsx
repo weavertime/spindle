@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
-import { DocumentProvider, DocumentEditor } from '@pagent-libs/docs-react';
+import { DocumentProvider, DocumentEditor } from '@weavertime/docs-react';
 import {
   DocumentImpl,
   type DocumentData,
   type HeaderFooterContent,
   type CommentAuthor,
   type DocsCommentEvent,
-} from '@pagent-libs/docs-core';
-import { InMemoryProvider, type CollabIdentity, type CollabStatus } from '@pagent-libs/shared';
-import { WebSocketProvider } from '@pagent-libs/transport-websocket';
+} from '@weavertime/docs-core';
+import { InMemoryProvider, type CollabIdentity, type CollabStatus } from '@weavertime/shared';
+import { WebSocketProvider } from '@weavertime/transport-websocket';
 import './App.css';
 
 // Sample directory of users that can be @-mentioned in comments.
@@ -281,9 +281,9 @@ const sampleDocumentData: DocumentData = {
           level: 0,
           content: [
             { type: 'text', text: 'Install ' },
-            { type: 'text', text: '@pagent-libs/docs-core', styleId: 'style_code' },
+            { type: 'text', text: '@weavertime/docs-core', styleId: 'style_code' },
             { type: 'text', text: ' and ' },
-            { type: 'text', text: '@pagent-libs/docs-react', styleId: 'style_code' },
+            { type: 'text', text: '@weavertime/docs-react', styleId: 'style_code' },
           ],
         },
         {

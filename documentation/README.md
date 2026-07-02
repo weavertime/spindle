@@ -6,12 +6,12 @@ Pagent-Libs is a suite of high-performance productivity components for React, pr
 
 | Package | Description |
 |---------|-------------|
-| `@pagent-libs/docs-core` | Framework-agnostic document engine |
-| `@pagent-libs/docs-react` | React document editor with true page layout |
-| `@pagent-libs/sheets-core` | Framework-agnostic spreadsheet engine |
-| `@pagent-libs/sheets-react` | React spreadsheet with canvas rendering |
-| `@pagent-libs/shared` | Shared utilities and types |
-| `@pagent-libs/transport-websocket` | WebSocket `CollabProvider` for real-time collaboration |
+| `@weavertime/docs-core` | Framework-agnostic document engine |
+| `@weavertime/docs-react` | React document editor with true page layout |
+| `@weavertime/sheets-core` | Framework-agnostic spreadsheet engine |
+| `@weavertime/sheets-react` | React spreadsheet with canvas rendering |
+| `@weavertime/shared` | Shared utilities and types |
+| `@weavertime/transport-websocket` | WebSocket `CollabProvider` for real-time collaboration |
 
 ---
 
@@ -44,8 +44,8 @@ A Google Docs-like document editor with true page-based layout and real-time pag
 ### Quick Start
 
 ```typescript
-import { DocumentImpl } from '@pagent-libs/docs-core';
-import { DocumentProvider, DocumentEditor } from '@pagent-libs/docs-react';
+import { DocumentImpl } from '@weavertime/docs-core';
+import { DocumentProvider, DocumentEditor } from '@weavertime/docs-react';
 
 // Create document
 const doc = new DocumentImpl('doc_1', 'My Document');
@@ -89,8 +89,8 @@ A Google Sheets-like spreadsheet with high-performance canvas rendering.
 ### Quick Start
 
 ```typescript
-import { WorkbookImpl } from '@pagent-libs/sheets-core';
-import { WorkbookProvider, WorkbookCanvas } from '@pagent-libs/sheets-react';
+import { WorkbookImpl } from '@weavertime/sheets-core';
+import { WorkbookProvider, WorkbookCanvas } from '@weavertime/sheets-react';
 
 // Create workbook
 const workbook = new WorkbookImpl('workbook_1', 'My Workbook');

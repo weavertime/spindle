@@ -17,12 +17,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/pagentapp/pagent-libs"
+    "url": "https://github.com/weavertime/spindle"
   },
   "bugs": {
-    "url": "https://github.com/pagentapp/pagent-libs/issues"
+    "url": "https://github.com/weavertime/spindle/issues"
   },
-  "homepage": "https://libs.pagentapp.com",
+  "homepage": "https://spindle.weavertime.com",
   "private": true,
   "workspaces": [
     "packages/*"

@@ -9,7 +9,7 @@ The core package provides advanced spreadsheet features including sorting, filte
 The `SortManager` class handles multi-column sorting with formula adjustment:
 
 ```typescript
-// packages/core/src/features/sort.ts
+// packages/sheets-core/src/features/sort.ts
 export class SortManager {
   static sortRows(sheet: Sheet, sortOrder: SortOrder[], dataRange?: { startRow: number; endRow: number }): void
   static toggleColumnSort(column: number, currentSortOrder: SortOrder[], multiColumn: boolean = false): SortOrder[]
@@ -160,7 +160,7 @@ private static adjustFormulaForRowSort(
 The `FilterManager` provides comprehensive filtering capabilities:
 
 ```typescript
-// packages/core/src/features/filter.ts
+// packages/sheets-core/src/features/filter.ts
 export class FilterManager {
   static getFilteredRows(sheet: Sheet, filters: Map<number, ColumnFilter>, dataRange?): Set<number>
   static getUniqueColumnValues(sheet: Sheet, column: number, dataRange?): Set<string | number>
@@ -313,7 +313,7 @@ interface SheetConfig {
 Freeze panes divide the viewport into four scroll regions:
 
 ```typescript
-// packages/core/src/features/freeze.ts
+// packages/sheets-core/src/features/freeze.ts
 type FreezeRegion =
   | 'top-left'    // Frozen rows AND cols - never scrolls
   | 'top'         // Frozen rows only - scrolls horizontally
@@ -376,7 +376,7 @@ export function getScrollForRegion(
 The export system supports CSV format with proper escaping:
 
 ```typescript
-// packages/core/src/export/csv.ts
+// packages/sheets-core/src/export/csv.ts
 export function exportToCSV(workbook: WorkbookImpl, sheetId?: string): string {
   const sheet = workbook.getSheet(sheetId);
   const rows: string[][] = [];

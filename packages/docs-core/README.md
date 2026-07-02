@@ -1,4 +1,4 @@
-# @pagent-libs/docs-core
+# @weavertime/docs-core
 
 Core document editor engine for pagent-docs. Zero React dependencies.
 
@@ -14,7 +14,7 @@ Core document editor engine for pagent-docs. Zero React dependencies.
 ## Usage
 
 ```typescript
-import { DocumentImpl, type Block } from '@pagent-libs/docs-core';
+import { DocumentImpl, type Block } from '@weavertime/docs-core';
 
 const doc = new DocumentImpl('doc_1', 'My Document');
 
@@ -52,7 +52,7 @@ import {
   createPlugins, 
   blocksToPmDoc, 
   proseMirrorToDocument 
-} from '@pagent-libs/docs-core';
+} from '@weavertime/docs-core';
 
 // Convert blocks to ProseMirror document
 const pmDoc = blocksToPmDoc(blocks, schema);

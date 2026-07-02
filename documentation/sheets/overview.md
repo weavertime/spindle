@@ -8,15 +8,15 @@ The library is structured as a monorepo with two main packages:
 
 ```mermaid
 graph TD
-    A[pagent-libs] --> B[@pagent-libs/core]
-    A --> C[@pagent-libs/sheets]
+    A[pagent-libs] --> B[@weavertime/sheets-core]
+    A --> C[@weavertime/sheets-react]
     B --> D[Zero React dependencies]
     C --> E[React components]
     B --> F[Framework agnostic]
     C --> G[Canvas-based rendering]
 ```
 
-### Core Package (@pagent-libs/core)
+### Core Package (@weavertime/sheets-core)
 
 The core package contains all spreadsheet logic and is framework-agnostic:
 
@@ -27,7 +27,7 @@ The core package contains all spreadsheet logic and is framework-agnostic:
 - **Collaboration**: Real-time synchronization providers
 - **Storage**: Sparse cell storage, style/format pooling
 
-### Sheets Package (@pagent-libs/sheets)
+### Sheets Package (@weavertime/sheets-react)
 
 The sheets package provides React components that use the core package:
 
@@ -60,7 +60,7 @@ All architectural decisions prioritize performance:
 
 TypeScript strict mode is enforced throughout:
 
-- Comprehensive type definitions in `packages/core/src/types.ts`
+- Comprehensive type definitions in `packages/sheets-core/src/types.ts`
 - Generic constraints for type safety
 - Interface segregation for clean APIs
 
@@ -140,8 +140,8 @@ interface Sheet {
 ### Basic Usage
 
 ```typescript
-import { WorkbookImpl } from '@pagent-libs/core';
-import { WorkbookProvider, WorkbookCanvas } from '@pagent-libs/sheets';
+import { WorkbookImpl } from '@weavertime/sheets-core';
+import { WorkbookProvider, WorkbookCanvas } from '@weavertime/sheets-react';
 
 const workbook = new WorkbookImpl('workbook_1', 'My Workbook');
 

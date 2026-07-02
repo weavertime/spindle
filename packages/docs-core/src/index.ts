@@ -1,4 +1,4 @@
-// @pagent-libs/docs-core
+// @weavertime/docs-core
 // Core document editor engine
 
 // Types

@@ -1,4 +1,4 @@
-// @pagent-libs/docs-core/collab — Yjs-backed collaboration binding.
+// @weavertime/docs-core/collab — Yjs-backed collaboration binding.
 
 export {
   getYDocFields,

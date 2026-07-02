@@ -8,13 +8,13 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { TrueLayoutEditor, TrueLayoutEditorHandle, PageConfig } from '@pagent-libs/docs-react';
+import { TrueLayoutEditor, TrueLayoutEditorHandle, PageConfig } from '@weavertime/docs-react';
 import { 
   createParagraphFromText, 
   createHeadingFromText,
   createListItemFromText,
   Block,
-} from '@pagent-libs/docs-core';
+} from '@weavertime/docs-core';
 
 // Sample content that will span multiple pages
 function createSampleContent(): Block[] {

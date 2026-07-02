@@ -6,7 +6,7 @@ The core package implements the fundamental spreadsheet data model and business 
 
 ### Workbook Structure
 
-The `WorkbookImpl` class in `packages/core/src/workbook.ts` is the central data model:
+The `WorkbookImpl` class in `packages/sheets-core/src/workbook.ts` is the central data model:
 
 ```typescript
 export class WorkbookImpl implements Workbook {
@@ -66,7 +66,7 @@ The sheet configuration includes:
 Cells are stored using a string key format `"row:col"` for efficient Map-based storage:
 
 ```typescript
-// packages/core/src/utils/cell-key.ts
+// packages/sheets-core/src/utils/cell-key.ts
 export function getCellKey(row: number, col: number): string {
   return `${row}:${col}`;
 }
@@ -108,7 +108,7 @@ Cell values are stored as raw data, with formulas parsed separately.
 Styles are pooled to reduce memory usage and enable efficient rendering:
 
 ```typescript
-// packages/core/src/style-pool.ts
+// packages/sheets-core/src/style-pool.ts
 export class StylePool {
   private styles: Map<string, CellStyle> = new Map();
   private styleToId: Map<string, string> = new Map();
@@ -160,7 +160,7 @@ Format objects include:
 The event system enables loose coupling between the core and UI layers:
 
 ```typescript
-// packages/core/src/event-emitter.ts
+// packages/sheets-core/src/event-emitter.ts
 export class EventEmitter {
   private handlers: Map<EventType, Set<EventHandler>> = new Map();
   private batchQueue: EventData[] = [];
@@ -226,7 +226,7 @@ workbook.batch(() => {
 The undo/redo system maintains snapshots of workbook state:
 
 ```typescript
-// packages/core/src/workbook.ts
+// packages/sheets-core/src/workbook.ts
 interface WorkbookSnapshot {
   sheets: Map<string, SheetSnapshot>;
   activeSheetId: string;

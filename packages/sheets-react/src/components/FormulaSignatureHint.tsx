@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import type { FunctionDoc } from '@pagent-libs/sheets-core';
+import type { FunctionDoc } from '@weavertime/sheets-core';
 
 interface FormulaSignatureHintProps {
   doc: FunctionDoc;

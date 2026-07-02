@@ -6,10 +6,10 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@pagent-libs/docs-core': path.resolve(__dirname, '../../packages/docs-core/src'),
-      '@pagent-libs/docs-react': path.resolve(__dirname, '../../packages/docs-react/src'),
-      '@pagent-libs/shared': path.resolve(__dirname, '../../packages/shared/src'),
-      '@pagent-libs/transport-websocket': path.resolve(__dirname, '../../packages/transport-websocket/src'),
+      '@weavertime/docs-core': path.resolve(__dirname, '../../packages/docs-core/src'),
+      '@weavertime/docs-react': path.resolve(__dirname, '../../packages/docs-react/src'),
+      '@weavertime/shared': path.resolve(__dirname, '../../packages/shared/src'),
+      '@weavertime/transport-websocket': path.resolve(__dirname, '../../packages/transport-websocket/src'),
     },
   },
   server: {

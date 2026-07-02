@@ -1,14 +1,14 @@
 {
-  "name": "@pagent-libs/shared",
+  "name": "@weavertime/shared",
   "version": "0.2.0",
   "description": "Shared utilities for pagent-libs (EventEmitter, collaboration)",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pagentapp/pagent-libs.git",
+    "url": "https://github.com/weavertime/spindle.git",
     "directory": "packages/shared"
   },
   "bugs": {
-    "url": "https://github.com/pagentapp/pagent-libs/issues"
+    "url": "https://github.com/weavertime/spindle/issues"
   },
   "main": "dist/index.js",
   "module": "dist/index.esm.js",

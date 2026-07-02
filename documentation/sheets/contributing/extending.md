@@ -9,7 +9,7 @@ This guide explains how to extend pagent-libs with new features, formula functio
 Features are implemented as managers that operate on workbook/sheet state:
 
 ```typescript
-// packages/core/src/features/my-feature.ts
+// packages/sheets-core/src/features/my-feature.ts
 export class MyFeatureManager {
   static applyFeature(sheet: Sheet, config: MyFeatureConfig): void {
     // Implement feature logic
@@ -62,7 +62,7 @@ interface SheetConfig {
 Add functions to the formula parser:
 
 ```typescript
-// packages/core/src/formula-parser/parser.ts
+// packages/sheets-core/src/formula-parser/parser.ts
 private registerBuiltInFunctions(): void {
   // ... existing functions
 
@@ -117,7 +117,7 @@ this.functions.set('SAFE_DIVIDE', (args, ctx) => {
 Implement export functionality:
 
 ```typescript
-// packages/core/src/export/my-format.ts
+// packages/sheets-core/src/export/my-format.ts
 export function exportToMyFormat(workbook: WorkbookImpl, sheetId?: string): string {
   const sheet = workbook.getSheet(sheetId);
   const data = [];
@@ -169,7 +169,7 @@ importFromMyFormat(data: string, sheetId?: string): void {
 Implement the CollaborationProvider interface:
 
 ```typescript
-// packages/core/src/collaboration/my-provider.ts
+// packages/sheets-core/src/collaboration/my-provider.ts
 export class MyCollaborationProvider implements CollaborationProvider {
   private handlers: Map<string, Set<(data: unknown) => void>> = new Map();
 
@@ -256,7 +256,7 @@ private transformOperation(
 Add custom rendering by extending the canvas renderer:
 
 ```typescript
-// packages/core/src/canvas/my-renderer.ts
+// packages/sheets-core/src/canvas/my-renderer.ts
 export class MyCustomRenderer extends CanvasRenderer {
   renderCustomElements(ctx: CanvasRenderingContext2D, state: RenderState): void {
     // Custom rendering logic
@@ -335,7 +335,7 @@ const customTheme: CanvasTheme = {
 Implement custom number formatting:
 
 ```typescript
-// packages/core/src/utils/format-utils.ts
+// packages/sheets-core/src/utils/format-utils.ts
 export function formatCustom(value: CellValue, format: CellFormat): string {
   if (format.type === 'myCustomFormat') {
     // Implement custom formatting logic
@@ -379,7 +379,7 @@ interface CellFormat {
 Add custom toolbar functionality:
 
 ```typescript
-// packages/sheets/src/components/Toolbar.tsx
+// packages/sheets-react/src/components/Toolbar.tsx
 interface ToolbarProps {
   // ... existing props
   onMyCustomAction?: () => void;
@@ -402,7 +402,7 @@ interface ToolbarProps {
 Extend context menus:
 
 ```typescript
-// packages/sheets/src/components/ContextMenu.tsx
+// packages/sheets-react/src/components/ContextMenu.tsx
 interface ContextMenuProps {
   // ... existing props
   onMyCustomAction?: () => void;

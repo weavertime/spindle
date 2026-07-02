@@ -15,8 +15,8 @@ pagent-libs/
 
 ```mermaid
 graph TD
-    A[pagent-libs] --> B[@pagent-libs/docs-core]
-    A --> C[@pagent-libs/docs-react]
+    A[pagent-libs] --> B[@weavertime/docs-core]
+    A --> C[@weavertime/docs-react]
     B --> D[Document Model]
     B --> E[ProseMirror Integration]
     B --> F[Block Types]
@@ -26,14 +26,14 @@ graph TD
     C --> J[DOM Painter]
 ```
 
-## Core Package (@pagent-libs/docs-core)
+## Core Package (@weavertime/docs-core)
 
 The core package provides the framework-agnostic document engine:
 
 ### Document Model
 
 ```typescript
-import { DocumentImpl, createDocument } from '@pagent-libs/docs-core';
+import { DocumentImpl, createDocument } from '@weavertime/docs-core';
 
 // Create a new document
 const doc = new DocumentImpl('doc_1', 'My Document');
@@ -59,7 +59,7 @@ doc.setSectionBlocks(sectionId, newBlocks);
 The core package provides full ProseMirror integration:
 
 ```typescript
-import { docsSchema, createPlugins, createCommands } from '@pagent-libs/docs-core';
+import { docsSchema, createPlugins, createCommands } from '@weavertime/docs-core';
 
 // Schema defines document structure
 const schema = docsSchema;
@@ -131,7 +131,7 @@ if (doc.canUndo()) doc.undo();
 if (doc.canRedo()) doc.redo();
 ```
 
-## React Package (@pagent-libs/docs-react)
+## React Package (@weavertime/docs-react)
 
 ### True Layout Architecture
 
@@ -281,8 +281,8 @@ const header: HeaderFooterContent = {
 ## Basic Usage
 
 ```tsx
-import { DocumentImpl } from '@pagent-libs/docs-core';
-import { DocumentProvider, DocumentEditor } from '@pagent-libs/docs-react';
+import { DocumentImpl } from '@weavertime/docs-core';
+import { DocumentProvider, DocumentEditor } from '@weavertime/docs-react';
 
 // Create document
 const doc = new DocumentImpl('doc_1', 'My Document');
@@ -302,8 +302,8 @@ function App() {
 ### Using TrueLayoutEditor Directly
 
 ```tsx
-import { TrueLayoutEditor } from '@pagent-libs/docs-react';
-import type { Block } from '@pagent-libs/docs-core';
+import { TrueLayoutEditor } from '@weavertime/docs-react';
+import type { Block } from '@weavertime/docs-core';
 
 function Editor({ blocks }: { blocks: Block[] }) {
   const handleDocChange = (newBlocks: Block[]) => {

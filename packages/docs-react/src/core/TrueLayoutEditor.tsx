@@ -25,8 +25,8 @@ import {
 import { EditorState, Transaction } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { Node as PmNode } from 'prosemirror-model';
-import { docsSchema, createPlugins, blocksToPmDoc, proseMirrorToDocument, Block, DEFAULT_PAGE_CONFIG } from '@pagent-libs/docs-core';
-import type { CollabHandle } from '@pagent-libs/docs-core/collab';
+import { docsSchema, createPlugins, blocksToPmDoc, proseMirrorToDocument, Block, DEFAULT_PAGE_CONFIG } from '@weavertime/docs-core';
+import type { CollabHandle } from '@weavertime/docs-core/collab';
 import { ySyncPlugin, yCursorPlugin } from 'y-prosemirror';
 import { ensureCollabCursorStyles } from './collab-cursor-styles';
 
@@ -83,7 +83,7 @@ export interface TrueLayoutEditorProps {
   /** Minimum lines to keep together at page break */
   minLinesAtBreak?: number;
   /** Text style pool for efficient style storage (recommended for large documents) */
-  textStylePool?: import('@pagent-libs/docs-core').TextStylePool;
+  textStylePool?: import('@weavertime/docs-core').TextStylePool;
   /** Header content configuration */
   header?: HeaderFooterContent;
   /** Footer content configuration */

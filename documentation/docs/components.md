@@ -1,6 +1,6 @@
 # Docs Component Reference
 
-Complete guide to all React components in the `@pagent-libs/docs-react` package.
+Complete guide to all React components in the `@weavertime/docs-react` package.
 
 ## High-Level Components
 
@@ -9,7 +9,7 @@ Complete guide to all React components in the `@pagent-libs/docs-react` package.
 The main document editor component providing a complete editing experience with toolbar, rulers, and paginated content.
 
 ```tsx
-import { DocumentEditor } from '@pagent-libs/docs-react';
+import { DocumentEditor } from '@weavertime/docs-react';
 
 <DocumentEditor
   width={800}
@@ -44,8 +44,8 @@ import { DocumentEditor } from '@pagent-libs/docs-react';
 The core editor component with true line-level pagination. This is the recommended component for custom implementations.
 
 ```tsx
-import { TrueLayoutEditor } from '@pagent-libs/docs-react';
-import type { TrueLayoutEditorHandle } from '@pagent-libs/docs-react';
+import { TrueLayoutEditor } from '@weavertime/docs-react';
+import type { TrueLayoutEditorHandle } from '@weavertime/docs-react';
 
 const editorRef = useRef<TrueLayoutEditorHandle>(null);
 
@@ -118,8 +118,8 @@ interface TrueLayoutEditorHandle {
 Context provider for document state management.
 
 ```tsx
-import { DocumentImpl } from '@pagent-libs/docs-core';
-import { DocumentProvider } from '@pagent-libs/docs-react';
+import { DocumentImpl } from '@weavertime/docs-core';
+import { DocumentProvider } from '@weavertime/docs-react';
 
 const doc = new DocumentImpl('doc_1', 'My Document');
 
@@ -161,7 +161,7 @@ const { canUndo, canRedo, undo, redo } = useHistory();
 The formatting toolbar with all editing controls.
 
 ```tsx
-import { Toolbar } from '@pagent-libs/docs-react';
+import { Toolbar } from '@weavertime/docs-react';
 
 <Toolbar
   editorView={editorView}
@@ -204,7 +204,7 @@ import { Toolbar } from '@pagent-libs/docs-react';
 Color selection dropdown for text and background colors.
 
 ```tsx
-import { ColorPicker } from '@pagent-libs/docs-react';
+import { ColorPicker } from '@weavertime/docs-react';
 
 <ColorPicker
   currentColor={activeMarks?.textStyle?.color}
@@ -222,7 +222,7 @@ import { ColorPicker } from '@pagent-libs/docs-react';
 Grid-based table size selection.
 
 ```tsx
-import { TableSizePicker } from '@pagent-libs/docs-react';
+import { TableSizePicker } from '@weavertime/docs-react';
 
 <TableSizePicker
   editorView={editorView}
@@ -240,7 +240,7 @@ import { TableSizePicker } from '@pagent-libs/docs-react';
 Modal for inserting and editing hyperlinks.
 
 ```tsx
-import { LinkDialog } from '@pagent-libs/docs-react';
+import { LinkDialog } from '@weavertime/docs-react';
 
 <LinkDialog
   editorView={editorView}
@@ -259,7 +259,7 @@ import { LinkDialog } from '@pagent-libs/docs-react';
 Modal for inserting images by URL.
 
 ```tsx
-import { ImageDialog } from '@pagent-libs/docs-react';
+import { ImageDialog } from '@weavertime/docs-react';
 
 <ImageDialog
   editorView={editorView}
@@ -275,7 +275,7 @@ import { ImageDialog } from '@pagent-libs/docs-react';
 Modal for configuring page size, orientation, and margins.
 
 ```tsx
-import { PageSetupModal } from '@pagent-libs/docs-react';
+import { PageSetupModal } from '@weavertime/docs-react';
 
 <PageSetupModal
   isOpen={showPageSetup}
@@ -303,7 +303,7 @@ import { PageSetupModal } from '@pagent-libs/docs-react';
 Displays page width with margin handles.
 
 ```tsx
-import { Ruler } from '@pagent-libs/docs-react';
+import { Ruler } from '@weavertime/docs-react';
 
 <Ruler
   pageConfig={currentPageConfig}
@@ -318,7 +318,7 @@ import { Ruler } from '@pagent-libs/docs-react';
 Displays page height with margin handles, synchronized with scroll position.
 
 ```tsx
-import { VerticalRuler } from '@pagent-libs/docs-react';
+import { VerticalRuler } from '@weavertime/docs-react';
 
 <VerticalRuler
   pageConfig={currentPageConfig}
@@ -339,7 +339,7 @@ import { VerticalRuler } from '@pagent-libs/docs-react';
 In-place editor for header and footer content.
 
 ```tsx
-import { HeaderFooterEditor } from '@pagent-libs/docs-react';
+import { HeaderFooterEditor } from '@weavertime/docs-react';
 
 <HeaderFooterEditor
   type="header"
@@ -362,7 +362,7 @@ import { HeaderFooterEditor } from '@pagent-libs/docs-react';
 Direct access to ProseMirror for advanced use cases.
 
 ```tsx
-import { ProseMirrorEditor } from '@pagent-libs/docs-react';
+import { ProseMirrorEditor } from '@weavertime/docs-react';
 
 <ProseMirrorEditor
   initialDoc={pmDoc}
@@ -379,7 +379,7 @@ import { ProseMirrorEditor } from '@pagent-libs/docs-react';
 Renders a single page with content.
 
 ```tsx
-import { PageView } from '@pagent-libs/docs-react';
+import { PageView } from '@weavertime/docs-react';
 
 <PageView
   pageConfig={pageConfig}

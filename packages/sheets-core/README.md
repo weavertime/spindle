@@ -1,4 +1,4 @@
-# @pagent-sheets/core
+# @weavertime/sheets-core
 
 Core spreadsheet engine for pagent-sheets. Zero React dependencies.
 
@@ -14,7 +14,7 @@ Core spreadsheet engine for pagent-sheets. Zero React dependencies.
 ## Usage
 
 ```typescript
-import { WorkbookImpl } from '@pagent-sheets/core';
+import { WorkbookImpl } from '@weavertime/sheets-core';
 
 const workbook = new WorkbookImpl('workbook_1', 'My Workbook');
 const sheet = workbook.getSheet();

@@ -41,7 +41,7 @@ graph TD
 The `CanvasRenderer` class coordinates all rendering operations:
 
 ```typescript
-// packages/core/src/canvas/renderer.ts
+// packages/sheets-core/src/canvas/renderer.ts
 export class CanvasRenderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -68,7 +68,7 @@ export class CanvasRenderer {
 Rendering requires comprehensive state information:
 
 ```typescript
-// packages/core/src/canvas/types.ts
+// packages/sheets-core/src/canvas/types.ts
 interface RenderState {
   cells: Map<string, Cell>;
   styles: Map<string, CellStyle>;
@@ -205,7 +205,7 @@ type FreezeRegion =
 ### Freeze Dimensions Calculation
 
 ```typescript
-// packages/core/src/features/freeze.ts
+// packages/sheets-core/src/features/freeze.ts
 export function calculateFreezeDimensions(
   frozenRows: number,
   frozenCols: number,
@@ -259,7 +259,7 @@ private renderRegion(state: RenderState, region: FreezeRegion): void {
 The `HitTester` class maps mouse coordinates to grid positions:
 
 ```typescript
-// packages/core/src/canvas/hit-testing.ts
+// packages/sheets-core/src/canvas/hit-testing.ts
 export class HitTester {
   private headerWidth: number;
   private headerHeight: number;

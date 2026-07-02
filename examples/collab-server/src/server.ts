@@ -1,6 +1,6 @@
 // Minimal WebSocket relay server for pagent-libs collaboration.
 //
-// Wire protocol (matches @pagent-libs/transport-websocket):
+// Wire protocol (matches @weavertime/transport-websocket):
 //   Connect:  ws://host:PORT/<roomId>
 //   Each message: 1 byte channel tag (0 = doc, 1 = awareness)
 //                  + opaque payload. The server doesn't interpret it —
@@ -42,7 +42,7 @@ function roomIdFromUrl(url: string | undefined): string {
 
 const httpServer = createServer((_req, res) => {
   res.writeHead(200, { 'content-type': 'text/plain' });
-  res.end('pagent-collab-server: connect via WebSocket at /<roomId>\n');
+  res.end('spindle-collab-server: connect via WebSocket at /<roomId>\n');
 });
 
 const wss = new WebSocketServer({ server: httpServer });

@@ -1506,8 +1506,8 @@ export class WorkbookImpl implements Workbook {
    * Idempotent guard: throws if already attached.
    */
   async attachCollab(
-    provider: import('@pagent-libs/shared').CollabProvider,
-    identity: import('@pagent-libs/shared').CollabIdentity,
+    provider: import('@weavertime/shared').CollabProvider,
+    identity: import('@weavertime/shared').CollabIdentity,
     options?: AttachCollabOptions,
   ): Promise<CollabHandle> {
     if (this.collabHandle) {

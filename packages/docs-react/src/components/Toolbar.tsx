@@ -7,8 +7,8 @@ import {
   createCommands,
   undo as pmUndo,
   redo as pmRedo,
-} from '@pagent-libs/docs-core';
-import type { HeadingLevel } from '@pagent-libs/docs-core';
+} from '@weavertime/docs-core';
+import type { HeadingLevel } from '@weavertime/docs-core';
 import type { ActiveMarks } from './ProseMirrorEditor';
 import type { CellSelection } from '../core';
 import { LinkDialog } from './LinkDialog';

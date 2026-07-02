@@ -12,7 +12,7 @@ import type {
   CollabProvider,
   CollabStatus,
   CollabStatusHandler,
-} from '@pagent-libs/shared';
+} from '@weavertime/shared';
 
 const CHANNEL_DOC = 0;
 const CHANNEL_AWARENESS = 1;

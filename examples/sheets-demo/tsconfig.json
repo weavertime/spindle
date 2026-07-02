@@ -17,8 +17,8 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
-      "@pagent-libs/core": ["../../packages/core/src"],
-      "@pagent-libs/sheets": ["../../packages/sheets/src"]
+      "@weavertime/sheets-core": ["../../packages/sheets-core/src"],
+      "@weavertime/sheets-react": ["../../packages/sheets-react/src"]
     }
   },
   "include": ["src"],

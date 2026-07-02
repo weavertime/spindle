@@ -31,14 +31,14 @@ export type {
   HeaderFooterInlineContent,
   HeaderFooterParagraph,
   HeaderFooterContent,
-} from '@pagent-libs/docs-core';
+} from '@weavertime/docs-core';
 
 // Import types for local use
 import type {
   DynamicFieldRun,
   HeaderFooterParagraph,
   HeaderFooterContent,
-} from '@pagent-libs/docs-core';
+} from '@weavertime/docs-core';
 
 /**
  * Context for resolving dynamic fields

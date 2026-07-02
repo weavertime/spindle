@@ -9,7 +9,7 @@ The collaboration system enables real-time multi-user editing of spreadsheets wi
 The collaboration system is designed with a provider pattern:
 
 ```typescript
-// packages/core/src/collaboration/types.ts
+// packages/sheets-core/src/collaboration/types.ts
 export interface CollaborationProvider {
   connect(workbookId: string): Promise<void>;
   disconnect(): void;
@@ -65,7 +65,7 @@ private setupCollaboration(): void {
 The Firebase provider implements real-time synchronization:
 
 ```typescript
-// packages/core/src/collaboration/firebase-provider.ts
+// packages/sheets-core/src/collaboration/firebase-provider.ts
 export class FirebaseCollaborationProvider implements CollaborationProvider {
   private db: any; // Firebase Realtime Database or Firestore
   private workbookId: string | null = null;

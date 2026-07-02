@@ -23,7 +23,7 @@ import * as syncProtocol from 'y-protocols/sync';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import { IndexeddbPersistence } from 'y-indexeddb';
-import type { CollabIdentity, CollabProvider } from '@pagent-libs/shared';
+import type { CollabIdentity, CollabProvider } from '@weavertime/shared';
 
 import { getYDocFields, hydrateYDocFromData } from './y-schema';
 import type { DocumentData } from '../types';

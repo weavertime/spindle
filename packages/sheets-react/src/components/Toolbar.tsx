@@ -1,6 +1,6 @@
 import React, { memo, useState, useEffect, useRef, useMemo } from 'react';
 import { HyperlinkModal } from './HyperlinkModal';
-import type { FormatType } from '@pagent-libs/sheets-core';
+import type { FormatType } from '@weavertime/sheets-core';
 import {
   Undo2,
   Redo2,

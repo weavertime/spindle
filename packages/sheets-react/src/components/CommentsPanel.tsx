@@ -1,7 +1,7 @@
 import React, { memo, useRef, useState } from 'react';
 import { X, Check, RotateCcw, Trash2, MessageSquare } from 'lucide-react';
-import { columnIndexToLabel } from '@pagent-libs/sheets-core';
-import type { Comment, CommentAuthor, SheetCommentThread } from '@pagent-libs/sheets-core';
+import { columnIndexToLabel } from '@weavertime/sheets-core';
+import type { Comment, CommentAuthor, SheetCommentThread } from '@weavertime/sheets-core';
 import { useComments } from '../hooks/useComments';
 import { useWorkbook } from '../context/WorkbookContext';
 
