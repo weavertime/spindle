@@ -30,7 +30,7 @@
     "dev": "rollup -c -w",
     "type-check": "tsc --noEmit",
     "test": "jest",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist tsconfig.tsbuildinfo .rollup.cache"
   },
   "keywords": [
     "event-emitter",
@@ -52,4 +52,3 @@
     "typescript": "^5.2.0"
   }
 }
-

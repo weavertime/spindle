@@ -29,7 +29,7 @@
     "build": "rollup -c",
     "dev": "rollup -c -w",
     "type-check": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist tsconfig.tsbuildinfo .rollup.cache"
   },
   "keywords": [
     "collaboration",
