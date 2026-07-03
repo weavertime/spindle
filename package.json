@@ -28,7 +28,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces",
+    "build": "npm run build -w @weavertime/spindle-shared && npm run build -w @weavertime/spindle-docs-core -w @weavertime/spindle-sheets-core -w @weavertime/spindle-transport-websocket && npm run build -w @weavertime/spindle-docs-react -w @weavertime/spindle-sheets-react",
     "dev": "npm run dev --workspaces --if-present",
     "test": "npm run test --workspaces",
     "lint": "eslint --ext .ts,.tsx packages",

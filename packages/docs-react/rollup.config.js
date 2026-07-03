@@ -15,7 +15,9 @@ export default defineConfig({
       sourcemap: true,
     },
   ],
-  external: ['react', 'react-dom', '@weavertime/spindle-docs-core', 'immer', 'react/jsx-runtime'],
+  // Externalize every bare import (all deps/peerDeps); bundle only our own
+  // relative/absolute source. Keeps the list from drifting as deps change.
+  external: (id) => !/^[./]/.test(id),
   plugins: [
     typescript({
       tsconfig: './tsconfig.json',
