@@ -1,5 +1,5 @@
 {
-  "name": "@weavertime/sheets-react",
+  "name": "@weavertime/spindle-sheets-react",
   "version": "0.2.0",
   "description": "React components for Spindle Sheets",
   "repository": {
@@ -48,8 +48,8 @@
     "react-dom": ">=18.0.0"
   },
   "dependencies": {
-    "@weavertime/sheets-core": "^0.2.0",
-    "@weavertime/shared": "^0.2.0",
+    "@weavertime/spindle-sheets-core": "^0.2.0",
+    "@weavertime/spindle-shared": "^0.2.0",
     "immer": "^10.0.0",
     "lucide-react": "^0.563.0"
   },

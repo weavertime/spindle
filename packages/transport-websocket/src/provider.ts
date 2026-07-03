@@ -12,7 +12,7 @@ import type {
   CollabProvider,
   CollabStatus,
   CollabStatusHandler,
-} from '@weavertime/shared';
+} from '@weavertime/spindle-shared';
 
 const CHANNEL_DOC = 0;
 const CHANNEL_AWARENESS = 1;

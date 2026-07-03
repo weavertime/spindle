@@ -14,10 +14,10 @@ import { HeaderContextMenu } from './HeaderContextMenu';
 import { FilterModal } from './FilterModal';
 import { FormatCellsModal } from './FormatCellsModal';
 import { FindReplaceModal, type FindReplaceState } from './FindReplaceModal';
-import type { CellPosition, Selection, CellFormat, ColumnFilter, CellStyle, SortOrder, FormatType } from '@weavertime/sheets-core';
-import { columnIndexToLabel } from '@weavertime/sheets-core';
-import { parseDateString } from '@weavertime/sheets-core';
-import { findMatches, computeReplacement } from '@weavertime/sheets-core';
+import type { CellPosition, Selection, CellFormat, ColumnFilter, CellStyle, SortOrder, FormatType } from '@weavertime/spindle-sheets-core';
+import { columnIndexToLabel } from '@weavertime/spindle-sheets-core';
+import { parseDateString } from '@weavertime/spindle-sheets-core';
+import { findMatches, computeReplacement } from '@weavertime/spindle-sheets-core';
 
 export interface WorkbookCanvasProps {
   className?: string;

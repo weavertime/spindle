@@ -15,7 +15,7 @@ export default defineConfig({
       sourcemap: true,
     },
   ],
-  external: ['@weavertime/shared'],
+  external: ['@weavertime/spindle-shared'],
   plugins: [
     typescript({
       tsconfig: './tsconfig.json',

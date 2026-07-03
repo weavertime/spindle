@@ -1,5 +1,5 @@
 {
-  "name": "@weavertime/docs-core",
+  "name": "@weavertime/spindle-docs-core",
   "version": "0.2.0",
   "description": "Core document editor engine for Spindle Docs",
   "repository": {
@@ -48,7 +48,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@weavertime/shared": "^0.2.0",
+    "@weavertime/spindle-shared": "^0.2.0",
     "immer": "^10.0.0",
     "prosemirror-model": "^1.19.0",
     "prosemirror-schema-basic": "^1.2.0",

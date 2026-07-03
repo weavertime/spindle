@@ -1,6 +1,6 @@
 import React, { memo, useMemo } from 'react';
-import { PAGE_SIZES } from '@weavertime/docs-core';
-import type { Section, PageConfig } from '@weavertime/docs-core';
+import { PAGE_SIZES } from '@weavertime/spindle-docs-core';
+import type { Section, PageConfig } from '@weavertime/spindle-docs-core';
 import { useDocument } from '../context/DocumentContext';
 
 interface PageViewProps {

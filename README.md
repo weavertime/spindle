@@ -22,7 +22,7 @@ Weaversuite will be a fully encrypted drive application powered by the Spindle e
 Add the packages to your React project:
 
 ```bash
-npm install @weavertime/sheets-core @weavertime/sheets-react
+npm install @weavertime/spindle-sheets-core @weavertime/spindle-sheets-react
 ```
 
 ### Basic Usage - Spreadsheets
@@ -31,8 +31,8 @@ Here's how to add a spreadsheet to your React application:
 
 ```tsx
 import React, { useState } from 'react';
-import { WorkbookProvider, WorkbookCanvas } from '@weavertime/sheets-react';
-import { WorkbookImpl } from '@weavertime/sheets-core';
+import { WorkbookProvider, WorkbookCanvas } from '@weavertime/spindle-sheets-react';
+import { WorkbookImpl } from '@weavertime/spindle-sheets-core';
 
 function MySpreadsheet() {
   // 1. Create a workbook instance
@@ -110,13 +110,13 @@ export default MySpreadsheet;
 Here's how to add a document editor to your React application:
 
 ```bash
-npm install @weavertime/docs-core @weavertime/docs-react
+npm install @weavertime/spindle-docs-core @weavertime/spindle-docs-react
 ```
 
 ```tsx
 import React, { useState } from 'react';
-import { DocumentImpl, type DocumentData } from '@weavertime/docs-core';
-import { DocumentProvider, DocumentEditor } from '@weavertime/docs-react';
+import { DocumentImpl, type DocumentData } from '@weavertime/spindle-docs-core';
+import { DocumentProvider, DocumentEditor } from '@weavertime/spindle-docs-react';
 
 // Document data in JSON format (can be loaded from backend/database)
 const initialDocumentData: DocumentData = {
@@ -237,8 +237,8 @@ a Yjs CRDT internally; you supply a transport (`CollabProvider`) and call
 `attachCollab`:
 
 ```ts
-import { WorkbookImpl } from '@weavertime/sheets-core';
-import { WebSocketProvider } from '@weavertime/transport-websocket';
+import { WorkbookImpl } from '@weavertime/spindle-sheets-core';
+import { WebSocketProvider } from '@weavertime/spindle-transport-websocket';
 
 const workbook = new WorkbookImpl('wb_1', 'Quarterly Plan');
 workbook.setData(savedJson);

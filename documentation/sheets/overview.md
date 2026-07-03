@@ -8,15 +8,15 @@ The library is structured as a monorepo with two main packages:
 
 ```mermaid
 graph TD
-    A[Spindle] --> B[@weavertime/sheets-core]
-    A --> C[@weavertime/sheets-react]
+    A[Spindle] --> B[@weavertime/spindle-sheets-core]
+    A --> C[@weavertime/spindle-sheets-react]
     B --> D[Zero React dependencies]
     C --> E[React components]
     B --> F[Framework agnostic]
     C --> G[Canvas-based rendering]
 ```
 
-### Core Package (@weavertime/sheets-core)
+### Core Package (@weavertime/spindle-sheets-core)
 
 The core package contains all spreadsheet logic and is framework-agnostic:
 
@@ -27,7 +27,7 @@ The core package contains all spreadsheet logic and is framework-agnostic:
 - **Collaboration**: Real-time synchronization providers
 - **Storage**: Sparse cell storage, style/format pooling
 
-### Sheets Package (@weavertime/sheets-react)
+### Sheets Package (@weavertime/spindle-sheets-react)
 
 The sheets package provides React components that use the core package:
 
@@ -140,8 +140,8 @@ interface Sheet {
 ### Basic Usage
 
 ```typescript
-import { WorkbookImpl } from '@weavertime/sheets-core';
-import { WorkbookProvider, WorkbookCanvas } from '@weavertime/sheets-react';
+import { WorkbookImpl } from '@weavertime/spindle-sheets-core';
+import { WorkbookProvider, WorkbookCanvas } from '@weavertime/spindle-sheets-react';
 
 const workbook = new WorkbookImpl('workbook_1', 'My Workbook');
 

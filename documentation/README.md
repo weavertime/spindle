@@ -6,12 +6,12 @@ Pagent-Libs is a suite of high-performance productivity components for React, pr
 
 | Package | Description |
 |---------|-------------|
-| `@weavertime/docs-core` | Framework-agnostic document engine |
-| `@weavertime/docs-react` | React document editor with true page layout |
-| `@weavertime/sheets-core` | Framework-agnostic spreadsheet engine |
-| `@weavertime/sheets-react` | React spreadsheet with canvas rendering |
-| `@weavertime/shared` | Shared utilities and types |
-| `@weavertime/transport-websocket` | WebSocket `CollabProvider` for real-time collaboration |
+| `@weavertime/spindle-docs-core` | Framework-agnostic document engine |
+| `@weavertime/spindle-docs-react` | React document editor with true page layout |
+| `@weavertime/spindle-sheets-core` | Framework-agnostic spreadsheet engine |
+| `@weavertime/spindle-sheets-react` | React spreadsheet with canvas rendering |
+| `@weavertime/spindle-shared` | Shared utilities and types |
+| `@weavertime/spindle-transport-websocket` | WebSocket `CollabProvider` for real-time collaboration |
 
 ---
 
@@ -44,8 +44,8 @@ A Google Docs-like document editor with true page-based layout and real-time pag
 ### Quick Start
 
 ```typescript
-import { DocumentImpl } from '@weavertime/docs-core';
-import { DocumentProvider, DocumentEditor } from '@weavertime/docs-react';
+import { DocumentImpl } from '@weavertime/spindle-docs-core';
+import { DocumentProvider, DocumentEditor } from '@weavertime/spindle-docs-react';
 
 // Create document
 const doc = new DocumentImpl('doc_1', 'My Document');
@@ -89,8 +89,8 @@ A Google Sheets-like spreadsheet with high-performance canvas rendering.
 ### Quick Start
 
 ```typescript
-import { WorkbookImpl } from '@weavertime/sheets-core';
-import { WorkbookProvider, WorkbookCanvas } from '@weavertime/sheets-react';
+import { WorkbookImpl } from '@weavertime/spindle-sheets-core';
+import { WorkbookProvider, WorkbookCanvas } from '@weavertime/spindle-sheets-react';
 
 // Create workbook
 const workbook = new WorkbookImpl('workbook_1', 'My Workbook');

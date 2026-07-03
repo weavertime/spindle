@@ -10,11 +10,11 @@
 // to mirror threads into the Y.Doc, trigger UI re-renders, and surface a
 // `commentEvent` the host app can hook for notifications.
 
-import type { Comment, CommentThread } from '@weavertime/shared';
+import type { Comment, CommentThread } from '@weavertime/spindle-shared';
 
 // Re-export the shared comment vocabulary so consumers of docs-core get the
-// full set of types without depending on @weavertime/shared directly.
-export type { Comment, CommentThread, CommentStatus } from '@weavertime/shared';
+// full set of types without depending on @weavertime/spindle-shared directly.
+export type { Comment, CommentThread, CommentStatus } from '@weavertime/spindle-shared';
 
 let idCounter = 0;
 function genId(prefix: string): string {

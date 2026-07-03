@@ -534,8 +534,8 @@ export class DocumentImpl {
    * once we wire that in (phase 1.6).
    */
   async attachCollab(
-    provider: import('@weavertime/shared').CollabProvider,
-    identity: import('@weavertime/shared').CollabIdentity,
+    provider: import('@weavertime/spindle-shared').CollabProvider,
+    identity: import('@weavertime/spindle-shared').CollabIdentity,
     options?: import('./collab/binding').AttachCollabOptions,
   ): Promise<import('./collab/binding').CollabHandle> {
     if (this.collabHandle) {

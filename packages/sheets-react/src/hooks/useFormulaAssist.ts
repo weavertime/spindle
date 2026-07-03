@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { KeyboardEvent } from 'react';
-import { analyzeFormula, searchFunctions, getFunctionDoc } from '@weavertime/sheets-core';
-import type { FunctionDoc } from '@weavertime/sheets-core';
+import { analyzeFormula, searchFunctions, getFunctionDoc } from '@weavertime/spindle-sheets-core';
+import type { FunctionDoc } from '@weavertime/spindle-sheets-core';
 
 export type FormulaAssistMode = 'autocomplete' | 'signature' | 'hidden';
 

@@ -1,6 +1,6 @@
 import React, { memo, useRef, useEffect, useCallback, useState, useImperativeHandle, forwardRef } from 'react';
-import type { CellFormat } from '@weavertime/sheets-core';
-import { excelDateToJS } from '@weavertime/sheets-core';
+import type { CellFormat } from '@weavertime/spindle-sheets-core';
+import { excelDateToJS } from '@weavertime/spindle-sheets-core';
 
 export interface EditOverlayRef {
   insertAtCursor: (text: string, replaceExisting?: boolean) => void;

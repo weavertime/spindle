@@ -1,4 +1,4 @@
-# @weavertime/sheets-core
+# @weavertime/spindle-sheets-core
 
 Core spreadsheet engine for Spindle Sheets. Zero React dependencies.
 
@@ -14,7 +14,7 @@ Core spreadsheet engine for Spindle Sheets. Zero React dependencies.
 ## Usage
 
 ```typescript
-import { WorkbookImpl } from '@weavertime/sheets-core';
+import { WorkbookImpl } from '@weavertime/spindle-sheets-core';
 
 const workbook = new WorkbookImpl('workbook_1', 'My Workbook');
 const sheet = workbook.getSheet();

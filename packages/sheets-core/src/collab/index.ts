@@ -1,4 +1,4 @@
-// @weavertime/sheets-core/collab — Yjs-backed collaboration binding.
+// @weavertime/spindle-sheets-core/collab — Yjs-backed collaboration binding.
 
 export {
   getWorkbookYTypes,

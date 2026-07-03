@@ -1,4 +1,4 @@
-// @weavertime/transport-websocket
+// @weavertime/spindle-transport-websocket
 //
 // WebSocketProvider — a CollabProvider implementation that relays
 // 'doc' / 'awareness' payloads over a WebSocket to a peer-relay server

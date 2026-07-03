@@ -68,7 +68,7 @@ user; without `mentionableUsers` the `@` autocomplete simply never appears.
 ## The model
 
 The thread and comment types are editor-agnostic and exported from
-`@weavertime/shared` (and re-exported from each `*-core` package):
+`@weavertime/spindle-shared` (and re-exported from each `*-core` package):
 
 ```ts
 type CommentStatus = 'open' | 'resolved';

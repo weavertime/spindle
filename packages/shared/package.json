@@ -1,5 +1,5 @@
 {
-  "name": "@weavertime/shared",
+  "name": "@weavertime/spindle-shared",
   "version": "0.2.0",
   "description": "Shared utilities for Spindle (EventEmitter, collaboration)",
   "repository": {

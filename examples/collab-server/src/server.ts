@@ -1,6 +1,6 @@
 // Minimal WebSocket relay server for Spindle collaboration.
 //
-// Wire protocol (matches @weavertime/transport-websocket):
+// Wire protocol (matches @weavertime/spindle-transport-websocket):
 //   Connect:  ws://host:PORT/<roomId>
 //   Each message: 1 byte channel tag (0 = doc, 1 = awareness)
 //                  + opaque payload. The server doesn't interpret it —

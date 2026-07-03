@@ -21,7 +21,7 @@ import {
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { Node as PmNode } from 'prosemirror-model';
-import { blocksToPmDoc, proseMirrorToDocument, Block, DEFAULT_PAGE_CONFIG } from '@weavertime/docs-core';
+import { blocksToPmDoc, proseMirrorToDocument, Block, DEFAULT_PAGE_CONFIG } from '@weavertime/spindle-docs-core';
 
 import { HiddenEditor, HiddenEditorHandle } from './HiddenEditor';
 import {

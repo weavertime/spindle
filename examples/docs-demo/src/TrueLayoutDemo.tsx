@@ -8,13 +8,13 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { TrueLayoutEditor, TrueLayoutEditorHandle, PageConfig } from '@weavertime/docs-react';
+import { TrueLayoutEditor, TrueLayoutEditorHandle, PageConfig } from '@weavertime/spindle-docs-react';
 import { 
   createParagraphFromText, 
   createHeadingFromText,
   createListItemFromText,
   Block,
-} from '@weavertime/docs-core';
+} from '@weavertime/spindle-docs-core';
 
 // Sample content that will span multiple pages
 function createSampleContent(): Block[] {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { columnIndexToLabel } from '@weavertime/sheets-core';
-import type { SheetCommentThread } from '@weavertime/sheets-core';
+import { columnIndexToLabel } from '@weavertime/spindle-sheets-core';
+import type { SheetCommentThread } from '@weavertime/spindle-sheets-core';
 import { useWorkbook } from '../context/WorkbookContext';
 
 export interface UseCommentsResult {

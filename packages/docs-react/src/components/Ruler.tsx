@@ -1,5 +1,5 @@
 import React, { memo, useState, useCallback, useRef, useEffect } from 'react';
-import type { PageConfig, PageMargins } from '@weavertime/docs-core';
+import type { PageConfig, PageMargins } from '@weavertime/spindle-docs-core';
 import { useDocument } from '../context/DocumentContext';
 
 interface RulerProps {

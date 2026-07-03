@@ -7,8 +7,8 @@ import {
   createCommands,
   undo as pmUndo,
   redo as pmRedo,
-} from '@weavertime/docs-core';
-import type { HeadingLevel } from '@weavertime/docs-core';
+} from '@weavertime/spindle-docs-core';
+import type { HeadingLevel } from '@weavertime/spindle-docs-core';
 import type { ActiveMarks } from './ProseMirrorEditor';
 import type { CellSelection } from '../core';
 import { LinkDialog } from './LinkDialog';

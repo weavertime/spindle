@@ -16,7 +16,7 @@ import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { EditorState, Transaction } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { Node as PmNode } from 'prosemirror-model';
-import { docsSchema, createPlugins } from '@weavertime/docs-core';
+import { docsSchema, createPlugins } from '@weavertime/spindle-docs-core';
 
 export interface HiddenEditorHandle {
   /** Get the ProseMirror EditorView */

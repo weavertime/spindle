@@ -1,4 +1,4 @@
-# @weavertime/docs-core
+# @weavertime/spindle-docs-core
 
 Core document editor engine for Spindle Docs. Zero React dependencies.
 
@@ -14,7 +14,7 @@ Core document editor engine for Spindle Docs. Zero React dependencies.
 ## Usage
 
 ```typescript
-import { DocumentImpl, type Block } from '@weavertime/docs-core';
+import { DocumentImpl, type Block } from '@weavertime/spindle-docs-core';
 
 const doc = new DocumentImpl('doc_1', 'My Document');
 
@@ -52,7 +52,7 @@ import {
   createPlugins, 
   blocksToPmDoc, 
   proseMirrorToDocument 
-} from '@weavertime/docs-core';
+} from '@weavertime/spindle-docs-core';
 
 // Convert blocks to ProseMirror document
 const pmDoc = blocksToPmDoc(blocks, schema);

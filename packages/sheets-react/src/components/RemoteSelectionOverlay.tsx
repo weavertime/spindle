@@ -12,8 +12,8 @@
 // file instead of threading another effect through CanvasGrid.
 
 import React, { useEffect, useRef, useState } from 'react';
-import type { Sheet, Range, Selection, WorkbookImpl } from '@weavertime/sheets-core';
-import type { CollabIdentity } from '@weavertime/shared';
+import type { Sheet, Range, Selection, WorkbookImpl } from '@weavertime/spindle-sheets-core';
+import type { CollabIdentity } from '@weavertime/spindle-shared';
 import type { Awareness } from 'y-protocols/awareness';
 
 interface RemotePeer {

@@ -15,7 +15,7 @@ export default defineConfig({
       sourcemap: true,
     },
   ],
-  external: ['react', 'react-dom', '@weavertime/docs-core', 'immer', 'react/jsx-runtime'],
+  external: ['react', 'react-dom', '@weavertime/spindle-docs-core', 'immer', 'react/jsx-runtime'],
   plugins: [
     typescript({
       tsconfig: './tsconfig.json',

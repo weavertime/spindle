@@ -1,4 +1,4 @@
-# @weavertime/shared
+# @weavertime/spindle-shared
 
 Shared utilities for Spindle packages. This package contains framework-agnostic utilities that can be used by both sheets-core and docs-core.
 
@@ -10,7 +10,7 @@ Shared utilities for Spindle packages. This package contains framework-agnostic 
 ## Usage
 
 ```typescript
-import { EventEmitter } from '@weavertime/shared';
+import { EventEmitter } from '@weavertime/spindle-shared';
 
 // Create an event emitter with specific event types
 type MyEventTypes = 'change' | 'update' | 'delete';

@@ -6,10 +6,10 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@weavertime/sheets-core': path.resolve(__dirname, '../../packages/sheets-core/src'),
-      '@weavertime/sheets-react': path.resolve(__dirname, '../../packages/sheets-react/src'),
-      '@weavertime/shared': path.resolve(__dirname, '../../packages/shared/src'),
-      '@weavertime/transport-websocket': path.resolve(__dirname, '../../packages/transport-websocket/src'),
+      '@weavertime/spindle-sheets-core': path.resolve(__dirname, '../../packages/sheets-core/src'),
+      '@weavertime/spindle-sheets-react': path.resolve(__dirname, '../../packages/sheets-react/src'),
+      '@weavertime/spindle-shared': path.resolve(__dirname, '../../packages/shared/src'),
+      '@weavertime/spindle-transport-websocket': path.resolve(__dirname, '../../packages/transport-websocket/src'),
     },
   },
   server: {
