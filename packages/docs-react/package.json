@@ -29,7 +29,7 @@
     "build": "rollup -c",
     "dev": "rollup -c -w",
     "type-check": "tsc --noEmit",
-    "test": "jest",
+    "test": "jest --passWithNoTests",
     "clean": "rm -rf dist tsconfig.tsbuildinfo .rollup.cache"
   },
   "keywords": [
