@@ -17,6 +17,15 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # npm ci/install omit Rollup's platform-native optional dep in a
+      # workspace root (npm/cli#4828), so `rollup -c` fails to load
+      # @rollup/rollup-linux-x64-gnu. Install it explicitly at Rollup's exact
+      # version; the runner is always linux-x64. --no-save leaves the lockfile
+      # untouched.
+      - name: Install Rollup native binary (npm workspace bug workaround)
+        run: |
+          ROLLUP_VERSION="$(node -p "require('rollup/package.json').version")"
+          npm install --no-save --no-audit --no-fund "@rollup/rollup-linux-x64-gnu@${ROLLUP_VERSION}"
       # Build first: cross-package types resolve through each package's built
       # dist/*.d.ts, so type-check must run against a built tree.
       - run: npm run build
