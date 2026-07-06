@@ -1,6 +1,6 @@
-# Pagent-Libs Architecture Overview
+# Spindle Sheets — Architecture Overview
 
-Pagent-Libs is a high-performance spreadsheet library for React, designed with a modular architecture that separates core functionality from framework-specific implementations.
+Spindle Sheets is a high-performance spreadsheet library for React, designed with a modular architecture that separates core functionality from framework-specific implementations.
 
 ## Architecture
 
@@ -69,24 +69,26 @@ TypeScript strict mode is enforced throughout:
 ```
 spindle/
 ├── packages/
-│   ├── core/                    # Framework-agnostic core
+│   ├── sheets-core/                # Framework-agnostic core
 │   │   ├── src/
-│   │   │   ├── canvas/         # Canvas rendering system
-│   │   │   ├── collaboration/  # Real-time sync
-│   │   │   ├── export/         # Data export (CSV)
-│   │   │   ├── features/       # Filter, sort, freeze
-│   │   │   ├── formula-parser/ # Formula parsing
-│   │   │   ├── workbook.ts     # Main workbook model
-│   │   │   └── types.ts        # Type definitions
+│   │   │   ├── canvas/             # Canvas rendering system
+│   │   │   ├── collab/             # Real-time sync (Yjs binding)
+│   │   │   ├── export/             # CSV import / export
+│   │   │   ├── features/           # Filter, sort, freeze
+│   │   │   ├── formula-parser/     # Formula parsing & functions
+│   │   │   ├── utils/              # Shared helpers
+│   │   │   ├── workbook.ts         # Main workbook model
+│   │   │   └── types.ts            # Type definitions
 │   │   └── package.json
-│   └── sheets/                 # React components
+│   └── sheets-react/               # React components
 │       ├── src/
-│       │   ├── components/     # React components
-│       │   └── context/        # React context
+│       │   ├── components/         # React components
+│       │   ├── context/            # React context
+│       │   └── hooks/              # React hooks
 │       └── package.json
 ├── examples/
-│   └── sheets-demo/            # Standalone demo
-└── docs/                       # Documentation
+│   └── sheets-demo/                # Standalone demo
+└── documentation/                  # Documentation
 ```
 
 ## Key Interfaces
@@ -158,11 +160,19 @@ function App() {
 ### Advanced Usage
 
 ```typescript
+import { WorkbookImpl, exportToCSV } from '@weavertime/spindle-sheets-core';
+import { WebSocketProvider } from '@weavertime/spindle-transport-websocket';
+
 // Load existing data
 workbook.setData(workbookData);
 
-// Set up collaboration
-workbook.setCollaborationProvider(new FirebaseProvider(firebaseApp));
+// Set up real-time collaboration (see the Collaboration guide)
+const provider = new WebSocketProvider({ url: 'wss://collab.example.com' });
+await workbook.attachCollab(provider, {
+  userId: 'u_42',
+  displayName: 'Bharat',
+  color: '#4ecdc4',
+});
 
 // Add event listeners
 workbook.on('cellChange', (event) => {
@@ -170,7 +180,7 @@ workbook.on('cellChange', (event) => {
 });
 
 // Export data
-const csvData = workbook.exportToCSV();
+const csvData = exportToCSV(workbook);
 ```
 
 ## Extension Points
