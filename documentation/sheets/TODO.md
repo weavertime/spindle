@@ -1,4 +1,4 @@
-# Pagent-Sheets — Pending Items
+# Spindle Sheets — Pending Items
 
 Tracks the gaps between the current spreadsheet implementation and the
 feature set users expect from Excel / Google Sheets. **Formula coverage is

@@ -1,30 +1,6 @@
-# Pagent-Docs Architecture
+# Spindle Docs — Architecture
 
-Pagent-Docs is a high-performance document editor library for React, providing a Google Docs-like editing experience with true page-based layout and real-time pagination.
-
-## Overview
-
-The library is structured as two packages with clear separation of concerns:
-
-```
-spindle/
-├── packages/
-│   ├── docs-core/      # Framework-agnostic document engine
-│   └── docs-react/     # React components and layout engine
-```
-
-```mermaid
-graph TD
-    A[Spindle] --> B[@weavertime/spindle-docs-core]
-    A --> C[@weavertime/spindle-docs-react]
-    B --> D[Document Model]
-    B --> E[ProseMirror Integration]
-    B --> F[Block Types]
-    C --> G[TrueLayoutEditor]
-    C --> H[Selection Overlay]
-    C --> I[Input Bridge]
-    C --> J[DOM Painter]
-```
+Spindle Docs is a high-performance document editor library for React, providing a Google Docs-like editing experience with true page-based layout and real-time pagination. For a high-level tour of the two packages and the design principles behind them, start with the **[Overview](overview.md)**; this page covers the internals of each package.
 
 ## Core Package (@weavertime/spindle-docs-core)
 

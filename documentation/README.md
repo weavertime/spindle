@@ -1,6 +1,6 @@
-# Pagent-Libs Documentation
+# Spindle Documentation
 
-Pagent-Libs is a suite of high-performance productivity components for React, providing Google Docs-like document editing and Google Sheets-like spreadsheet functionality.
+Spindle is a suite of high-performance productivity components for React, providing Google Docs-like document editing and Google Sheets-like spreadsheet functionality.
 
 ## Packages
 
@@ -37,8 +37,9 @@ A Google Docs-like document editor with true page-based layout and real-time pag
 
 ### Documentation
 
-- **[Architecture](docs/architecture.md)** - Core concepts, layout engine, and design principles
-- **[Component Reference](docs/components.md)** - Complete guide to React components
+- **[Overview](docs/overview.md)** - High-level tour of the two packages and design principles
+- **[Architecture](docs/architecture.md)** - Core and React package internals, extension points
+- **[Components](docs/components.md)** - Complete guide to React components
 - **[Data Structures](docs/data-structures.md)** - Type definitions and interfaces
 
 ### Quick Start
@@ -77,13 +78,11 @@ A Google Sheets-like spreadsheet with high-performance canvas rendering.
 ### Documentation
 
 - **[Overview](sheets/overview.md)** - High-level architecture and design principles
-- **[Core Architecture](sheets/core/architecture.md)** - Workbook, Sheet models, sparse storage
-- **[Rendering System](sheets/core/rendering.md)** - Canvas rendering, viewport optimization
-- **[Formula Engine](sheets/core/formulas.md)** - Formula parser, dependency graph
+- **[Architecture](sheets/core/architecture.md)** - Workbook & Sheet models, sparse storage, and the React layer
+- **[Rendering](sheets/core/rendering.md)** - Canvas rendering, viewport optimization
+- **[Formula Engine](sheets/core/formulas.md)** - Formula parser, dependency graph, 146 built-in functions
 - **[Features](sheets/core/features.md)** - Sorting, filtering, freeze panes
-- **[Collaboration](sheets/core/collaboration.md)** - Real-time multi-user editing
-- **[React Components](sheets/architecture.md)** - Component architecture
-- **[Component Reference](sheets/components.md)** - All React components
+- **[Components](sheets/components.md)** - All React components
 - **[Data Structures](sheets/data-structures.md)** - Type definitions
 
 ### Quick Start

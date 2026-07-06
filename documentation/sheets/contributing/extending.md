@@ -1,4 +1,4 @@
-# Extending Pagent-Libs
+# Extending Spindle
 
 This guide explains how to extend Spindle with new features, formula functions, export formats, collaboration providers, and custom rendering.
 

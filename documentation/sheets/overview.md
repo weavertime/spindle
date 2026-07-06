@@ -1,6 +1,6 @@
-# Pagent-Libs Architecture Overview
+# Spindle Sheets — Architecture Overview
 
-Pagent-Libs is a high-performance spreadsheet library for React, designed with a modular architecture that separates core functionality from framework-specific implementations.
+Spindle Sheets is a high-performance spreadsheet library for React, designed with a modular architecture that separates core functionality from framework-specific implementations.
 
 ## Architecture
 

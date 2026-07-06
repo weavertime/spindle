@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from 'react';
+import { Link } from 'react-router-dom';
 import WeaveCanvas from './components/WeaveCanvas';
 import SurfaceMini from './components/SurfaceMini';
 import ThreadsCanvas from './components/ThreadsCanvas';
@@ -37,16 +38,16 @@ const FEATURES = [
 ];
 
 const SURFACES = [
-  { kind: 'sheet' as const, h: 'Sheets', pkg: '@weavertime/spindle-sheets-react', p: 'Formulas, filters, cell formatting, frozen panes, and a canvas grid that scrolls like native.' },
-  { kind: 'doc' as const, h: 'Docs', pkg: '@weavertime/spindle-docs-react', p: 'Paginated, print-true documents on a ProseMirror engine with a line-level “True Layout” paginator.' },
-  { kind: 'slide' as const, h: 'Slides', pkg: '@weavertime/spindle-docs-react', p: 'Presentation editing on the same document core — one data model, three surfaces.' },
+  { kind: 'sheet' as const, h: 'Sheets', pkg: '@weavertime/spindle-sheets-react', soon: false, p: 'Formulas, filters, cell formatting, frozen panes, and a canvas grid that scrolls like native.' },
+  { kind: 'doc' as const, h: 'Docs', pkg: '@weavertime/spindle-docs-react', soon: false, p: 'Paginated, print-true documents on a ProseMirror engine with a line-level “True Layout” paginator.' },
+  { kind: 'slide' as const, h: 'Slides', pkg: '@weavertime/spindle-docs-react', soon: true, p: 'Presentation editing on the same document core — one data model, three surfaces. Planned next, on the same engine.' },
 ];
 
 const PACKAGES = [
   ['spindle-shared', 'Framework-agnostic utilities — events, collaboration primitives'],
   ['spindle-sheets-core', 'Spreadsheet engine · sparse store · formulas · zero React'],
   ['spindle-sheets-react', 'React canvas grid, formula bar, toolbar & dialogs'],
-  ['spindle-docs-core', 'Document & slides engine · True Layout · zero React'],
+  ['spindle-docs-core', 'Document engine · True Layout · zero React · slides coming soon'],
   ['spindle-docs-react', 'React document & presentation editor components'],
   ['spindle-transport-websocket', 'WebSocket-backed collaboration provider'],
 ];
@@ -83,7 +84,7 @@ function TopBar() {
         <a href="#install">Install</a>
         <a href="#features">Features</a>
         <a href="#packages">Packages</a>
-        <a href={REPO}>Docs</a>
+        <Link to="/docs">Docs</Link>
         <a className="ghstar" href={REPO}>★ Star</a>
       </nav>
     </div></header>
@@ -111,7 +112,7 @@ function Hero() {
               <span>{INSTALL}</span>
               <span className="cp" style={copied ? { color: 'var(--teal)' } : undefined}>{copied ? 'COPIED ✓' : 'COPY'}</span>
             </button>
-            <a className="btn" href="#install">Read the docs →</a>
+            <Link className="btn" to="/docs">Read the docs →</Link>
           </div>
           <div className="metaline">
             <span><i />Canvas rendering</span>
@@ -186,9 +187,12 @@ function Surfaces() {
       <SecLabel n="03 — THREE SURFACES, ONE LOOM" />
       <div className="surfaces">
         {SURFACES.map((s) => (
-          <div className="surf" key={s.h}>
+          <div className={`surf${s.soon ? ' soon' : ''}`} key={s.h}>
             <SurfaceMini kind={s.kind} />
-            <h3>{s.h}</h3>
+            <div className="surf-head">
+              <h3>{s.h}</h3>
+              {s.soon && <span className="soon-badge">Coming soon</span>}
+            </div>
             <div className="pkg">{s.pkg}</div>
             <p>{s.p}</p>
           </div>
@@ -256,9 +260,9 @@ function Footer() {
         <div>
           <h4>Learn</h4>
           <a href="#install">Quick start</a>
-          <a href={REPO}>Documentation</a>
-          <a href={`${REPO}/tree/master/documentation`}>Collaboration guide</a>
-          <a href={REPO}>MCP &amp; AI</a>
+          <Link to="/docs">Documentation</Link>
+          <Link to="/docs/collaboration">Collaboration guide</Link>
+          <Link to="/docs/comments">Comments</Link>
         </div>
       </div>
       <div className="legal">
