@@ -348,7 +348,7 @@ export function parseDateString(dateStr: string): number | null {
   //   DD-MM-YYYY / DD.MM.YYYY — dashes and dots are European
   const iso = trimmed.match(/^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})$/);
   const us = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  const eu = trimmed.match(/^(\d{1,2})[\-.](\d{1,2})[\-.](\d{4})$/);
+  const eu = trimmed.match(/^(\d{1,2})[-.](\d{1,2})[-.](\d{4})$/);
 
   let year: number, month: number, day: number;
   if (iso) {
