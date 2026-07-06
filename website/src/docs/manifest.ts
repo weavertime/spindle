@@ -49,6 +49,7 @@ export const NAV: DocGroup[] = [
       { slug: 'sheets/core/rendering', title: 'Rendering' },
       { slug: 'sheets/core/formulas', title: 'Formula Engine' },
       { slug: 'sheets/core/features', title: 'Features' },
+      { slug: 'sheets/core/collaboration', title: 'Collaboration' },
       { slug: 'sheets/components', title: 'Components' },
       { slug: 'sheets/data-structures', title: 'Data Structures' },
     ],

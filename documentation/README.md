@@ -82,6 +82,7 @@ A Google Sheets-like spreadsheet with high-performance canvas rendering.
 - **[Rendering](sheets/core/rendering.md)** - Canvas rendering, viewport optimization
 - **[Formula Engine](sheets/core/formulas.md)** - Formula parser, dependency graph, 146 built-in functions
 - **[Features](sheets/core/features.md)** - Sorting, filtering, freeze panes
+- **[Collaboration](sheets/core/collaboration.md)** - Sheet-specific real-time sync internals
 - **[Components](sheets/components.md)** - All React components
 - **[Data Structures](sheets/data-structures.md)** - Type definitions
 

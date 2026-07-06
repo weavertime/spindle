@@ -1,461 +1,67 @@
-# Collaboration System
+# Sheets Collaboration Internals
 
-The collaboration system enables real-time multi-user editing of spreadsheets with presence indicators and conflict resolution.
+This page explains how a spreadsheet is wired for real-time collaboration under the hood. For the user-facing API — `attachCollab`, providers, offline persistence, connection status, and end-to-end encryption — start with the general **[Real-time Collaboration](../../collaboration.md)** guide. Everything here is sheet-specific detail on top of that.
 
-## Architecture Overview
+## The binding
 
-### Collaboration Provider Interface
-
-The collaboration system is designed with a provider pattern:
-
-```typescript
-// packages/sheets-core/src/collaboration/types.ts
-export interface CollaborationProvider {
-  connect(workbookId: string): Promise<void>;
-  disconnect(): void;
-  on(event: 'change' | 'presence' | 'cursor', handler: (data: unknown) => void): () => void;
-  emit(event: 'change' | 'presence' | 'cursor', data: unknown): void;
-  getPresences(): Presence[];
-}
-```
-
-### Provider Integration
-
-Collaboration providers are attached to workbooks:
-
-```typescript
-// In workbook.ts
-private collaborationProvider?: CollaborationProvider;
-
-setCollaborationProvider(provider: CollaborationProvider): void {
-  this.collaborationProvider = provider;
-  // Set up event forwarding
-  this.setupCollaboration();
-}
-
-private setupCollaboration(): void {
-  if (!this.collaborationProvider) return;
-
-  // Forward local changes to remote
-  this.on('cellChange', (event) => {
-    this.collaborationProvider!.emit('change', {
-      type: 'cellChange',
-      sheetId: event.sheetId,
-      row: event.row,
-      col: event.col,
-      value: event.value,
-      timestamp: Date.now(),
-      userId: this.currentUserId,
-    });
-  });
-
-  // Listen for remote changes
-  this.collaborationProvider.on('change', (operation: CollaborationOperation) => {
-    if (operation.userId !== this.currentUserId) {
-      this.applyRemoteOperation(operation);
-    }
-  });
-}
-```
-
-## Firebase Provider Implementation
-
-### Firebase Collaboration Provider
-
-The Firebase provider implements real-time synchronization:
-
-```typescript
-// packages/sheets-core/src/collaboration/firebase-provider.ts
-export class FirebaseCollaborationProvider implements CollaborationProvider {
-  private db: any; // Firebase Realtime Database or Firestore
-  private workbookId: string | null = null;
-  private handlers: Map<string, Set<(data: unknown) => void>> = new Map();
-  private presences: Map<string, Presence> = new Map();
-
-  constructor(firebaseConfig: any) {
-    // Initialize Firebase
-    // this.db = initializeFirebase(firebaseConfig);
-  }
-
-  async connect(workbookId: string): Promise<void> {
-    this.workbookId = workbookId;
-
-    // Set up Firebase listeners
-    this.setupFirebaseListeners(workbookId);
-    this.setupPresenceTracking(workbookId);
-  }
-
-  disconnect(): void {
-    // Clean up Firebase listeners
-    this.workbookId = null;
-    this.handlers.clear();
-    this.presences.clear();
-  }
-}
-```
-
-### Firebase Data Structure
-
-Collaboration data is stored in Firebase with this structure:
+Collaboration is built on [Yjs](https://yjs.dev), a CRDT. `WorkbookImpl` keeps a **`Y.Doc`** as the merge-conflict-free shadow of the workbook, and moves opaque bytes to peers through a **`CollabProvider`** — the library never talks to the network directly.
 
 ```
-/workbooks/{workbookId}/
-  ├── operations/           # Change operations
-  │   ├── {timestamp}-{userId}/
-  │   │   ├── type: "cellChange"
-  │   │   ├── sheetId: "sheet_1"
-  │   │   ├── row: 0
-  │   │   ├── col: 1
-  │   │   ├── value: "new value"
-  │   │   └── userId: "user123"
-  ├── presence/             # User presence
-  │   ├── {userId}/
-  │   │   ├── username: "John Doe"
-  │   │   ├── color: "#ff6b6b"
-  │   │   ├── selection: {row: 0, col: 0}
-  │   │   ├── cursor: {row: 0, col: 1}
-  │   │   └── lastSeen: 1640995200000
-  └── cursors/              # Real-time cursor positions
-      ├── {userId}/
-      │   ├── row: 0
-      │   ├── col: 1
-      │   └── timestamp: 1640995200000
+WorkbookImpl
+     │  workbook.attachCollab(provider, identity, options?)
+     ▼
+   Y.Doc  ⇄  CollabProvider  ⇄  (network / memory / encryption wrapper)
+     │
+     ├── 'doc'        channel — durable state (y-protocols/sync)
+     └── 'awareness'  channel — ephemeral presence (y-protocols/awareness)
 ```
 
-### Real-time Listeners
+Attaching hydrates a fresh `Y.Doc` from the workbook's current `WorkbookData`, subscribes to both channels, and only then calls `provider.connect(roomId)` — so every subscription is in place before the first inbound payload can arrive. The `roomId` defaults to the workbook's `id` and can be overridden via options.
 
-Firebase listeners handle incoming changes:
+```ts
+import { WorkbookImpl } from '@weavertime/spindle-sheets-core';
+import { WebSocketProvider } from '@weavertime/spindle-transport-websocket';
 
-```typescript
-private setupFirebaseListeners(workbookId: string): void {
-  // Listen for operations
-  const operationsRef = this.db.ref(`workbooks/${workbookId}/operations`);
+const workbook = new WorkbookImpl('wb_1', 'Quarterly Plan');
+workbook.setData(savedJson);
 
-  operationsRef.on('child_added', (snapshot: any) => {
-    const operation = snapshot.val();
-    if (operation.userId !== this.currentUserId) {
-      this.notifyHandlers('change', operation);
-    }
-  });
+const provider = new WebSocketProvider({ url: 'wss://collab.example.com' });
 
-  // Listen for presence updates
-  const presenceRef = this.db.ref(`workbooks/${workbookId}/presence`);
+await workbook.attachCollab(
+  provider,
+  { userId: 'u_42', displayName: 'Bharat', color: '#4ecdc4' },
+  { roomId: 'quarterly-plan' },
+);
 
-  presenceRef.on('child_added', (snapshot: any) => {
-    const userId = snapshot.key;
-    const presence = snapshot.val();
-    this.presences.set(userId, presence);
-    this.notifyHandlers('presence', { userId, presence });
-  });
-
-  presenceRef.on('child_changed', (snapshot: any) => {
-    const userId = snapshot.key;
-    const presence = snapshot.val();
-    this.presences.set(userId, presence);
-    this.notifyHandlers('presence', { userId, presence });
-  });
-
-  presenceRef.on('child_removed', (snapshot: any) => {
-    const userId = snapshot.key;
-    this.presences.delete(userId);
-    this.notifyHandlers('presence', { userId, removed: true });
-  });
-}
+// …later
+workbook.detachCollab();
 ```
 
-## Presence System
+`attachCollab` returns a handle (`{ ydoc, awareness, identity, undoManager, detach }`). `<WorkbookCanvas>` picks it up automatically, so remote cursors and selection highlights render with no extra wiring.
 
-### Presence Data Structure
+## What flows on each channel
 
-Presence tracks user activity and selections:
+**Outbound.** A local edit mutates the workbook's top-level Y types; Yjs emits an update, which is encoded and sent on the `'doc'` channel. Presence changes (the local user's cursor and selection) are encoded from the Yjs `Awareness` instance and sent on `'awareness'`.
 
-```typescript
-export interface Presence {
-  userId: string;
-  username: string;
-  color: string;           // User's cursor/selection color
-  selection?: {
-    row: number;
-    col: number;
-  };
-  cursor?: {
-    row: number;
-    col: number;
-  };
-  lastSeen?: number;
-}
-```
+**Inbound.**
 
-### Presence Tracking
+- `'doc'` payloads are fed through the Yjs sync protocol and applied to the `Y.Doc` with the provider as the update origin.
+- `'awareness'` payloads are applied to the `Awareness` instance, updating remote presence.
 
-Presence is updated on user actions:
+## Reloading remote changes (v1)
 
-```typescript
-private updatePresence(presence: Partial<Presence>): void {
-  if (!this.workbookId || !this.currentUserId) return;
+When a remote `'doc'` update lands, the current strategy re-serializes the **whole** `Y.Doc` back to `WorkbookData` and calls the workbook's internal reload path. This is `O(workbook size)` per remote update — simple and always correct. Granular `Y.Map.observe` per type, to touch only the changed cells, is a planned optimization for very large sheets.
 
-  const presenceRef = this.db.ref(`workbooks/${this.workbookId}/presence/${this.currentUserId}`);
+## Undo, redo, and presence
 
-  presenceRef.update({
-    ...presence,
-    lastSeen: Date.now(),
-  }).catch((error: any) => {
-    console.error('Failed to update presence:', error);
-  });
-}
+- **Undo/redo** routes through a `Y.UndoManager` that tracks every local write on the workbook's top-level Y types (metadata, style/format pools, sheet list, and per-sheet data transitively). Undo therefore produces **inverse Yjs operations that broadcast to peers**, rather than a local snapshot restore that would bypass the shared document.
+- **Awareness** carries the `identity` you pass in — `userId`, `displayName`, and `color` — which drive the remote cursor and selection colors.
 
-// Update presence on selection change
-workbook.on('cellSelection', (event) => {
-  this.updatePresence({
-    selection: event.selection,
-  });
-});
+## Offline persistence
 
-// Update cursor position (throttled)
-private updateCursorThrottled = throttle((row: number, col: number) => {
-  this.updatePresence({
-    cursor: { row, col },
-  });
-}, 50); // Update at most every 50ms
-```
+Pass a `persistenceKey` in the options and the `Y.Doc` is mirrored to IndexedDB. On the next attach, prior local state is restored from IndexedDB **before** deciding whether to hydrate from the workbook's data, so edits survive a refresh or an offline period and sync on reconnect. It is browser-only — leave it unset for server-side rendering.
 
-## Operation-Based Synchronization
+## See also
 
-### Collaboration Operations
-
-All changes are represented as operations:
-
-```typescript
-export interface CollaborationOperation {
-  type: 'cellChange' | 'selectionChange' | 'sheetChange';
-  sheetId: string;
-  row?: number;
-  col?: number;
-  value?: unknown;
-  selection?: {
-    row: number;
-    col: number;
-  };
-  timestamp: number;
-  userId: string;
-}
-```
-
-### Conflict Resolution
-
-Operations are applied in timestamp order:
-
-```typescript
-private applyRemoteOperation(operation: CollaborationOperation): void {
-  switch (operation.type) {
-    case 'cellChange':
-      // Apply cell change if newer than local version
-      if (this.isNewerThanLocal(operation)) {
-        this.workbook.setCellValue(
-          operation.sheetId,
-          operation.row!,
-          operation.col!,
-          operation.value
-        );
-      }
-      break;
-
-    case 'selectionChange':
-      // Update remote user's selection
-      this.updateRemoteSelection(operation.userId, operation.selection!);
-      break;
-
-    case 'sheetChange':
-      // Handle sheet operations (add/delete/rename)
-      this.applySheetOperation(operation);
-      break;
-  }
-}
-
-private isNewerThanLocal(operation: CollaborationOperation): boolean {
-  // Compare timestamps and user priorities
-  // Last write wins, with user priority for tie-breaking
-  const localTimestamp = this.getLocalTimestamp(operation.sheetId, operation.row, operation.col);
-  if (operation.timestamp > localTimestamp) {
-    return true;
-  }
-  if (operation.timestamp === localTimestamp) {
-    return operation.userId > this.currentUserId; // Simple priority system
-  }
-  return false;
-}
-```
-
-## Real-time Cursor Tracking
-
-### Cursor Synchronization
-
-Cursor positions are tracked in real-time:
-
-```typescript
-private setupCursorTracking(workbookId: string): void {
-  const cursorsRef = this.db.ref(`workbooks/${workbookId}/cursors/${this.currentUserId}`);
-
-  // Update cursor on mouse movement (throttled)
-  const handleMouseMove = throttle((event: MouseEvent) => {
-    const { row, col } = this.hitTest(event.clientX, event.clientY);
-    cursorsRef.set({
-      row,
-      col,
-      timestamp: Date.now(),
-    });
-  }, 50);
-
-  document.addEventListener('mousemove', handleMouseMove);
-
-  // Listen for other users' cursors
-  const allCursorsRef = this.db.ref(`workbooks/${workbookId}/cursors`);
-  allCursorsRef.on('child_added', (snapshot: any) => {
-    const userId = snapshot.key;
-    if (userId !== this.currentUserId) {
-      this.updateRemoteCursor(userId, snapshot.val());
-    }
-  });
-
-  allCursorsRef.on('child_changed', (snapshot: any) => {
-    const userId = snapshot.key;
-    if (userId !== this.currentUserId) {
-      this.updateRemoteCursor(userId, snapshot.val());
-    }
-  });
-}
-```
-
-### Rendering Remote Cursors
-
-Remote cursors are displayed in the UI:
-
-```typescript
-private updateRemoteCursor(userId: string, cursorData: { row: number; col: number; timestamp: number }): void {
-  // Check if cursor is recent (within last 5 seconds)
-  const isRecent = Date.now() - cursorData.timestamp < 5000;
-
-  if (isRecent) {
-    const presence = this.presences.get(userId);
-    if (presence) {
-      // Render cursor at position with user's color
-      this.renderRemoteCursor(cursorData.row, cursorData.col, presence.color, presence.username);
-    }
-  } else {
-    // Remove stale cursor
-    this.removeRemoteCursor(userId);
-  }
-}
-```
-
-## Offline Support
-
-### Operation Queue
-
-Operations are queued when offline:
-
-```typescript
-private operationQueue: CollaborationOperation[] = [];
-private isOnline = true;
-
-emit(event: string, data: unknown): void {
-  if (!this.isOnline) {
-    // Queue operation for when we come back online
-    this.operationQueue.push(data as CollaborationOperation);
-    return;
-  }
-
-  // Send to Firebase immediately
-  this.sendToFirebase(event, data);
-}
-
-private handleReconnect(): void {
-  this.isOnline = true;
-
-  // Send queued operations
-  while (this.operationQueue.length > 0) {
-    const operation = this.operationQueue.shift()!;
-    this.sendToFirebase('change', operation);
-  }
-}
-```
-
-## Performance Optimizations
-
-### Operation Batching
-
-Multiple rapid changes are batched:
-
-```typescript
-private pendingOperations: Map<string, CollaborationOperation> = new Map();
-
-private emitCellChange(operation: CollaborationOperation): void {
-  const key = `${operation.sheetId}-${operation.row}-${operation.col}`;
-
-  // Replace pending operation for same cell
-  this.pendingOperations.set(key, operation);
-
-  // Debounce sending to Firebase
-  this.debouncedSendPendingOperations();
-}
-
-private debouncedSendPendingOperations = debounce(() => {
-  for (const operation of this.pendingOperations.values()) {
-    this.sendToFirebase('change', operation);
-  }
-  this.pendingOperations.clear();
-}, 100);
-```
-
-### Presence Throttling
-
-Presence updates are throttled to reduce Firebase load:
-
-```typescript
-private throttledUpdatePresence = throttle((presence: Partial<Presence>) => {
-  this.updatePresence(presence);
-}, 200);
-
-private throttledUpdateCursor = throttle((row: number, col: number) => {
-  this.updateCursor(row, col);
-}, 50);
-```
-
-## Security Considerations
-
-### Authentication
-
-Collaboration requires authenticated users:
-
-```typescript
-async connect(workbookId: string): Promise<void> {
-  // Verify user authentication
-  const user = await this.authenticateUser();
-  if (!user) {
-    throw new Error('Authentication required for collaboration');
-  }
-
-  this.currentUserId = user.id;
-  this.currentUsername = user.name;
-
-  // Connect to Firebase with user context
-  await this.connectToFirebase(workbookId, user);
-}
-```
-
-### Authorization
-
-Workbook access is controlled:
-
-```typescript
-private async checkWorkbookAccess(workbookId: string, userId: string): Promise<boolean> {
-  // Check if user has permission to access workbook
-  const permissionsRef = this.db.ref(`workbooks/${workbookId}/permissions/${userId}`);
-  const snapshot = await permissionsRef.once('value');
-  const permissions = snapshot.val();
-
-  return permissions && (permissions.read || permissions.write);
-}
-```
-
-The collaboration system provides seamless real-time editing with presence indicators, conflict resolution, and performance optimizations for large workbooks.
+- **[Real-time Collaboration](../../collaboration.md)** — the full API, transports, connection status, and end-to-end encryption
+- **[Architecture](architecture.md)** — the core data model these Y types mirror
