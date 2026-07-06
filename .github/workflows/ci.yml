@@ -16,7 +16,11 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      # Use `npm install`, not `npm ci`: in a workspace root, `npm ci` omits
+      # platform-native optional deps (e.g. @rollup/rollup-linux-x64-gnu) —
+      # the npm bug in https://github.com/npm/cli/issues/4828. `npm install`
+      # reconciles them correctly and still honors the in-sync lockfile.
+      - run: npm install --no-audit --no-fund
       # Build first: cross-package types resolve through each package's built
       # dist/*.d.ts, so type-check must run against a built tree.
       - run: npm run build
