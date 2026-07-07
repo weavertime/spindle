@@ -23,7 +23,7 @@ export default function WeaveCanvas() {
 
     const draw = () => {
       cx.clearRect(0, 0, W, H);
-      // warp — vertical threads on light paper, brass every 7th
+      // warp: vertical threads on light paper, brass every 7th
       for (let x = 0; x <= W; x += gap) {
         const brass = Math.round(x / gap) % 7 === 0;
         cx.strokeStyle = brass ? 'rgba(192,130,30,0.11)' : 'rgba(46,53,102,0.05)';
@@ -35,7 +35,7 @@ export default function WeaveCanvas() {
         }
         cx.stroke();
       }
-      // weft — horizontal ink threads
+      // weft: horizontal ink threads
       for (let y = 0; y <= H; y += gap) {
         cx.strokeStyle = 'rgba(27,30,51,0.035)';
         cx.beginPath();

@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.2.10",
+    "@weavertime/spindle-docs-core": "^0.2.0",
+    "@weavertime/spindle-docs-react": "^0.2.0",
     "@weavertime/spindle-shared": "^0.2.0",
     "@weavertime/spindle-sheets-core": "^0.2.0",
     "@weavertime/spindle-sheets-react": "^0.2.0",

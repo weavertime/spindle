@@ -30,7 +30,7 @@ const INSTALL = 'npm i @weavertime/spindle-sheets-react';
 
 const FEATURES = [
   { fi: 'Rendering', h: 'Painted to canvas', p: 'Cells and glyphs draw straight to a canvas with virtual scrolling. Tens of thousands of rows stay smooth at 60fps.' },
-  { fi: 'Footprint', h: 'Sparse by design', p: 'A sparse cell store keeps memory and bundle size lean — you ship only the cells you actually use.' },
+  { fi: 'Footprint', h: 'Sparse by design', p: 'A sparse cell store keeps memory and bundle size lean, so you ship only the cells you actually use.' },
   { fi: 'Architecture', h: 'Portable cores', p: 'sheets-core and docs-core carry zero React. React is just the first loom; the engine goes anywhere.' },
   { fi: 'Collaboration', h: 'Real-time, offline-ready', p: 'CRDT editing over Yjs. Presence, remote cursors, and conflict-free offline merge come standard.' },
   { fi: 'AI-native', h: 'Pure-JSON model', p: 'Documents and workbooks are plain JSON. A bundled MCP server lets Claude generate and validate them directly.' },
@@ -38,13 +38,13 @@ const FEATURES = [
 ];
 
 const SURFACES = [
-  { kind: 'sheet' as const, h: 'Sheets', pkg: '@weavertime/spindle-sheets-react', soon: false, p: 'Formulas, filters, cell formatting, frozen panes, and a canvas grid that scrolls like native.' },
-  { kind: 'doc' as const, h: 'Docs', pkg: '@weavertime/spindle-docs-react', soon: false, p: 'Paginated, print-true documents on a ProseMirror engine with a line-level “True Layout” paginator.' },
-  { kind: 'slide' as const, h: 'Slides', pkg: '@weavertime/spindle-docs-react', soon: true, p: 'Presentation editing on the same document core — one data model, three surfaces. Planned next, on the same engine.' },
+  { kind: 'sheet' as const, h: 'Sheets', pkg: '@weavertime/spindle-sheets-react', soon: false, demo: '/demo/sheets', p: 'Formulas, filters, cell formatting, frozen panes, and a canvas grid that scrolls like native.' },
+  { kind: 'doc' as const, h: 'Docs', pkg: '@weavertime/spindle-docs-react', soon: false, demo: '/demo/docs', p: 'Paginated, print-true documents on a ProseMirror engine with a line-level “True Layout” paginator.' },
+  { kind: 'slide' as const, h: 'Slides', pkg: '@weavertime/spindle-docs-react', soon: true, demo: '', p: 'Presentation editing on the same document core: one data model, three surfaces. Planned next, on the same engine.' },
 ];
 
 const PACKAGES = [
-  ['spindle-shared', 'Framework-agnostic utilities — events, collaboration primitives'],
+  ['spindle-shared', 'Framework-agnostic utilities: events, collaboration primitives'],
   ['spindle-sheets-core', 'Spreadsheet engine · sparse store · formulas · zero React'],
   ['spindle-sheets-react', 'React canvas grid, formula bar, toolbar & dialogs'],
   ['spindle-docs-core', 'Document engine · True Layout · zero React · slides coming soon'],
@@ -84,6 +84,7 @@ function TopBar() {
         <a href="#install">Install</a>
         <a href="#features">Features</a>
         <a href="#packages">Packages</a>
+        <Link to="/demo/sheets">Demo</Link>
         <Link to="/docs">Docs</Link>
         <a className="ghstar" href={REPO}>★ Star</a>
       </nav>
@@ -105,14 +106,15 @@ function Hero() {
         <div>
           <div className="eyebrow">Open source · MIT · React</div>
           <h1>Spreadsheets, documents &amp; slides, <em>woven into</em> your app.</h1>
-          <p className="lede">Spindle is the full editing experience of a commercial office suite — as forever-free React libraries you own outright.</p>
+          <p className="lede">Spindle is the full editing experience of a commercial office suite, as forever-free React libraries you own outright.</p>
           <div className="cta">
             <button className="install" onClick={copy} title="Copy to clipboard">
               <span className="dollar">$</span>
               <span>{INSTALL}</span>
               <span className="cp" style={copied ? { color: 'var(--teal)' } : undefined}>{copied ? 'COPIED ✓' : 'COPY'}</span>
             </button>
-            <Link className="btn" to="/docs">Read the docs →</Link>
+            <Link className="btn" to="/demo/sheets">Try the live demo</Link>
+            <Link className="btn ghost" to="/docs">Read the docs →</Link>
           </div>
           <div className="metaline">
             <span><i />Canvas rendering</span>
@@ -136,11 +138,11 @@ function Hero() {
 function Install() {
   return (
     <section className="sec" id="install"><div className="wrap">
-      <SecLabel n="01 — QUICK START" />
+      <SecLabel n="01 · QUICK START" />
       <div className="quick">
         <div>
           <h2>Mount an editor in three lines.</h2>
-          <p className="intro">Install a package, wrap your data in a provider, drop in the canvas. The React layer is a thin skin over a framework-agnostic core — so the same engine can move to any loom later.</p>
+          <p className="intro">Install a package, wrap your data in a provider, drop in the canvas. The React layer is a thin skin over a framework-agnostic core, so the same engine can move to any loom later.</p>
         </div>
         <div className="code">
           <div className="cap"><i /><i /><i /></div>
@@ -165,9 +167,9 @@ function Install() {
 function Features() {
   return (
     <section className="sec" id="features"><div className="wrap">
-      <SecLabel n="02 — THE WEAVE" />
+      <SecLabel n="02 · THE WEAVE" />
       <h2>Built like a loom: precise, fast, and yours to re-thread.</h2>
-      <p className="intro" style={{ marginBottom: 38 }}>Every design goal points the same way — performance, portability, and complete control over the tools.</p>
+      <p className="intro" style={{ marginBottom: 38 }}>Every design goal points the same way: performance, portability, and complete control over the tools.</p>
       <div className="weavegrid">
         {FEATURES.map((f) => (
           <div className="cell-f" key={f.h}>
@@ -184,7 +186,7 @@ function Features() {
 function Surfaces() {
   return (
     <section className="sec"><div className="wrap">
-      <SecLabel n="03 — THREE SURFACES, ONE LOOM" />
+      <SecLabel n="03 · THREE SURFACES, ONE LOOM" />
       <div className="surfaces">
         {SURFACES.map((s) => (
           <div className={`surf${s.soon ? ' soon' : ''}`} key={s.h}>
@@ -195,6 +197,7 @@ function Surfaces() {
             </div>
             <div className="pkg">{s.pkg}</div>
             <p>{s.p}</p>
+            {s.demo && <Link className="surf-demo" to={s.demo}>Open live demo →</Link>}
           </div>
         ))}
       </div>
@@ -205,7 +208,7 @@ function Surfaces() {
 function Packages() {
   return (
     <section className="sec" id="packages"><div className="wrap">
-      <SecLabel n="04 — EVERY THREAD" />
+      <SecLabel n="04 · EVERY THREAD" />
       <h2 style={{ marginBottom: 30 }}>Six packages, one scope.</h2>
       <div className="tblwrap"><table className="tbl">
         <thead><tr><th>Package</th><th>Role</th><th style={{ textAlign: 'right' }}>Version</th></tr></thead>
@@ -226,7 +229,7 @@ function Packages() {
 function Collab() {
   return (
     <section className="sec"><div className="wrap">
-      <SecLabel n="05 — MANY HANDS, ONE CLOTH" />
+      <SecLabel n="05 · MANY HANDS, ONE CLOTH" />
       <div className="collab">
         <div>
           <h2>Everyone weaves the same thread.</h2>
@@ -247,7 +250,7 @@ function Footer() {
       <div className="foot">
         <div className="about">
           <div className="fbrand">Spindle</div>
-          The open-source editing layer for the modern web — spreadsheets, documents, and slides as React libraries.
+          The open-source editing layer for the modern web: spreadsheets, documents, and slides as React libraries.
           Part of the <strong style={{ color: 'var(--linen)' }}>Weavertime</strong> family, alongside <strong style={{ color: 'var(--linen)' }}>Weaversuite</strong>, the encrypted drive it was spun for.
         </div>
         <div>

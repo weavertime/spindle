@@ -5,8 +5,11 @@ import App from './App';
 import '@fontsource-variable/bricolage-grotesque';
 import './styles.css';
 
-// The docs live in their own chunk — the landing page never pays for them.
+// The docs and the live demos each live in their own chunk; the landing
+// page never pays for them.
 const DocsApp = lazy(() => import('./docs/DocsApp'));
+const SheetsDemo = lazy(() => import('./demo/SheetsDemo'));
+const DocsDemo = lazy(() => import('./demo/DocsDemo'));
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -18,6 +21,22 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           element={
             <Suspense fallback={<div className="docs-boot">Loading docs…</div>}>
               <DocsApp />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/demo/sheets"
+          element={
+            <Suspense fallback={<div className="docs-boot">Loading the sheets demo…</div>}>
+              <SheetsDemo />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/demo/docs"
+          element={
+            <Suspense fallback={<div className="docs-boot">Loading the docs demo…</div>}>
+              <DocsDemo />
             </Suspense>
           }
         />
