@@ -1,4 +1,4 @@
-// Mermaid is heavy, so it's imported on demand — only the first doc page that
+// Mermaid is heavy, so it's imported on demand; only the first doc page that
 // actually contains a diagram pulls it in, as its own async chunk.
 type MermaidApi = typeof import('mermaid')['default'];
 

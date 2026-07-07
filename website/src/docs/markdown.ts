@@ -84,7 +84,7 @@ export function renderDoc(
     if (internal) {
       a.setAttribute('href', internal);
     } else {
-      // Repo-relative link we don't render on the site (e.g. examples/) — send
+      // Repo-relative link we don't render on the site (e.g. examples/); send
       // it to the source on GitHub.
       const clean = href.replace(/^\.\//, '');
       a.setAttribute('href', `${REPO_TREE}/${clean}`);
