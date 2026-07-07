@@ -10,7 +10,7 @@ import { EditorView } from 'prosemirror-view';
 import { keymap } from 'prosemirror-keymap';
 import { baseKeymap, toggleMark } from 'prosemirror-commands';
 import { history, undo, redo } from 'prosemirror-history';
-import { slidesSchema, type ThemeData, type BodyStyle, type RichTextDoc } from '@weavertime/spindle-slides-core';
+import { slidesSchema, resolveColor, resolveFont, type ThemeData, type BodyStyle, type RichTextDoc } from '@weavertime/spindle-slides-core';
 import { useDeck } from '../hooks';
 import { useDeckContext } from '../context/DeckContext';
 
@@ -110,9 +110,10 @@ export function RichTextEditor({
         display: 'flex',
         flexDirection: 'column',
         justifyContent: V_ALIGN[bodyStyle?.vAlign ?? 'top'],
-        fontFamily: theme.fonts.minor,
-        fontSize: 18,
-        color: '#1f2933',
+        fontFamily: resolveFont(bodyStyle?.fontFamily, theme),
+        fontSize: bodyStyle?.fontSize ?? 18,
+        fontWeight: bodyStyle?.bold ? 700 : 400,
+        color: bodyStyle?.color ? resolveColor(bodyStyle.color, theme) : resolveColor({ kind: 'theme', slot: 'dk1' }, theme),
         textAlign: centered ? 'center' : 'left',
         cursor: 'text',
       }}

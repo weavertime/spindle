@@ -12,7 +12,9 @@
 // project rule).
 
 import { EventEmitter } from '@weavertime/spindle-shared';
-import { indexBetween, sortByIndex } from './scene/fractional-index';
+import { indexBetween, indexesBetween, sortByIndex } from './scene/fractional-index';
+import { buildPlaceholderElement } from './theme/materialize';
+import type { PlaceholderMeta } from './scene/types';
 import { generateId } from './utils/id';
 import {
   createTextElement,
@@ -87,8 +89,9 @@ export class DeckImpl {
     this.theme = getBuiltinTheme();
     this.layouts = BUILTIN_LAYOUTS.map((l) => structuredClone(l) as LayoutData);
 
-    // Start with one empty slide so activeSlideId always resolves.
-    const first = this.createSlideRecord({ layoutId: 'titleContent' });
+    // Start with one empty slide so activeSlideId always resolves. Placeholders
+    // are materialized when a slide is added with a layout (or via setData).
+    const first = this.createSlideRecord({ layoutId: 'blank' });
     this.slides.set(first.id, first);
     this.activeSlideId = first.id;
     this.selection = { slideId: first.id, elementIds: [] };
@@ -203,7 +206,34 @@ export class DeckImpl {
     });
     this.slides.set(slide.id, slide);
     this.emit('slideAdd', { slideId: slide.id });
+    if (opts.layoutId) this.materializePlaceholders(slide.id, opts.layoutId);
     return slide;
+  }
+
+  /** Create real placeholder elements (and background) for a slide's layout. */
+  private materializePlaceholders(slideId: string, layoutId: string): void {
+    const layout = this.getLayout(layoutId);
+    if (!layout) return;
+    if (layout.background) {
+      const slide = this.slides.get(slideId);
+      if (slide) this.slides.set(slideId, { ...slide, background: layout.background });
+    }
+    if (layout.placeholders.length === 0) return;
+    const keys = indexesBetween(null, null, layout.placeholders.length);
+    layout.placeholders.forEach((ph, i) => {
+      const el = buildPlaceholderElement(ph, slideId, keys[i]);
+      this.elements.set(el.id, el);
+      this.emit('elementAdd', { slideId, elementId: el.id });
+    });
+  }
+
+  /** The layout prompt text for a placeholder element, if any (for rendering). */
+  getPlaceholderPrompt(slideId: string, placeholder: PlaceholderMeta | undefined): string | undefined {
+    if (!placeholder) return undefined;
+    const slide = this.slides.get(slideId);
+    if (!slide?.layoutRef) return undefined;
+    const layout = this.getLayout(slide.layoutRef);
+    return layout?.placeholders.find((p) => p.type === placeholder.type && p.idx === placeholder.idx)?.prompt;
   }
 
   /** Duplicate a slide and all its elements, inserting the copy just after it. */

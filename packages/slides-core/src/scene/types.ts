@@ -79,6 +79,14 @@ export interface BodyStyle {
   padding?: number;
   /** Wrap text to the box width (default true). */
   wrap?: boolean;
+  // Element-level text defaults (PPTX defRPr analogue): runs that don't carry
+  // an explicit mark inherit these from the container, so placeholder prompt
+  // text and freshly-typed text both render at the intended size/color.
+  fontSize?: number;
+  color?: Color;
+  bold?: boolean;
+  /** 'major' | 'minor' | a literal family. */
+  fontFamily?: string;
 }
 
 // ── Elements ─────────────────────────────────────────────────────────────────

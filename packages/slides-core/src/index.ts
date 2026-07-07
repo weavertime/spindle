@@ -23,6 +23,7 @@ export { slidesSchema } from './text/schema';
 export * from './theme/types';
 export * from './theme/resolve';
 export * from './theme/builtin';
+export { buildPlaceholderElement } from './theme/materialize';
 
 // Engine
 export { DeckImpl } from './deck';

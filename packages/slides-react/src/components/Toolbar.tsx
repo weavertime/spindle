@@ -4,13 +4,14 @@
 
 import React, { useRef } from 'react';
 import {
-  Type, Square, Circle, Minus, Image as ImageIcon, Plus,
+  Type, Square, Circle, Minus, Image as ImageIcon,
   Trash2, Copy, Undo2, Redo2, Group, Ungroup,
   BringToFront, SendToBack, AlignHorizontalJustifyCenter, AlignVerticalJustifyCenter,
   AlignStartVertical, AlignEndVertical, AlignStartHorizontal, AlignEndHorizontal,
 } from 'lucide-react';
 import type { NewElementSpec, AlignMode } from '@weavertime/spindle-slides-core';
 import { useDeck, useSelection } from '../hooks';
+import { DeckControls } from './DeckControls';
 
 const btn: React.CSSProperties = {
   display: 'inline-flex',
@@ -77,9 +78,7 @@ export function Toolbar(): React.ReactElement {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 12px', borderBottom: '1px solid #e2e4e8', background: '#fff', flexWrap: 'wrap' }}>
-      <IconButton title="Add slide" onClick={() => { const s = deck.addSlide({ afterSlideId: deck.getActiveSlideId(), layoutId: 'titleContent' }); deck.setActiveSlide(s.id); }}>
-        <Plus size={16} />
-      </IconButton>
+      <DeckControls />
       <span style={sep} />
 
       <IconButton title="Text box" onClick={() => insert({ type: 'text' } as NewElementSpec, { w: 400, h: 100 })}>

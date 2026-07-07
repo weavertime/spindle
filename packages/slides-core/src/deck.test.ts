@@ -162,6 +162,35 @@ describe('undo / redo', () => {
   });
 });
 
+describe('layout materialization', () => {
+  it('materializes placeholder elements when adding a slide with a layout', () => {
+    const deck = new DeckImpl();
+    const slide = deck.addSlide({ layoutId: 'titleContent' });
+    const els = deck.getElementsForSlide(slide.id);
+    expect(els).toHaveLength(2); // title + body
+    expect(els.every((e) => e.type === 'text' && !!e.placeholder)).toBe(true);
+  });
+
+  it('exposes the layout prompt for a placeholder element', () => {
+    const deck = new DeckImpl();
+    const slide = deck.addSlide({ layoutId: 'titleContent' });
+    const title = deck.getElementsForSlide(slide.id).find((e) => e.placeholder?.type === 'title')!;
+    expect(deck.getPlaceholderPrompt(slide.id, title.placeholder)).toBe('Click to add title');
+    // Element carries the layout's default text style.
+    expect((title as { bodyStyle?: { fontSize?: number } }).bodyStyle?.fontSize).toBe(44);
+  });
+
+  it('materializes as one undoable step with the slide', () => {
+    const deck = new DeckImpl();
+    const before = deck.slideCount();
+    const slide = deck.addSlide({ layoutId: 'titleContent' });
+    expect(deck.getElementsForSlide(slide.id)).toHaveLength(2);
+    deck.undo();
+    expect(deck.slideCount()).toBe(before);
+    expect(deck.getElementsForSlide(slide.id)).toHaveLength(0);
+  });
+});
+
 describe('getData / setData', () => {
   const handAuthored: DeckData = {
     id: 'deck1',
