@@ -15,8 +15,9 @@ export * from './scene/align';
 export * from './scene/z-order';
 export * from './scene/group';
 
-// Rich text model
+// Rich text model + schema
 export * from './text/model';
+export { slidesSchema } from './text/schema';
 
 // Theme + layouts
 export * from './theme/types';

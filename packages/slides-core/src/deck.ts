@@ -35,7 +35,7 @@ import {
 import { alignFrames, distributeFrames, type AlignMode, type FrameItem } from './scene/align';
 import type { Rect } from './scene/geometry';
 import type { Frame, Fill, SlideElement } from './scene/types';
-import type { RichTextDoc } from './text/model';
+import { applyTextFormat, type RichTextDoc, type TextFormatSpec } from './text/model';
 import type { ThemeData, LayoutData } from './theme/types';
 import { getBuiltinTheme, BUILTIN_LAYOUTS, DEFAULT_SLIDE_SIZE } from './theme/builtin';
 import { DeckHistory, type DeckSnapshot } from './history';
@@ -412,6 +412,24 @@ export class DeckImpl {
     this.elements.set(copy.id, copy);
     this.emit('elementAdd', { slideId: el.containerId, elementId: copy.id });
     return copy;
+  }
+
+  // ── Rich text ────────────────────────────────────────────────────────────────
+
+  /** Replace a text-bearing element's body (commits one history entry). */
+  setElementRichText(id: string, doc: RichTextDoc): void {
+    const el = this.elements.get(id);
+    if (!el || (el.type !== 'text' && el.type !== 'shape')) return;
+    this.updateElement(id, { richText: doc } as Partial<SlideElement>);
+  }
+
+  /** Apply an idle-path text format across an element's whole body. */
+  applyTextFormat(id: string, spec: TextFormatSpec): void {
+    const el = this.elements.get(id);
+    if (!el) return;
+    const rich = (el as { richText?: RichTextDoc }).richText;
+    if (!rich) return;
+    this.setElementRichText(id, applyTextFormat(rich, spec));
   }
 
   // ── Transforms (gesture-commit path; Phase 2 builds the gestures) ────────────

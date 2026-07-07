@@ -5,8 +5,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useDeck, useKeyboardShortcuts } from '../hooks';
 import { Toolbar } from './Toolbar';
+import { TextFormatBar } from './TextFormatBar';
 import { Filmstrip } from './Filmstrip';
 import { SlideStage } from './SlideStage';
+import { NotesPanel } from './NotesPanel';
 import { ContextMenu } from './ContextMenu';
 
 const ZOOM_PRESETS: Array<{ label: string; zoom?: number }> = [
@@ -69,9 +71,13 @@ export function SlidesEditor({ style, readOnly = false }: SlidesEditorProps): Re
         </div>
       </header>
       {!readOnly && <Toolbar />}
+      {!readOnly && <TextFormatBar />}
       <div style={{ display: 'flex', flex: '1 1 auto', minHeight: 0 }}>
         <Filmstrip />
-        <SlideStage zoom={ZOOM_PRESETS[zoomIdx].zoom} interactive={!readOnly} />
+        <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minWidth: 0 }}>
+          <SlideStage zoom={ZOOM_PRESETS[zoomIdx].zoom} interactive={!readOnly} />
+          {!readOnly && <NotesPanel />}
+        </div>
       </div>
       {menu && <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
     </div>

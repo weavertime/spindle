@@ -8,6 +8,7 @@ import type { DeckImpl } from '@weavertime/spindle-slides-core';
 import { ElementStore } from './element-store';
 import { NodeRegistry } from '../interactions/node-registry';
 import { TransientStore } from '../interactions/transient-store';
+import { EditingStore } from '../interactions/editing-store';
 
 export interface DeckContextValue {
   deck: DeckImpl;
@@ -16,6 +17,8 @@ export interface DeckContextValue {
   nodes: NodeRegistry;
   /** Per-gesture transient state (guides, marquee) consumed by overlays. */
   transient: TransientStore;
+  /** Which element hosts the single live ProseMirror editor. */
+  editing: EditingStore;
 }
 
 const DeckContext = createContext<DeckContextValue | null>(null);
@@ -29,11 +32,12 @@ export function DeckProvider({ deck, children }: DeckProviderProps): React.React
   const store = useMemo(() => new ElementStore(deck), [deck]);
   const nodes = useMemo(() => new NodeRegistry(), [deck]);
   const transient = useMemo(() => new TransientStore(), [deck]);
+  const editing = useMemo(() => new EditingStore(), [deck]);
   useEffect(() => () => store.dispose(), [store]);
 
   const value = useMemo<DeckContextValue>(
-    () => ({ deck, store, nodes, transient }),
-    [deck, store, nodes, transient]
+    () => ({ deck, store, nodes, transient, editing }),
+    [deck, store, nodes, transient, editing]
   );
   return <DeckContext.Provider value={value}>{children}</DeckContext.Provider>;
 }

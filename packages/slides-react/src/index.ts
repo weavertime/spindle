@@ -10,6 +10,9 @@ export { ElementStore } from './context/element-store';
 export { NodeRegistry } from './interactions/node-registry';
 export { TransientStore } from './interactions/transient-store';
 export type { TransientState } from './interactions/transient-store';
+export { EditingStore } from './interactions/editing-store';
+export { applyFormat } from './interactions/formatting';
+export type { FormatTarget } from './interactions/formatting';
 export { screenToSlide, screenDistanceToSlide } from './interactions/coords';
 export type { StageMetrics } from './interactions/coords';
 export {
@@ -33,11 +36,15 @@ export {
   useTheme,
   useClipboard,
   useKeyboardShortcuts,
+  useEditingId,
 } from './hooks';
 
 // Components
 export { SlidesEditor } from './components/SlidesEditor';
 export { Toolbar } from './components/Toolbar';
+export { TextFormatBar } from './components/TextFormatBar';
+export { RichTextEditor } from './components/RichTextEditor';
+export { NotesPanel } from './components/NotesPanel';
 export { SlideStage } from './components/SlideStage';
 export { InteractiveSlide } from './components/InteractiveSlide';
 export { Filmstrip } from './components/Filmstrip';

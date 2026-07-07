@@ -41,9 +41,20 @@ function selectOnDown(deck: DeckImpl, slideId: string, id: string, shift: boolea
 
 export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: number }): React.ReactElement {
   const deck = useDeck();
-  const { nodes, transient } = useDeckContext();
+  const { nodes, transient, editing } = useDeckContext();
   const { w, h } = deck.getSlideSize();
   const surfaceRef = useRef<HTMLDivElement>(null);
+
+  const onDoubleClick = (e: React.MouseEvent) => {
+    const elEl = (e.target as HTMLElement).closest('[data-element-id]') as HTMLElement | null;
+    const id = elEl?.dataset.elementId;
+    if (!id) return;
+    const el = deck.getElement(id);
+    if (el && (el.type === 'text' || el.type === 'shape')) {
+      deck.setSelection({ slideId, elementIds: [id] });
+      editing.setEditingId(id);
+    }
+  };
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
@@ -97,6 +108,7 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
     <div
       ref={surfaceRef}
       onPointerDown={onPointerDown}
+      onDoubleClick={onDoubleClick}
       style={{ position: 'relative', width: w * scale, height: h * scale, flex: 'none', boxShadow: '0 4px 24px rgba(0,0,0,0.16)' }}
     >
       <div style={{ position: 'absolute', left: 0, top: 0, transform: `scale(${scale})`, transformOrigin: 'top left', width: w, height: h }}>

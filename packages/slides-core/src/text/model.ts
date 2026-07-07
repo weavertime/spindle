@@ -80,3 +80,81 @@ export function richTextToPlainText(doc: RichTextDoc): string {
 export function isRichTextEmpty(doc: RichTextDoc): boolean {
   return richTextToPlainText(doc).trim().length === 0;
 }
+
+// ── Pure formatting helpers (idle-path + tests) ──────────────────────────────
+//
+// Idle formatting has no text-range selection (the element is selected, not a
+// caret range), so these apply across the whole body. The live editor uses
+// ProseMirror transactions for range formatting.
+
+function mapInlines(doc: RichTextDoc, fn: (inline: RichTextInline) => RichTextInline): RichTextDoc {
+  return {
+    type: 'doc',
+    content: doc.content.map((p) => ({
+      ...p,
+      ...(p.content ? { content: p.content.map(fn) } : {}),
+    })),
+  };
+}
+
+/** Whether every text run in the body carries a mark of `type`. */
+export function docHasMark(doc: RichTextDoc, type: string): boolean {
+  let sawText = false;
+  for (const p of doc.content) {
+    for (const inline of p.content ?? []) {
+      sawText = true;
+      if (!(inline.marks ?? []).some((m) => m.type === type)) return false;
+    }
+  }
+  return sawText;
+}
+
+/** Add (or replace) a mark across the whole body. */
+export function applyMarkToDoc(doc: RichTextDoc, mark: RichTextMark): RichTextDoc {
+  return mapInlines(doc, (inline) => ({
+    ...inline,
+    marks: [...(inline.marks ?? []).filter((m) => m.type !== mark.type), mark],
+  }));
+}
+
+/** Remove a mark type across the whole body. */
+export function removeMarkFromDoc(doc: RichTextDoc, type: string): RichTextDoc {
+  return mapInlines(doc, (inline) => {
+    const marks = (inline.marks ?? []).filter((m) => m.type !== type);
+    return marks.length ? { ...inline, marks } : { type: 'text', text: inline.text };
+  });
+}
+
+/** Toggle a boolean mark across the whole body. */
+export function toggleMarkInDoc(doc: RichTextDoc, type: string, attrs?: Record<string, unknown>): RichTextDoc {
+  return docHasMark(doc, type) ? removeMarkFromDoc(doc, type) : applyMarkToDoc(doc, { type, attrs });
+}
+
+/** Merge paragraph attrs into every paragraph. */
+export function setParagraphAttrs(doc: RichTextDoc, attrs: Partial<ParagraphAttrs>): RichTextDoc {
+  return {
+    type: 'doc',
+    content: doc.content.map((p) => ({ ...p, attrs: { ...p.attrs, ...attrs } })),
+  };
+}
+
+export interface TextFormatSpec {
+  /** Toggle a boolean mark (bold/italic/underline/strikethrough). */
+  toggleMark?: string;
+  /** Set a parameterized mark (textColor/fontFamily/fontSize/link). */
+  setMark?: RichTextMark;
+  /** Remove a mark type. */
+  removeMark?: string;
+  /** Merge paragraph attrs (align/listType/indent/…). */
+  paragraph?: Partial<ParagraphAttrs>;
+}
+
+/** Apply an idle-path formatting spec to a body. */
+export function applyTextFormat(doc: RichTextDoc, spec: TextFormatSpec): RichTextDoc {
+  let out = doc;
+  if (spec.toggleMark) out = toggleMarkInDoc(out, spec.toggleMark);
+  if (spec.setMark) out = applyMarkToDoc(out, spec.setMark);
+  if (spec.removeMark) out = removeMarkFromDoc(out, spec.removeMark);
+  if (spec.paragraph) out = setParagraphAttrs(out, spec.paragraph);
+  return out;
+}

@@ -2,9 +2,12 @@ import React from 'react';
 import { resolveFill, type ShapeElement, type ThemeData } from '@weavertime/spindle-slides-core';
 import { shapeGeom } from './shapes';
 import { StaticRichText } from './StaticRichText';
+import { RichTextEditor } from '../RichTextEditor';
+import { useEditingId } from '../../hooks';
 import { strokeAttrs } from './style';
 
 export function ShapeView({ el, theme }: { el: ShapeElement; theme: ThemeData }): React.ReactElement {
+  const editing = useEditingId() === el.id;
   const w = Math.max(1, el.w);
   const h = Math.max(1, el.h);
   const geom = shapeGeom(el.shape, w, h, el.adjustments);
@@ -34,7 +37,11 @@ export function ShapeView({ el, theme }: { el: ShapeElement; theme: ThemeData })
           <path d={geom.d} {...geomProps} />
         )}
       </svg>
-      {el.richText ? (
+      {editing ? (
+        <div style={{ position: 'absolute', inset: 0 }}>
+          <RichTextEditor elementId={el.id} theme={theme} bodyStyle={el.bodyStyle} centered />
+        </div>
+      ) : el.richText ? (
         <div
           style={{
             position: 'absolute',

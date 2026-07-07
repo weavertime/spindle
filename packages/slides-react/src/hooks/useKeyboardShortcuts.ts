@@ -6,6 +6,7 @@
 import { useCallback } from 'react';
 import type React from 'react';
 import { useDeck } from './index';
+import { useDeckContext } from '../context/DeckContext';
 import { copyElements, pasteElements } from './useClipboard';
 
 const NUDGE = 1;
@@ -20,6 +21,7 @@ function isTextEntry(target: EventTarget | null): boolean {
 
 export function useKeyboardShortcuts(): { onKeyDown: (e: React.KeyboardEvent) => void } {
   const deck = useDeck();
+  const { editing } = useDeckContext();
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -32,6 +34,17 @@ export function useKeyboardShortcuts(): { onKeyDown: (e: React.KeyboardEvent) =>
       }
 
       switch (e.key) {
+        case 'Enter': {
+          const ids = selectedIds();
+          if (ids.length === 1) {
+            const el = deck.getElement(ids[0]);
+            if (el && (el.type === 'text' || el.type === 'shape')) {
+              editing.setEditingId(ids[0]);
+              e.preventDefault();
+            }
+          }
+          return;
+        }
         case 'Escape':
           deck.setSelection({ slideId: deck.getActiveSlideId(), elementIds: [] });
           return;
@@ -130,7 +143,7 @@ export function useKeyboardShortcuts(): { onKeyDown: (e: React.KeyboardEvent) =>
           break;
       }
     },
-    [deck]
+    [deck, editing]
   );
 
   return { onKeyDown };

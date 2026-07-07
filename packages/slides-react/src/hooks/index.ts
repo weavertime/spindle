@@ -65,3 +65,9 @@ export function useTheme(): ThemeData {
 
 export { useClipboard } from './useClipboard';
 export { useKeyboardShortcuts } from './useKeyboardShortcuts';
+
+/** The id of the element currently being text-edited, or null. */
+export function useEditingId(): string | null {
+  const { editing } = useDeckContext();
+  return useSyncExternalStore(editing.subscribe, editing.getEditingId);
+}
