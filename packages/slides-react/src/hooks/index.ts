@@ -62,3 +62,6 @@ export function useTheme(): ThemeData {
   const { store } = useDeckContext();
   return useSyncExternalStore(store.subscribeTheme, store.getTheme);
 }
+
+export { useClipboard } from './useClipboard';
+export { useKeyboardShortcuts } from './useKeyboardShortcuts';

@@ -55,7 +55,10 @@ export class ElementStore {
     const { deck } = this;
     this.offFns.push(
       deck.on('elementChange', (e) => {
-        this.notify(keyForElement((e.payload as ElementChangePayload).elementId));
+        const p = e.payload as ElementChangePayload;
+        this.notify(keyForElement(p.elementId));
+        // A z-order (index) change reorders paint order — refresh the id list.
+        if (p.keys?.includes('index')) this.refreshElementIds(p.slideId);
       }),
       deck.on('elementAdd', (e) => {
         const p = e.payload as ElementAddPayload;

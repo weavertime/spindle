@@ -8,7 +8,13 @@ import { resolveFill } from '@weavertime/spindle-slides-core';
 import { useDeck, useSlide, useSlideElementIds, useTheme } from '../hooks';
 import { ElementView } from './elements/ElementView';
 
-export function SlideView({ slideId }: { slideId: string }): React.ReactElement {
+export function SlideView({
+  slideId,
+  interactive = false,
+}: {
+  slideId: string;
+  interactive?: boolean;
+}): React.ReactElement {
   const deck = useDeck();
   const slide = useSlide(slideId);
   const theme = useTheme();
@@ -32,7 +38,7 @@ export function SlideView({ slideId }: { slideId: string }): React.ReactElement 
       }}
     >
       {elementIds.map((id) => (
-        <ElementView key={id} elementId={id} />
+        <ElementView key={id} elementId={id} interactive={interactive} />
       ))}
     </div>
   );

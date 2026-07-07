@@ -8,6 +8,12 @@ export * from './types';
 export * from './scene/types';
 export * from './scene/elements';
 export * from './scene/fractional-index';
+export * from './scene/geometry';
+export * from './scene/transform';
+export * from './scene/snapping';
+export * from './scene/align';
+export * from './scene/z-order';
+export * from './scene/group';
 
 // Rich text model
 export * from './text/model';

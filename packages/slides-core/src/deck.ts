@@ -24,6 +24,16 @@ import {
   type ImageElementInput,
   type LineElementInput,
 } from './scene/elements';
+import {
+  bringToFront as zBringToFront,
+  sendToBack as zSendToBack,
+  bringForward as zBringForward,
+  sendBackward as zSendBackward,
+  type ZItem,
+  type ZResult,
+} from './scene/z-order';
+import { alignFrames, distributeFrames, type AlignMode, type FrameItem } from './scene/align';
+import type { Rect } from './scene/geometry';
 import type { Frame, Fill, SlideElement } from './scene/types';
 import type { RichTextDoc } from './text/model';
 import type { ThemeData, LayoutData } from './theme/types';
@@ -418,6 +428,77 @@ export class DeckImpl {
       .filter((el): el is SlideElement => !!el)
       .map((el) => ({ id: el.id, frame: { x: el.x + dx, y: el.y + dy } }));
     this.setFrames(frames);
+  }
+
+  // ── Z-order / align / group (thin wrappers over scene/* pure fns) ────────────
+
+  private slideIdOf(ids: string[]): string | undefined {
+    for (const id of ids) {
+      const el = this.elements.get(id);
+      if (el) return el.containerId;
+    }
+    return undefined;
+  }
+
+  private zItemsFor(ids: string[]): ZItem[] {
+    const slideId = this.slideIdOf(ids);
+    if (!slideId) return [];
+    return this.getElementsForSlide(slideId).map((e) => ({ id: e.id, index: e.index }));
+  }
+
+  private applyZResult(res: ZResult): void {
+    if (res.length) this.updateElements(res.map((r) => ({ id: r.id, patch: { index: r.index } })));
+  }
+
+  bringToFront(ids: string[]): void {
+    this.applyZResult(zBringToFront(this.zItemsFor(ids), ids));
+  }
+  sendToBack(ids: string[]): void {
+    this.applyZResult(zSendToBack(this.zItemsFor(ids), ids));
+  }
+  bringForward(ids: string[]): void {
+    this.applyZResult(zBringForward(this.zItemsFor(ids), ids));
+  }
+  sendBackward(ids: string[]): void {
+    this.applyZResult(zSendBackward(this.zItemsFor(ids), ids));
+  }
+
+  private frameItemsFor(ids: string[]): FrameItem[] {
+    return ids
+      .map((id) => this.elements.get(id))
+      .filter((el): el is SlideElement => !!el)
+      .map((el) => ({ id: el.id, frame: { x: el.x, y: el.y, w: el.w, h: el.h, rotation: el.rotation } }));
+  }
+
+  alignElements(ids: string[], mode: AlignMode, bounds?: Rect): void {
+    const res = alignFrames(this.frameItemsFor(ids), mode, bounds);
+    this.setFrames(res.map((r) => ({ id: r.id, frame: r.frame })));
+  }
+
+  distributeElements(ids: string[], axis: 'h' | 'v'): void {
+    const res = distributeFrames(this.frameItemsFor(ids), axis);
+    this.setFrames(res.map((r) => ({ id: r.id, frame: r.frame })));
+  }
+
+  /** Group the given elements under a fresh shared groupId (needs ≥2). */
+  groupElements(ids: string[]): string | undefined {
+    const valid = ids.filter((id) => this.elements.has(id));
+    if (valid.length < 2) return undefined;
+    const groupId = generateId();
+    this.updateElements(valid.map((id) => ({ id, patch: { groupId } })));
+    return groupId;
+  }
+
+  ungroupElements(ids: string[]): void {
+    const patches = ids
+      .filter((id) => this.elements.get(id)?.groupId)
+      .map((id) => ({ id, patch: { groupId: undefined } as Partial<SlideElement> }));
+    if (patches.length) this.updateElements(patches);
+  }
+
+  /** All element ids sharing a groupId. */
+  getGroupMembers(groupId: string): string[] {
+    return [...this.elements.values()].filter((e) => e.groupId === groupId).map((e) => e.id);
   }
 
   // ── Selection & active slide (LOCAL view state; never serialized to CRDT) ────

@@ -5,13 +5,16 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { useDeck, useActiveSlideId } from '../hooks';
 import { SlideView } from './SlideView';
+import { InteractiveSlide } from './InteractiveSlide';
 
 export interface SlideStageProps {
   /** Explicit zoom factor; when omitted the slide scales to fit the container. */
   zoom?: number;
+  /** Enable selection, gestures, and overlays. */
+  interactive?: boolean;
 }
 
-export function SlideStage({ zoom }: SlideStageProps): React.ReactElement {
+export function SlideStage({ zoom, interactive = false }: SlideStageProps): React.ReactElement {
   const deck = useDeck();
   const activeSlideId = useActiveSlideId();
   const { w, h } = deck.getSlideSize();
@@ -47,11 +50,15 @@ export function SlideStage({ zoom }: SlideStageProps): React.ReactElement {
         background: '#e9ebef',
       }}
     >
-      <div style={{ width: w * scale, height: h * scale, flex: 'none' }}>
-        <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: w, height: h, boxShadow: '0 4px 24px rgba(0,0,0,0.16)' }}>
-          {activeSlideId ? <SlideView slideId={activeSlideId} /> : null}
+      {activeSlideId && interactive ? (
+        <InteractiveSlide key={activeSlideId} slideId={activeSlideId} scale={scale} />
+      ) : (
+        <div style={{ width: w * scale, height: h * scale, flex: 'none' }}>
+          <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: w, height: h, boxShadow: '0 4px 24px rgba(0,0,0,0.16)' }}>
+            {activeSlideId ? <SlideView slideId={activeSlideId} /> : null}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

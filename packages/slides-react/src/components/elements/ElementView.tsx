@@ -2,9 +2,14 @@
 // subscribes to just that element (and the theme) via keyed hooks, so a single
 // element edit re-renders this node alone. Rotation is a CSS transform about
 // the box centre; the un-rotated box's top-left sits at (x, y).
+//
+// When interactive, the wrapper registers itself in the NodeRegistry so
+// gestures can write transforms straight to the DOM, and it accepts pointer
+// events (the stage delegates hit-testing via `closest('[data-element-id]')`).
 
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useElement, useTheme } from '../../hooks';
+import { useDeckContext } from '../../context/DeckContext';
 import type { SlideElement } from '@weavertime/spindle-slides-core';
 import { TextView } from './TextView';
 import { ShapeView } from './ShapeView';
@@ -24,9 +29,26 @@ function renderInner(el: SlideElement, theme: ReturnType<typeof useTheme>): Reac
   }
 }
 
-export function ElementView({ elementId }: { elementId: string }): React.ReactElement | null {
+export function ElementView({
+  elementId,
+  interactive = false,
+}: {
+  elementId: string;
+  interactive?: boolean;
+}): React.ReactElement | null {
   const el = useElement(elementId);
   const theme = useTheme();
+  const { nodes } = useDeckContext();
+
+  const ref = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (!interactive) return;
+      if (node) nodes.register(elementId, node);
+      else nodes.unregister(elementId);
+    },
+    [nodes, elementId, interactive]
+  );
+
   if (!el) return null;
 
   const style: React.CSSProperties = {
@@ -38,13 +60,12 @@ export function ElementView({ elementId }: { elementId: string }): React.ReactEl
     transform: `translate(${el.x}px, ${el.y}px) rotate(${el.rotation}deg)`,
     transformOrigin: 'center center',
     opacity: el.opacity ?? 1,
-    // Idle elements don't intercept pointer events in the read-only renderer;
-    // Phase 2 turns this on for the interactive editor.
-    pointerEvents: 'none',
+    pointerEvents: interactive && !el.locked ? 'auto' : 'none',
+    cursor: interactive ? 'move' : 'default',
   };
 
   return (
-    <div data-element-id={el.id} style={style}>
+    <div ref={ref} data-element-id={el.id} style={style}>
       {renderInner(el, theme)}
     </div>
   );

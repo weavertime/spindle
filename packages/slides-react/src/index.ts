@@ -6,6 +6,21 @@ export { DeckProvider, useDeckContext } from './context/DeckContext';
 export type { DeckProviderProps, DeckContextValue } from './context/DeckContext';
 export { ElementStore } from './context/element-store';
 
+// Interactions
+export { NodeRegistry } from './interactions/node-registry';
+export { TransientStore } from './interactions/transient-store';
+export type { TransientState } from './interactions/transient-store';
+export { screenToSlide, screenDistanceToSlide } from './interactions/coords';
+export type { StageMetrics } from './interactions/coords';
+export {
+  createMoveGesture,
+  createResizeGesture,
+  createRotateGesture,
+  createMarqueeGesture,
+  expandGroups,
+} from './interactions/gesture';
+export type { Gesture, GestureContext } from './interactions/gesture';
+
 // Hooks
 export {
   useDeck,
@@ -16,13 +31,20 @@ export {
   useSelection,
   useActiveSlideId,
   useTheme,
+  useClipboard,
+  useKeyboardShortcuts,
 } from './hooks';
 
 // Components
 export { SlidesEditor } from './components/SlidesEditor';
+export { Toolbar } from './components/Toolbar';
 export { SlideStage } from './components/SlideStage';
+export { InteractiveSlide } from './components/InteractiveSlide';
 export { Filmstrip } from './components/Filmstrip';
 export { SlideView, ScaledSlide } from './components/SlideView';
+export { SelectionOverlay } from './components/SelectionOverlay';
+export { GuidesOverlay } from './components/GuidesOverlay';
+export { ContextMenu } from './components/ContextMenu';
 export { ElementView } from './components/elements/ElementView';
 export { StaticRichText } from './components/elements/StaticRichText';
 export { shapeGeom } from './components/elements/shapes';
