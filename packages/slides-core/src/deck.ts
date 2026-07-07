@@ -1,0 +1,559 @@
+// DeckImpl — the presentation engine (the WorkbookImpl analogue).
+//
+// Instance-owned flat maps of slides and elements. Records are IMMUTABLE:
+// every mutation replaces the object, so React snapshots can version by
+// reference. Every mutator: update maps → emit a semantic event →
+// recordHistory() when not attached to collab (the Y.Doc mirror + Y.UndoManager
+// routing is layered on in Phase 5). Multi-element ops run inside one
+// EventEmitter.batch() and one history entry.
+//
+// Selection and activeSlide are per-user view state: they live here for
+// convenience but are LOCAL ONLY — never mirrored into the CRDT doc (a hard
+// project rule).
+
+import { EventEmitter } from '@weavertime/spindle-shared';
+import { indexBetween, sortByIndex } from './scene/fractional-index';
+import { generateId } from './utils/id';
+import {
+  createTextElement,
+  createShapeElement,
+  createImageElement,
+  createLineElement,
+  type TextElementInput,
+  type ShapeElementInput,
+  type ImageElementInput,
+  type LineElementInput,
+} from './scene/elements';
+import type { Frame, Fill, SlideElement } from './scene/types';
+import type { RichTextDoc } from './text/model';
+import type { ThemeData, LayoutData } from './theme/types';
+import { getBuiltinTheme, BUILTIN_LAYOUTS, DEFAULT_SLIDE_SIZE } from './theme/builtin';
+import { DeckHistory, type DeckSnapshot } from './history';
+import { normalizeDeckData } from './serialization';
+import type {
+  Slide,
+  DeckData,
+  DeckSelection,
+  DeckEventType,
+} from './types';
+
+/** A request to add a new element to a slide; the engine assigns id + z-index. */
+export type NewElementSpec =
+  | ({ type: 'text' } & Omit<TextElementInput, 'containerId' | 'index'>)
+  | ({ type: 'shape' } & Omit<ShapeElementInput, 'containerId' | 'index'>)
+  | ({ type: 'image' } & Omit<ImageElementInput, 'containerId' | 'index'>)
+  | ({ type: 'line' } & Omit<LineElementInput, 'containerId' | 'index'>);
+
+export interface AddSlideOptions {
+  /** Insert immediately after this slide; defaults to the end. */
+  afterSlideId?: string;
+  /** Layout to associate with the slide. */
+  layoutId?: string;
+}
+
+export class DeckImpl {
+  id: string;
+  private title: string;
+  private slideSize: { w: number; h: number };
+  private theme: ThemeData;
+  private layouts: LayoutData[];
+
+  private slides: Map<string, Slide> = new Map();
+  private elements: Map<string, SlideElement> = new Map();
+
+  private selection: DeckSelection = { elementIds: [] };
+  private activeSlideId = '';
+
+  private events = new EventEmitter<DeckEventType>();
+  private history = new DeckHistory();
+  private isRestoring = false;
+  /** Set by attachCollab (Phase 5). Non-null means Y.Doc is the source. */
+  private collabHandle: unknown = null;
+
+  constructor(id?: string, title = 'Untitled deck') {
+    this.id = id ?? generateId();
+    this.title = title;
+    this.slideSize = { ...DEFAULT_SLIDE_SIZE };
+    this.theme = getBuiltinTheme();
+    this.layouts = BUILTIN_LAYOUTS.map((l) => structuredClone(l) as LayoutData);
+
+    // Start with one empty slide so activeSlideId always resolves.
+    const first = this.createSlideRecord({ layoutId: 'titleContent' });
+    this.slides.set(first.id, first);
+    this.activeSlideId = first.id;
+    this.selection = { slideId: first.id, elementIds: [] };
+  }
+
+  // ── Events ─────────────────────────────────────────────────────────────────
+
+  on(event: DeckEventType, handler: (data: { type: DeckEventType; payload: unknown }) => void): () => void {
+    return this.events.on(event, handler);
+  }
+
+  off(event: DeckEventType, handler: (data: { type: DeckEventType; payload: unknown }) => void): void {
+    this.events.off(event, handler);
+  }
+
+  private emit(event: DeckEventType, payload: unknown): void {
+    this.events.emit(event, payload);
+  }
+
+  // ── Deck-level ───────────────────────────────────────────────────────────────
+
+  getTitle(): string {
+    return this.title;
+  }
+
+  setTitle(title: string): void {
+    if (title === this.title) return;
+    this.recordHistory();
+    this.title = title;
+    this.emit('deckChange', { keys: ['title'] });
+  }
+
+  getSlideSize(): { w: number; h: number } {
+    return { ...this.slideSize };
+  }
+
+  setSlideSize(size: { w: number; h: number }): void {
+    this.recordHistory();
+    this.slideSize = { ...size };
+    this.emit('deckChange', { keys: ['slideSize'] });
+  }
+
+  getTheme(): ThemeData {
+    return this.theme;
+  }
+
+  setTheme(theme: ThemeData): void {
+    this.recordHistory();
+    this.theme = theme;
+    this.emit('themeChange', { theme });
+  }
+
+  getLayouts(): LayoutData[] {
+    return this.layouts;
+  }
+
+  getLayout(id: string): LayoutData | undefined {
+    return this.layouts.find((l) => l.id === id);
+  }
+
+  // ── Slides ─────────────────────────────────────────────────────────────────
+
+  /** Slide ids in presentation order. */
+  getSlideIds(): string[] {
+    return sortByIndex([...this.slides.values()]).map((s) => s.id);
+  }
+
+  /** Slides in presentation order. */
+  getSlides(): Slide[] {
+    return sortByIndex([...this.slides.values()]);
+  }
+
+  getSlide(id: string): Slide | undefined {
+    return this.slides.get(id);
+  }
+
+  slideCount(): number {
+    return this.slides.size;
+  }
+
+  private createSlideRecord(opts: { index?: string; layoutId?: string }): Slide {
+    const slide: Slide = {
+      id: generateId(),
+      index: opts.index ?? indexBetween(null, null),
+    };
+    if (opts.layoutId) slide.layoutRef = opts.layoutId;
+    return slide;
+  }
+
+  /** Fractional index that sorts a slide immediately after `afterSlideId`. */
+  private slideIndexAfter(afterSlideId?: string): string {
+    const ordered = this.getSlides();
+    if (!afterSlideId) {
+      const last = ordered[ordered.length - 1];
+      return indexBetween(last ? last.index : null, null);
+    }
+    const pos = ordered.findIndex((s) => s.id === afterSlideId);
+    if (pos === -1) {
+      const last = ordered[ordered.length - 1];
+      return indexBetween(last ? last.index : null, null);
+    }
+    const after = ordered[pos];
+    const next = ordered[pos + 1];
+    return indexBetween(after.index, next ? next.index : null);
+  }
+
+  addSlide(opts: AddSlideOptions = {}): Slide {
+    this.recordHistory();
+    const slide = this.createSlideRecord({
+      index: this.slideIndexAfter(opts.afterSlideId),
+      layoutId: opts.layoutId,
+    });
+    this.slides.set(slide.id, slide);
+    this.emit('slideAdd', { slideId: slide.id });
+    return slide;
+  }
+
+  /** Duplicate a slide and all its elements, inserting the copy just after it. */
+  duplicateSlide(slideId: string): Slide | undefined {
+    const src = this.slides.get(slideId);
+    if (!src) return undefined;
+    this.recordHistory();
+    const copy: Slide = {
+      ...structuredClone(src),
+      id: generateId(),
+      index: this.slideIndexAfter(slideId),
+    };
+    this.slides.set(copy.id, copy);
+    for (const el of this.getElementsForSlide(slideId)) {
+      const elCopy = { ...structuredClone(el), id: generateId(), containerId: copy.id } as SlideElement;
+      this.elements.set(elCopy.id, elCopy);
+    }
+    this.emit('slideAdd', { slideId: copy.id });
+    return copy;
+  }
+
+  deleteSlide(slideId: string): void {
+    if (!this.slides.has(slideId)) return;
+    if (this.slides.size <= 1) throw new Error('Cannot delete the last slide');
+    this.recordHistory();
+    // Remove the slide's elements too.
+    for (const el of [...this.elements.values()]) {
+      if (el.containerId === slideId) this.elements.delete(el.id);
+    }
+    this.slides.delete(slideId);
+    if (this.activeSlideId === slideId) {
+      this.activeSlideId = this.getSlideIds()[0];
+      this.selection = { slideId: this.activeSlideId, elementIds: [] };
+      this.emit('activeSlideChange', { slideId: this.activeSlideId });
+      this.emit('selectionChange', { selection: this.getSelection() });
+    }
+    this.emit('slideDelete', { slideId });
+  }
+
+  /** Move a slide so it sorts immediately after `afterSlideId` (or to the front). */
+  moveSlide(slideId: string, opts: { afterSlideId?: string } = {}): void {
+    const slide = this.slides.get(slideId);
+    if (!slide) return;
+    const ordered = this.getSlides().filter((s) => s.id !== slideId);
+    let index: string;
+    if (!opts.afterSlideId) {
+      index = indexBetween(null, ordered[0] ? ordered[0].index : null);
+    } else {
+      const pos = ordered.findIndex((s) => s.id === opts.afterSlideId);
+      const after = ordered[pos];
+      const next = ordered[pos + 1];
+      index = indexBetween(after ? after.index : null, next ? next.index : null);
+    }
+    this.recordHistory();
+    this.slides.set(slideId, { ...slide, index });
+    this.emit('slideMove', { slideId });
+  }
+
+  setSlideBackground(slideId: string, background: Fill | undefined): void {
+    const slide = this.slides.get(slideId);
+    if (!slide) return;
+    this.recordHistory();
+    const next = { ...slide };
+    if (background) next.background = background;
+    else delete next.background;
+    this.slides.set(slideId, next);
+    this.emit('slideChange', { slideId, keys: ['background'] });
+  }
+
+  setSlideNotes(slideId: string, notes: RichTextDoc): void {
+    const slide = this.slides.get(slideId);
+    if (!slide) return;
+    this.recordHistory();
+    this.slides.set(slideId, { ...slide, notes });
+    this.emit('slideChange', { slideId, keys: ['notes'] });
+  }
+
+  /** Associate a slide with a layout (placeholder materialization is Phase 4). */
+  setSlideLayout(slideId: string, layoutId: string): void {
+    const slide = this.slides.get(slideId);
+    if (!slide) return;
+    this.recordHistory();
+    this.slides.set(slideId, { ...slide, layoutRef: layoutId });
+    this.emit('slideChange', { slideId, keys: ['layoutRef'] });
+  }
+
+  // ── Elements ─────────────────────────────────────────────────────────────────
+
+  getElement(id: string): SlideElement | undefined {
+    return this.elements.get(id);
+  }
+
+  /** Elements on a slide, sorted back-to-front by z-order. */
+  getElementsForSlide(slideId: string): SlideElement[] {
+    const list = [...this.elements.values()].filter((e) => e.containerId === slideId);
+    return sortByIndex(list);
+  }
+
+  getElementIdsForSlide(slideId: string): string[] {
+    return this.getElementsForSlide(slideId).map((e) => e.id);
+  }
+
+  /** Fractional z-index that sorts above every element currently on a slide. */
+  private topZIndex(slideId: string): string {
+    const list = this.getElementsForSlide(slideId);
+    const top = list[list.length - 1];
+    return indexBetween(top ? top.index : null, null);
+  }
+
+  addElement(slideId: string, spec: NewElementSpec, opts?: { index?: string }): SlideElement {
+    if (!this.slides.has(slideId)) throw new Error(`Slide not found: ${slideId}`);
+    const index = opts?.index ?? this.topZIndex(slideId);
+    const common = { containerId: slideId, index };
+    let el: SlideElement;
+    switch (spec.type) {
+      case 'text':
+        el = createTextElement({ ...spec, ...common });
+        break;
+      case 'shape':
+        el = createShapeElement({ ...spec, ...common });
+        break;
+      case 'image':
+        el = createImageElement({ ...spec, ...common });
+        break;
+      case 'line':
+        el = createLineElement({ ...spec, ...common });
+        break;
+    }
+    this.recordHistory();
+    this.elements.set(el.id, el);
+    this.emit('elementAdd', { slideId, elementId: el.id });
+    return el;
+  }
+
+  /** Patch an element; the record is replaced (immutable). */
+  updateElement(id: string, patch: Partial<SlideElement>): void {
+    const el = this.elements.get(id);
+    if (!el) return;
+    this.recordHistory();
+    this.applyElementPatch(id, patch);
+    this.emit('elementChange', {
+      slideId: el.containerId,
+      elementId: id,
+      keys: Object.keys(patch),
+    });
+  }
+
+  /** Patch several elements as one undo entry and one event batch. */
+  updateElements(patches: Array<{ id: string; patch: Partial<SlideElement> }>): void {
+    this.recordHistory();
+    this.events.batch(() => {
+      for (const { id, patch } of patches) {
+        const el = this.elements.get(id);
+        if (!el) continue;
+        this.applyElementPatch(id, patch);
+        this.emit('elementChange', {
+          slideId: el.containerId,
+          elementId: id,
+          keys: Object.keys(patch),
+        });
+      }
+    });
+  }
+
+  private applyElementPatch(id: string, patch: Partial<SlideElement>): void {
+    const el = this.elements.get(id);
+    if (!el) return;
+    // Merge without changing discriminant; cast is safe because callers never
+    // change `type`.
+    this.elements.set(id, { ...el, ...patch } as SlideElement);
+  }
+
+  deleteElement(id: string): void {
+    const el = this.elements.get(id);
+    if (!el) return;
+    this.recordHistory();
+    this.elements.delete(id);
+    this.emit('elementDelete', { slideId: el.containerId, elementId: id });
+  }
+
+  deleteElements(ids: string[]): void {
+    if (ids.length === 0) return;
+    this.recordHistory();
+    this.events.batch(() => {
+      for (const id of ids) {
+        const el = this.elements.get(id);
+        if (!el) continue;
+        this.elements.delete(id);
+        this.emit('elementDelete', { slideId: el.containerId, elementId: id });
+      }
+    });
+  }
+
+  duplicateElement(id: string): SlideElement | undefined {
+    const el = this.elements.get(id);
+    if (!el) return undefined;
+    this.recordHistory();
+    const copy = {
+      ...structuredClone(el),
+      id: generateId(),
+      index: this.topZIndex(el.containerId),
+      x: el.x + 16,
+      y: el.y + 16,
+    } as SlideElement;
+    delete copy.groupId;
+    this.elements.set(copy.id, copy);
+    this.emit('elementAdd', { slideId: el.containerId, elementId: copy.id });
+    return copy;
+  }
+
+  // ── Transforms (gesture-commit path; Phase 2 builds the gestures) ────────────
+
+  /** Commit new frames for one or more elements as a single undo entry. */
+  setFrames(frames: Array<{ id: string; frame: Partial<Frame> }>): void {
+    this.updateElements(frames.map(({ id, frame }) => ({ id, patch: frame as Partial<SlideElement> })));
+  }
+
+  /** Translate several elements by (dx, dy). */
+  moveElements(ids: string[], dx: number, dy: number): void {
+    const frames = ids
+      .map((id) => this.elements.get(id))
+      .filter((el): el is SlideElement => !!el)
+      .map((el) => ({ id: el.id, frame: { x: el.x + dx, y: el.y + dy } }));
+    this.setFrames(frames);
+  }
+
+  // ── Selection & active slide (LOCAL view state; never serialized to CRDT) ────
+
+  getSelection(): DeckSelection {
+    return { slideId: this.selection.slideId, elementIds: [...this.selection.elementIds] };
+  }
+
+  setSelection(selection: DeckSelection): void {
+    this.selection = { slideId: selection.slideId, elementIds: [...selection.elementIds] };
+    this.emit('selectionChange', { selection: this.getSelection() });
+  }
+
+  getActiveSlideId(): string {
+    return this.activeSlideId;
+  }
+
+  setActiveSlide(slideId: string): void {
+    if (!this.slides.has(slideId) || slideId === this.activeSlideId) return;
+    this.activeSlideId = slideId;
+    this.emit('activeSlideChange', { slideId });
+  }
+
+  // ── History ────────────────────────────────────────────────────────────────
+
+  private createSnapshot(): DeckSnapshot {
+    return {
+      title: this.title,
+      slideSize: { ...this.slideSize },
+      theme: this.theme,
+      layouts: this.layouts,
+      slides: new Map(this.slides),
+      elements: new Map(this.elements),
+      selection: this.getSelection(),
+      activeSlideId: this.activeSlideId,
+    };
+  }
+
+  private recordHistory(): void {
+    if (this.isRestoring) return;
+    if (this.collabHandle) return; // collab mode uses Y.UndoManager (Phase 5)
+    this.history.record(this.createSnapshot());
+  }
+
+  private restoreSnapshot(snap: DeckSnapshot): void {
+    this.isRestoring = true;
+    try {
+      this.title = snap.title;
+      this.slideSize = { ...snap.slideSize };
+      this.theme = snap.theme;
+      this.layouts = snap.layouts;
+      this.slides = new Map(snap.slides);
+      this.elements = new Map(snap.elements);
+      this.selection = { slideId: snap.selection.slideId, elementIds: [...snap.selection.elementIds] };
+      if (this.slides.has(snap.activeSlideId)) this.activeSlideId = snap.activeSlideId;
+      else this.activeSlideId = this.getSlideIds()[0] ?? '';
+    } finally {
+      this.isRestoring = false;
+    }
+    // Undo is not on the hot path; a broad invalidation is fine here.
+    this.emit('deckChange', { keys: ['*'] });
+    this.emit('activeSlideChange', { slideId: this.activeSlideId });
+    this.emit('selectionChange', { selection: this.getSelection() });
+  }
+
+  undo(): boolean {
+    const prev = this.history.undo(this.createSnapshot());
+    if (!prev) return false;
+    this.restoreSnapshot(prev);
+    return true;
+  }
+
+  redo(): boolean {
+    const next = this.history.redo(this.createSnapshot());
+    if (!next) return false;
+    this.restoreSnapshot(next);
+    return true;
+  }
+
+  canUndo(): boolean {
+    return this.history.canUndo();
+  }
+
+  canRedo(): boolean {
+    return this.history.canRedo();
+  }
+
+  // ── Serialization ────────────────────────────────────────────────────────────
+
+  getData(): DeckData {
+    const slides = this.getSlides().map((slide) => ({
+      ...structuredClone(slide),
+      elements: this.getElementsForSlide(slide.id).map((el) => structuredClone(el)),
+    }));
+    return {
+      id: this.id,
+      title: this.title,
+      slideSize: { ...this.slideSize },
+      theme: structuredClone(this.theme),
+      layouts: this.layouts.map((l) => structuredClone(l)),
+      slides,
+      selection: this.getSelection(),
+    };
+  }
+
+  setData(data: DeckData): void {
+    const normalized = normalizeDeckData(data);
+    this.id = normalized.id;
+    this.title = normalized.title;
+    this.slideSize = { ...normalized.slideSize };
+    this.theme = normalized.theme;
+    this.layouts = normalized.layouts ?? BUILTIN_LAYOUTS.map((l) => structuredClone(l) as LayoutData);
+
+    this.slides = new Map();
+    this.elements = new Map();
+    for (const slideData of normalized.slides) {
+      const { elements, ...slide } = slideData;
+      this.slides.set(slide.id, slide);
+      for (const el of elements) {
+        this.elements.set(el.id, el);
+      }
+    }
+
+    this.history.clear();
+
+    // Restore or repair local view state.
+    const firstId = this.getSlideIds()[0] ?? '';
+    const wantActive = normalized.selection?.slideId;
+    this.activeSlideId = wantActive && this.slides.has(wantActive) ? wantActive : firstId;
+    this.selection = normalized.selection
+      ? { slideId: this.activeSlideId, elementIds: [...normalized.selection.elementIds] }
+      : { slideId: this.activeSlideId, elementIds: [] };
+
+    this.emit('deckChange', { keys: ['*'] });
+    this.emit('themeChange', { theme: this.theme });
+    this.emit('activeSlideChange', { slideId: this.activeSlideId });
+    this.emit('selectionChange', { selection: this.getSelection() });
+  }
+}
