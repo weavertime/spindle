@@ -5,7 +5,7 @@
 // only re-renders on the commit at pointerup.
 
 import React, { useRef } from 'react';
-import type { DeckImpl, ResizeHandle } from '@weavertime/spindle-slides-core';
+import { anchorPoint, connectorBox, type AnchorId, type DeckImpl, type Frame, type NewElementSpec, type ResizeHandle } from '@weavertime/spindle-slides-core';
 import { useDeck } from '../hooks';
 import { useDeckContext } from '../context/DeckContext';
 import { SlideView } from './SlideView';
@@ -13,6 +13,8 @@ import { GuidesOverlay } from './GuidesOverlay';
 import { SelectionOverlay } from './SelectionOverlay';
 import { RemotePresenceOverlay } from './RemotePresenceOverlay';
 import { CommentBadgesOverlay } from './CommentBadgesOverlay';
+import { ConnectionPointsOverlay } from './ConnectionPointsOverlay';
+import { elementUnderPoint, nearestAnchor } from '../interactions/connector-hit';
 import { screenToSlide } from '../interactions/coords';
 import {
   createMoveGesture,
@@ -41,12 +43,31 @@ function selectOnDown(deck: DeckImpl, slideId: string, id: string, shift: boolea
   return groupIds;
 }
 
+const ANCHOR_GRAB = 16; // slide px: snap radius + hover margin for connection dots
+
+function frameOf(el: { x: number; y: number; w: number; h: number; rotation: number }): Frame {
+  return { x: el.x, y: el.y, w: el.w, h: el.h, rotation: el.rotation };
+}
+
 export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: number }): React.ReactElement {
   const deck = useDeck();
-  const { nodes, transient, editing } = useDeckContext();
+  const { nodes, transient, editing, connectors } = useDeckContext();
   const { w, h } = deck.getSlideSize();
   const surfaceRef = useRef<HTMLDivElement>(null);
   const lastDown = useRef<{ id: string; t: number }>({ id: '', t: 0 });
+
+  // Hover (no button pressed) → show the shape's connection dots, unless it is
+  // the selected element (its resize handles own the corners then).
+  const onHoverMove = (e: React.PointerEvent) => {
+    if (e.buttons !== 0) return;
+    const surface = surfaceRef.current;
+    if (!surface || connectors.get().draft) return;
+    const rect = surface.getBoundingClientRect();
+    const p = screenToSlide(e.clientX, e.clientY, { rect: { left: rect.left, top: rect.top }, scale });
+    let id = elementUnderPoint(deck, slideId, p, ANCHOR_GRAB);
+    if (id && deck.getSelection().elementIds.includes(id)) id = null;
+    connectors.setHover(id);
+  };
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
@@ -74,12 +95,57 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
     };
 
     const target = e.target as HTMLElement;
+    const connectEl = target.closest('[data-connect-anchor]') as HTMLElement | null;
+    // Any pointerdown that isn't starting a connector clears the hover dots, so
+    // they never linger over a shape's resize handles once it's selected.
+    if (!connectEl) connectors.setHover(null);
     const rotateEl = target.closest('[data-rotate]');
     const handleEl = target.closest('[data-handle]') as HTMLElement | null;
     const elEl = target.closest('[data-element-id]') as HTMLElement | null;
 
     let gesture: Gesture;
-    if (rotateEl) {
+    if (connectEl?.dataset.connectAnchor) {
+      // Draw a connector from this shape's anchor. The endpoint tracks the
+      // cursor, snapping to the nearest anchor of any other shape; on release it
+      // binds to that anchor (or hangs free in mid-air). Previewed live via the
+      // connector store — the element is only created at pointerup.
+      const fromElementId = connectEl.dataset.connectElement!;
+      const fromAnchor = connectEl.dataset.connectAnchor as AnchorId;
+      const srcEl = deck.getElement(fromElementId);
+      if (!srcEl) return;
+      const from = anchorPoint(frameOf(srcEl), fromAnchor);
+      connectors.setHover(null);
+      connectors.setDraft({ fromElementId, fromAnchor, from, to: from, snap: null, overElementId: null });
+      let moved = false;
+      gesture = {
+        onMove(p) {
+          if (Math.hypot(p.x - from.x, p.y - from.y) > 3 / scale) moved = true;
+          const snap = nearestAnchor(deck, slideId, p, fromElementId, ANCHOR_GRAB / scale);
+          const over = snap ? snap.elementId : elementUnderPoint(deck, slideId, p, 0);
+          connectors.setDraft({
+            fromElementId, fromAnchor, from,
+            to: snap ? snap.point : p,
+            snap: snap ? { elementId: snap.elementId, anchor: snap.anchor } : null,
+            overElementId: over,
+          });
+        },
+        onEnd() {
+          const d = connectors.get().draft;
+          connectors.setDraft(null);
+          if (!moved || !d) return;
+          const box = connectorBox(d.from, d.to);
+          const spec: NewElementSpec = {
+            type: 'line',
+            startBind: { elementId: fromElementId, anchor: fromAnchor },
+            endArrow: 'triangle',
+            x: box.x, y: box.y, w: box.w, h: box.h, flipV: box.flipV,
+            ...(d.snap ? { endBind: { elementId: d.snap.elementId, anchor: d.snap.anchor } } : {}),
+          } as NewElementSpec;
+          const el = deck.addElement(slideId, spec);
+          deck.setSelection({ slideId, elementIds: [el.id] });
+        },
+      };
+    } else if (rotateEl) {
       gesture = createRotateGesture(ctx, deck.getSelection().elementIds, { shiftKey: e.shiftKey });
     } else if (handleEl?.dataset.handle) {
       gesture = createResizeGesture(ctx, handleEl.dataset.handle as ResizeHandle, deck.getSelection().elementIds, {
@@ -133,6 +199,8 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
     <div
       ref={surfaceRef}
       onPointerDown={onPointerDown}
+      onPointerMove={onHoverMove}
+      onPointerLeave={() => connectors.setHover(null)}
       tabIndex={-1}
       style={{ position: 'relative', width: w * scale, height: h * scale, flex: 'none', boxShadow: '0 4px 24px rgba(0,0,0,0.16)', outline: 'none' }}
     >
@@ -141,6 +209,7 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
         <GuidesOverlay scale={scale} />
         <RemotePresenceOverlay scale={scale} />
         <SelectionOverlay scale={scale} />
+        <ConnectionPointsOverlay scale={scale} />
         {/* Badges last so they stay clickable on top of the selection handles. */}
         <CommentBadgesOverlay slideId={slideId} scale={scale} />
       </div>

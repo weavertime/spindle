@@ -10,6 +10,7 @@ import { NodeRegistry } from '../interactions/node-registry';
 import { TransientStore } from '../interactions/transient-store';
 import { EditingStore } from '../interactions/editing-store';
 import { UIStore } from '../interactions/ui-store';
+import { ConnectorStore } from '../interactions/connector-store';
 
 export interface DeckContextValue {
   deck: DeckImpl;
@@ -22,6 +23,8 @@ export interface DeckContextValue {
   editing: EditingStore;
   /** Editor-chrome UI state (e.g. comments sidebar open). */
   ui: UIStore;
+  /** Connector hover/draft state for the drawing UI. */
+  connectors: ConnectorStore;
   /** The signed-in user, used as the author of new comments. */
   currentUser?: CommentAuthor;
   /** Directory of users that can be @-mentioned in comments. */
@@ -45,6 +48,7 @@ export function DeckProvider({ deck, children, currentUser, mentionableUsers, on
   const transient = useMemo(() => new TransientStore(), [deck]);
   const editing = useMemo(() => new EditingStore(), [deck]);
   const ui = useMemo(() => new UIStore(), [deck]);
+  const connectors = useMemo(() => new ConnectorStore(), [deck]);
   // Subscribe in the effect (not the store constructor) so it survives React
   // StrictMode's mount→unmount→mount: connect → dispose → connect.
   useEffect(() => {
@@ -58,8 +62,8 @@ export function DeckProvider({ deck, children, currentUser, mentionableUsers, on
   }, [deck, onCommentEvent]);
 
   const value = useMemo<DeckContextValue>(
-    () => ({ deck, store, nodes, transient, editing, ui, currentUser, mentionableUsers: mentionableUsers ?? [] }),
-    [deck, store, nodes, transient, editing, ui, currentUser, mentionableUsers]
+    () => ({ deck, store, nodes, transient, editing, ui, connectors, currentUser, mentionableUsers: mentionableUsers ?? [] }),
+    [deck, store, nodes, transient, editing, ui, connectors, currentUser, mentionableUsers]
   );
   return <DeckContext.Provider value={value}>{children}</DeckContext.Provider>;
 }
