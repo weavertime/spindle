@@ -4,7 +4,7 @@
 // or arrows on both ends. Renders nothing unless a single line is selected.
 
 import React from 'react';
-import { Minus, MoveRight, MoveHorizontal } from 'lucide-react';
+import { Minus, MoveLeft, MoveRight, MoveHorizontal } from 'lucide-react';
 import type { ArrowHead, LineElement } from '@weavertime/spindle-slides-core';
 import { useDeck, useSelection, useElement } from '../hooks';
 
@@ -24,24 +24,27 @@ export function LineFormatBar(): React.ReactElement | null {
   const el = useElement(id ?? '') as LineElement | undefined;
   if (!id || !el || el.type !== 'line') return null;
 
-  const start = el.startArrow ?? 'none';
-  const end = el.endArrow ?? 'none';
-  // "One side" is normalised to an end arrow; "both" puts a head on each end.
-  const mode: 'none' | 'one' | 'both' =
-    start !== 'none' && end !== 'none' ? 'both' : start !== 'none' || end !== 'none' ? 'one' : 'none';
+  const hasStart = (el.startArrow ?? 'none') !== 'none';
+  const hasEnd = (el.endArrow ?? 'none') !== 'none';
+  const mode: 'none' | 'start' | 'end' | 'both' =
+    hasStart && hasEnd ? 'both' : hasStart ? 'start' : hasEnd ? 'end' : 'none';
 
   const set = (startArrow: ArrowHead, endArrow: ArrowHead) => deck.updateElement(id, { startArrow, endArrow });
+  const style = (m: typeof mode) => (mode === m ? { ...btn, ...active } : btn);
 
   return (
     <>
       <span style={{ width: 1, height: 22, background: '#e2e4e8', margin: '0 4px' }} />
-      <button title="No arrow" style={mode === 'none' ? { ...btn, ...active } : btn} onClick={() => set('none', 'none')}>
+      <button title="No arrow" style={style('none')} onClick={() => set('none', 'none')}>
         <Minus size={15} />
       </button>
-      <button title="Arrow (one side)" style={mode === 'one' ? { ...btn, ...active } : btn} onClick={() => set('none', HEAD)}>
+      <button title="Arrow (start)" style={style('start')} onClick={() => set(HEAD, 'none')}>
+        <MoveLeft size={15} />
+      </button>
+      <button title="Arrow (end)" style={style('end')} onClick={() => set('none', HEAD)}>
         <MoveRight size={15} />
       </button>
-      <button title="Arrows (both sides)" style={mode === 'both' ? { ...btn, ...active } : btn} onClick={() => set(HEAD, HEAD)}>
+      <button title="Arrows (both sides)" style={style('both')} onClick={() => set(HEAD, HEAD)}>
         <MoveHorizontal size={15} />
       </button>
     </>
