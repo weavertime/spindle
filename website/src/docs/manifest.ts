@@ -55,6 +55,16 @@ export const NAV: DocGroup[] = [
     ],
   },
   {
+    label: 'Slides',
+    items: [
+      { slug: 'slides/overview', title: 'Overview' },
+      { slug: 'slides/core/architecture', title: 'Architecture' },
+      { slug: 'slides/core/collaboration', title: 'Collaboration' },
+      { slug: 'slides/components', title: 'Components' },
+      { slug: 'slides/data-structures', title: 'Data Structures' },
+    ],
+  },
+  {
     label: 'Guides',
     items: [
       { slug: 'collaboration', title: 'Real-time Collaboration' },

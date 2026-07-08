@@ -10,6 +10,7 @@ import './styles.css';
 const DocsApp = lazy(() => import('./docs/DocsApp'));
 const SheetsDemo = lazy(() => import('./demo/SheetsDemo'));
 const DocsDemo = lazy(() => import('./demo/DocsDemo'));
+const SlidesDemo = lazy(() => import('./demo/SlidesDemo'));
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -37,6 +38,14 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           element={
             <Suspense fallback={<div className="docs-boot">Loading the docs demo…</div>}>
               <DocsDemo />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/demo/slides"
+          element={
+            <Suspense fallback={<div className="docs-boot">Loading the slides demo…</div>}>
+              <SlidesDemo />
             </Suspense>
           }
         />

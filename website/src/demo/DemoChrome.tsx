@@ -13,7 +13,7 @@ export default function DemoChrome({
   hint,
   children,
 }: {
-  active: 'sheets' | 'docs';
+  active: 'sheets' | 'docs' | 'slides';
   hint: string;
   children: (size: { width: number; height: number }) => ReactNode;
 }) {
@@ -50,6 +50,9 @@ export default function DemoChrome({
             </Link>
             <Link to="/demo/docs" className={active === 'docs' ? 'active' : ''}>
               Docs
+            </Link>
+            <Link to="/demo/slides" className={active === 'slides' ? 'active' : ''}>
+              Slides
             </Link>
           </div>
           <div className="demo-top-right">

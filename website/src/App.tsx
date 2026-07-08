@@ -40,15 +40,17 @@ const FEATURES = [
 const SURFACES = [
   { kind: 'sheet' as const, h: 'Sheets', pkg: '@weavertime/spindle-sheets-react', soon: false, demo: '/demo/sheets', p: 'Formulas, filters, cell formatting, frozen panes, and a canvas grid that scrolls like native.' },
   { kind: 'doc' as const, h: 'Docs', pkg: '@weavertime/spindle-docs-react', soon: false, demo: '/demo/docs', p: 'Paginated, print-true documents on a ProseMirror engine with a line-level “True Layout” paginator.' },
-  { kind: 'slide' as const, h: 'Slides', pkg: '@weavertime/spindle-docs-react', soon: true, demo: '', p: 'Presentation editing on the same document core: one data model, three surfaces. Planned next, on the same engine.' },
+  { kind: 'slide' as const, h: 'Slides', pkg: '@weavertime/spindle-slides-react', soon: false, demo: '/demo/slides', p: 'Positioned elements, shapes, and rich text on a standalone scene engine. Drag, present, export to PDF, and co-edit in real time.' },
 ];
 
 const PACKAGES = [
   ['spindle-shared', 'Framework-agnostic utilities: events, collaboration primitives'],
   ['spindle-sheets-core', 'Spreadsheet engine · sparse store · formulas · zero React'],
   ['spindle-sheets-react', 'React canvas grid, formula bar, toolbar & dialogs'],
-  ['spindle-docs-core', 'Document engine · True Layout · zero React · slides coming soon'],
-  ['spindle-docs-react', 'React document & presentation editor components'],
+  ['spindle-docs-core', 'Document engine · True Layout · zero React'],
+  ['spindle-docs-react', 'React document editor components'],
+  ['spindle-slides-core', 'Presentation engine · scene layer · fractional index · zero React'],
+  ['spindle-slides-react', 'React slide editor: canvas, gestures, present mode & PDF'],
   ['spindle-transport-websocket', 'WebSocket-backed collaboration provider'],
 ];
 
