@@ -4,7 +4,7 @@
 
 import React, { useRef } from 'react';
 import {
-  Type, Minus, Image as ImageIcon,
+  Type, Minus, MoveUpRight, Image as ImageIcon,
   Trash2, Copy, Undo2, Redo2, Group, Ungroup,
   BringToFront, SendToBack, AlignHorizontalJustifyCenter, AlignVerticalJustifyCenter,
   AlignStartVertical, AlignEndVertical, AlignStartHorizontal, AlignEndHorizontal,
@@ -89,6 +89,9 @@ export function Toolbar(): React.ReactElement {
       <ShapePicker />
       <IconButton title="Line" onClick={() => insert({ type: 'line' } as NewElementSpec, { w: 300, h: 0 })}>
         <Minus size={16} />
+      </IconButton>
+      <IconButton title="Arrow" onClick={() => insert({ type: 'line', endArrow: 'triangle' } as NewElementSpec, { w: 300, h: 0 })}>
+        <MoveUpRight size={16} />
       </IconButton>
       <IconButton title="Image" onClick={() => fileRef.current?.click()}>
         <ImageIcon size={16} />

@@ -5,15 +5,24 @@
 import React from 'react';
 import { richTextFromPlainText, richTextToPlainText } from '@weavertime/spindle-slides-core';
 import { useDeck, useActiveSlideId, useSlide } from '../hooks';
+import { useDeckContext } from '../context/DeckContext';
 
 export function NotesPanel(): React.ReactElement {
   const deck = useDeck();
+  const { editing } = useDeckContext();
   const slideId = useActiveSlideId();
   const slide = useSlide(slideId);
   const value = slide?.notes ? richTextToPlainText(slide.notes) : '';
 
+  // Interacting with notes is "outside" the canvas — clear the element selection
+  // and leave any text edit.
+  const deselect = () => {
+    editing.setEditingId(null);
+    deck.setSelection({ slideId, elementIds: [] });
+  };
+
   return (
-    <div style={{ borderTop: '1px solid #e2e4e8', background: '#fff', padding: '8px 16px' }}>
+    <div onPointerDown={deselect} style={{ borderTop: '1px solid #e2e4e8', background: '#fff', padding: '8px 16px' }}>
       <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, color: '#8a93a2', marginBottom: 4 }}>
         Speaker notes
       </div>

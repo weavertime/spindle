@@ -4,6 +4,7 @@
 
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { useDeck, useActiveSlideId } from '../hooks';
+import { useDeckContext } from '../context/DeckContext';
 import { SlideView } from './SlideView';
 import { InteractiveSlide } from './InteractiveSlide';
 
@@ -16,10 +17,19 @@ export interface SlideStageProps {
 
 export function SlideStage({ zoom, interactive = false }: SlideStageProps): React.ReactElement {
   const deck = useDeck();
+  const { editing } = useDeckContext();
   const activeSlideId = useActiveSlideId();
   const { w, h } = deck.getSlideSize();
   const containerRef = useRef<HTMLDivElement>(null);
   const [fitScale, setFitScale] = useState(1);
+
+  // Clicking the grey area around the slide (the container itself, not the
+  // slide surface) clears the selection and leaves any text edit.
+  const onGreyPointerDown = (e: React.PointerEvent) => {
+    if (!interactive || e.target !== containerRef.current) return;
+    editing.setEditingId(null);
+    deck.setSelection({ slideId: activeSlideId, elementIds: [] });
+  };
 
   useLayoutEffect(() => {
     if (zoom !== undefined) return;
@@ -41,6 +51,7 @@ export function SlideStage({ zoom, interactive = false }: SlideStageProps): Reac
   return (
     <div
       ref={containerRef}
+      onPointerDown={onGreyPointerDown}
       style={{
         flex: '1 1 auto',
         display: 'flex',
