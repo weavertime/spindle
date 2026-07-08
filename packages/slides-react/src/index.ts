@@ -54,6 +54,7 @@ export { Filmstrip } from './components/Filmstrip';
 export { SlideView, ScaledSlide } from './components/SlideView';
 export { SelectionOverlay } from './components/SelectionOverlay';
 export { GuidesOverlay } from './components/GuidesOverlay';
+export { RemotePresenceOverlay } from './components/RemotePresenceOverlay';
 export { ContextMenu } from './components/ContextMenu';
 export { ElementView } from './components/elements/ElementView';
 export { StaticRichText } from './components/elements/StaticRichText';

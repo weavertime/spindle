@@ -11,6 +11,7 @@ import { useDeckContext } from '../context/DeckContext';
 import { SlideView } from './SlideView';
 import { GuidesOverlay } from './GuidesOverlay';
 import { SelectionOverlay } from './SelectionOverlay';
+import { RemotePresenceOverlay } from './RemotePresenceOverlay';
 import { screenToSlide } from '../interactions/coords';
 import {
   createMoveGesture,
@@ -114,6 +115,7 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
       <div style={{ position: 'absolute', left: 0, top: 0, transform: `scale(${scale})`, transformOrigin: 'top left', width: w, height: h }}>
         <SlideView slideId={slideId} interactive />
         <GuidesOverlay scale={scale} />
+        <RemotePresenceOverlay scale={scale} />
         <SelectionOverlay scale={scale} />
       </div>
     </div>

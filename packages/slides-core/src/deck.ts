@@ -42,6 +42,8 @@ import type { ThemeData, LayoutData } from './theme/types';
 import { getBuiltinTheme, BUILTIN_LAYOUTS, DEFAULT_SLIDE_SIZE } from './theme/builtin';
 import { DeckHistory, type DeckSnapshot } from './history';
 import { normalizeDeckData } from './serialization';
+import type { CollabHandle, AttachCollabOptions } from './collab/binding';
+import type { CollabIdentity, CollabProvider } from '@weavertime/spindle-shared';
 import type {
   Slide,
   DeckData,
@@ -79,8 +81,8 @@ export class DeckImpl {
   private events = new EventEmitter<DeckEventType>();
   private history = new DeckHistory();
   private isRestoring = false;
-  /** Set by attachCollab (Phase 5). Non-null means Y.Doc is the source. */
-  private collabHandle: unknown = null;
+  /** Set by attachCollab. Non-null means a Y.Doc mirror is active. */
+  private collabHandle: CollabHandle | null = null;
 
   constructor(id?: string, title = 'Untitled deck') {
     this.id = id ?? generateId();
@@ -259,9 +261,12 @@ export class DeckImpl {
     if (!this.slides.has(slideId)) return;
     if (this.slides.size <= 1) throw new Error('Cannot delete the last slide');
     this.recordHistory();
-    // Remove the slide's elements too.
+    // Remove the slide's elements too (emit per-element so collab + React see it).
     for (const el of [...this.elements.values()]) {
-      if (el.containerId === slideId) this.elements.delete(el.id);
+      if (el.containerId === slideId) {
+        this.elements.delete(el.id);
+        this.emit('elementDelete', { slideId, elementId: el.id });
+      }
     }
     this.slides.delete(slideId);
     if (this.activeSlideId === slideId) {
@@ -613,6 +618,7 @@ export class DeckImpl {
   }
 
   undo(): boolean {
+    if (this.collabHandle) return this.collabHandle.undoManager.undo() !== null;
     const prev = this.history.undo(this.createSnapshot());
     if (!prev) return false;
     this.restoreSnapshot(prev);
@@ -620,6 +626,7 @@ export class DeckImpl {
   }
 
   redo(): boolean {
+    if (this.collabHandle) return this.collabHandle.undoManager.redo() !== null;
     const next = this.history.redo(this.createSnapshot());
     if (!next) return false;
     this.restoreSnapshot(next);
@@ -627,11 +634,103 @@ export class DeckImpl {
   }
 
   canUndo(): boolean {
-    return this.history.canUndo();
+    return this.collabHandle ? this.collabHandle.undoManager.canUndo() : this.history.canUndo();
   }
 
   canRedo(): boolean {
-    return this.history.canRedo();
+    return this.collabHandle ? this.collabHandle.undoManager.canRedo() : this.history.canRedo();
+  }
+
+  // ── Collaboration ────────────────────────────────────────────────────────────
+
+  isCollabAttached(): boolean {
+    return this.collabHandle !== null;
+  }
+
+  getCollabHandle(): CollabHandle | null {
+    return this.collabHandle;
+  }
+
+  /** Attach a Yjs mirror over a provider. Lazy-loads ./collab (keeps Yjs out of the base bundle). */
+  async attachCollab(provider: CollabProvider, identity: CollabIdentity, options?: AttachCollabOptions): Promise<CollabHandle> {
+    if (this.collabHandle) return this.collabHandle;
+    const { attachCollabToDeck } = await import('./collab/binding');
+    this.collabHandle = await attachCollabToDeck(this, provider, identity, options);
+    this.history.clear(); // collab uses Y.UndoManager
+    return this.collabHandle;
+  }
+
+  detachCollab(): void {
+    this.collabHandle?.detach();
+    this.collabHandle = null;
+  }
+
+  // Remote-apply hooks — called ONLY by the collab binding while applying a
+  // remote (or undo) change. They mutate maps + emit events but never record
+  // history; the binding suppresses mirror echo around these calls.
+
+  _applyRemoteElementUpsert(el: SlideElement): void {
+    const existed = this.elements.has(el.id);
+    this.elements.set(el.id, el);
+    if (existed) this.emit('elementChange', { slideId: el.containerId, elementId: el.id, keys: ['*'] });
+    else this.emit('elementAdd', { slideId: el.containerId, elementId: el.id });
+  }
+
+  _applyRemoteElementDelete(id: string): void {
+    const el = this.elements.get(id);
+    if (!el) return;
+    this.elements.delete(id);
+    this.emit('elementDelete', { slideId: el.containerId, elementId: id });
+  }
+
+  _applyRemoteSlideUpsert(slide: Slide): void {
+    const existed = this.slides.has(slide.id);
+    this.slides.set(slide.id, slide);
+    if (existed) this.emit('slideChange', { slideId: slide.id, keys: ['*'] });
+    else this.emit('slideAdd', { slideId: slide.id });
+  }
+
+  _applyRemoteSlideDelete(id: string): void {
+    if (!this.slides.has(id)) return;
+    this.slides.delete(id);
+    if (this.activeSlideId === id) {
+      this.activeSlideId = this.getSlideIds()[0] ?? '';
+      this.emit('activeSlideChange', { slideId: this.activeSlideId });
+    }
+    this.emit('slideDelete', { slideId: id });
+  }
+
+  /** Escape hatch: replace the whole engine state from a Y-derived DeckData
+   *  (used on attach to reconcile, and available if observers ever drift). */
+  _resyncFromY(data: DeckData): void {
+    this.id = data.id;
+    this.title = data.title;
+    this.slideSize = { ...data.slideSize };
+    if (data.theme) this.theme = data.theme;
+    if (data.layouts) this.layouts = data.layouts;
+    this.slides = new Map();
+    this.elements = new Map();
+    for (const slideData of data.slides) {
+      const { elements, ...slide } = slideData;
+      this.slides.set(slide.id, slide);
+      for (const el of elements) this.elements.set(el.id, el);
+    }
+    const first = this.getSlideIds()[0] ?? '';
+    if (!this.slides.has(this.activeSlideId)) this.activeSlideId = first;
+    this.selection = { slideId: this.activeSlideId, elementIds: [] };
+    this.emit('deckChange', { keys: ['*'] });
+    this.emit('themeChange', { theme: this.theme });
+    this.emit('activeSlideChange', { slideId: this.activeSlideId });
+    this.emit('selectionChange', { selection: this.getSelection() });
+  }
+
+  _applyRemoteMeta(meta: { title?: string; slideSize?: { w: number; h: number }; theme?: ThemeData; layouts?: LayoutData[] }): void {
+    let deckChanged = false;
+    if (meta.title !== undefined && meta.title !== this.title) { this.title = meta.title; deckChanged = true; }
+    if (meta.slideSize) { this.slideSize = { w: meta.slideSize.w, h: meta.slideSize.h }; deckChanged = true; }
+    if (meta.layouts) { this.layouts = meta.layouts; deckChanged = true; }
+    if (meta.theme) { this.theme = meta.theme; this.emit('themeChange', { theme: this.theme }); }
+    if (deckChanged) this.emit('deckChange', { keys: ['*'] });
   }
 
   // ── Serialization ────────────────────────────────────────────────────────────
@@ -653,6 +752,7 @@ export class DeckImpl {
   }
 
   setData(data: DeckData): void {
+    if (this.collabHandle) throw new Error('Cannot setData while collab is attached');
     const normalized = normalizeDeckData(data);
     this.id = normalized.id;
     this.title = normalized.title;

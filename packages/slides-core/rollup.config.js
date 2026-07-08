@@ -37,10 +37,15 @@ const external = [
 
 export default defineConfig([
   {
+    // The base engine dynamically imports ./collab/binding (the only Yjs
+    // importer) from attachCollab(), so it code-splits into its own chunk that
+    // consumers only load when they opt into collaboration. That keeps Yjs out
+    // of the base bundle — hence output.dir (code-splitting) instead of a
+    // single output.file.
     input: 'src/index.ts',
     output: [
-      { file: 'dist/index.js', format: 'cjs', sourcemap: true },
-      { file: 'dist/index.esm.js', format: 'esm', sourcemap: true },
+      { dir: 'dist', format: 'cjs', entryFileNames: 'index.js', chunkFileNames: 'chunks/[name]-[hash].js', sourcemap: true },
+      { dir: 'dist', format: 'esm', entryFileNames: 'index.esm.js', chunkFileNames: 'chunks/[name]-[hash].esm.js', sourcemap: true },
     ],
     external,
     plugins: [tsPluginMain],

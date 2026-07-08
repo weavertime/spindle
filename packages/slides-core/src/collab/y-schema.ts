@@ -1,0 +1,190 @@
+// Y.Doc schema for collaborative decks.
+//
+// Layout:
+//   meta:     Y.Map — id, title, slideSize(JSON), theme(JSON), layouts(JSON)   (LWW)
+//   slides:   Y.Map<slideId, Y.Map{ index, layoutRef?, background?(JSON), notes?(JSON) }>
+//   elements: Y.Map<elId, Y.Map{ containerId, type, x, y, w, h, rotation, index,
+//                                groupId?, locked?, opacity?, placeholder?(JSON),
+//                                props(JSON), richText?: Y.XmlFragment }>
+//   threads:  Y.Map<threadId, JSON>   — outside undo scope (Phase 6)
+//
+// Frame fields are individual Y.Map keys so concurrent move/rotate/z-reorder on
+// one element merge per-key. Type-specific styling lives in one `props` JSON
+// key (LWW, v1-acceptable). The rich-text body is a Y.XmlFragment bound via
+// y-prosemirror. Fractional `index` + jitter → concurrent reorders converge.
+
+import * as Y from 'yjs';
+import { prosemirrorToYXmlFragment, yXmlFragmentToProseMirrorRootNode } from 'y-prosemirror';
+import { slidesSchema } from '../text/schema';
+import type { SlideElement } from '../scene/types';
+import type { RichTextDoc } from '../text/model';
+import type { DeckData, Slide, SlideData, SlidesCommentThread, DeckSelection } from '../types';
+
+export interface DeckYTypes {
+  meta: Y.Map<unknown>;
+  slides: Y.Map<Y.Map<unknown>>;
+  elements: Y.Map<Y.Map<unknown>>;
+  threads: Y.Map<SlidesCommentThread>;
+}
+
+/**
+ * Normalize a value to a plain, same-realm JSON structure before storing it in
+ * Yjs. Yjs's content check is strict (`value.constructor === Object`), so a
+ * cross-realm object — e.g. structuredClone output under some runtimes — is
+ * rejected as "Unexpected content type". A JSON round-trip guarantees plain
+ * objects/arrays. Only used for the small metadata/props blobs, never for the
+ * hot-path primitive frame keys.
+ */
+export function toPlain<T>(value: T): T {
+  return value === undefined ? value : (JSON.parse(JSON.stringify(value)) as T);
+}
+
+export function getDeckYTypes(ydoc: Y.Doc): DeckYTypes {
+  return {
+    meta: ydoc.getMap<unknown>('meta'),
+    slides: ydoc.getMap<Y.Map<unknown>>('slides'),
+    elements: ydoc.getMap<Y.Map<unknown>>('elements'),
+    threads: ydoc.getMap<SlidesCommentThread>('threads'),
+  };
+}
+
+// Element fields stored as individual Y.Map keys (per-key CRDT merge).
+const SCALAR_KEYS = ['containerId', 'type', 'x', 'y', 'w', 'h', 'rotation', 'index', 'groupId', 'locked', 'opacity', 'placeholder'] as const;
+
+/** The type-specific styling fields bundled into the `props` JSON key. */
+export function elementProps(el: SlideElement): Record<string, unknown> {
+  const rest: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(el)) {
+    if ((SCALAR_KEYS as readonly string[]).includes(k)) continue;
+    if (k === 'id' || k === 'richText') continue;
+    rest[k] = v;
+  }
+  return rest;
+}
+
+/** True when an element actually carries a rich-text body (not just a type that could). */
+export function elementHasRichText(el: SlideElement): boolean {
+  return (el.type === 'text' || el.type === 'shape') && !!(el as { richText?: unknown }).richText;
+}
+
+/**
+ * Build (and attach) a Y.Map for an element. The richText fragment is created
+ * empty here; populate it with `populateElementRichText` AFTER the map is added
+ * to the elements map (a fragment must be integrated into the doc first).
+ */
+export function createElementYMap(el: SlideElement): Y.Map<unknown> {
+  const m = new Y.Map<unknown>();
+  for (const k of SCALAR_KEYS) {
+    const v = (el as unknown as Record<string, unknown>)[k];
+    if (v !== undefined) m.set(k, typeof v === 'object' ? toPlain(v) : v);
+  }
+  m.set('props', toPlain(elementProps(el)));
+  if (elementHasRichText(el)) m.set('richText', new Y.XmlFragment());
+  return m;
+}
+
+/** Populate an element's richText fragment from JSON (after the map is attached). */
+export function populateElementRichText(m: Y.Map<unknown>, richText: RichTextDoc | undefined): void {
+  const frag = m.get('richText') as Y.XmlFragment | undefined;
+  if (frag && richText) prosemirrorToYXmlFragment(slidesSchema.nodeFromJSON(richText), frag);
+}
+
+/** Read an element's richText fragment back to JSON. */
+export function fragmentToRichText(frag: Y.XmlFragment): RichTextDoc {
+  return yXmlFragmentToProseMirrorRootNode(frag, slidesSchema).toJSON() as RichTextDoc;
+}
+
+/** Reconstruct a SlideElement from its Y.Map (id is the elements-map key). */
+export function yMapToElement(id: string, m: Y.Map<unknown>): SlideElement {
+  const el: Record<string, unknown> = { id };
+  for (const k of SCALAR_KEYS) {
+    if (m.has(k)) el[k] = m.get(k);
+  }
+  Object.assign(el, (m.get('props') as Record<string, unknown>) ?? {});
+  const frag = m.get('richText') as Y.XmlFragment | undefined;
+  if (frag) el.richText = fragmentToRichText(frag);
+  return el as unknown as SlideElement;
+}
+
+export function createSlideYMap(slide: Slide): Y.Map<unknown> {
+  const m = new Y.Map<unknown>();
+  m.set('index', slide.index);
+  if (slide.layoutRef) m.set('layoutRef', slide.layoutRef);
+  if (slide.background) m.set('background', toPlain(slide.background));
+  if (slide.notes) m.set('notes', toPlain(slide.notes));
+  return m;
+}
+
+export function yMapToSlide(id: string, m: Y.Map<unknown>): Slide {
+  const slide: Slide = { id, index: m.get('index') as string };
+  if (m.has('layoutRef')) slide.layoutRef = m.get('layoutRef') as string;
+  if (m.has('background')) slide.background = m.get('background') as Slide['background'];
+  if (m.has('notes')) slide.notes = m.get('notes') as RichTextDoc;
+  return slide;
+}
+
+/** First-time hydration of an empty Y.Doc from a DeckData snapshot. */
+export function hydrateYDocFromData(ydoc: Y.Doc, data: DeckData): void {
+  const y = getDeckYTypes(ydoc);
+  ydoc.transact(() => {
+    y.meta.set('id', data.id);
+    y.meta.set('title', data.title);
+    y.meta.set('slideSize', toPlain(data.slideSize));
+    y.meta.set('theme', toPlain(data.theme));
+    if (data.layouts) y.meta.set('layouts', toPlain(data.layouts));
+
+    for (const slideData of data.slides) {
+      const { elements, ...slide } = slideData;
+      y.slides.set(slide.id, createSlideYMap(slide));
+      for (const el of elements) {
+        const m = createElementYMap(el);
+        y.elements.set(el.id, m);
+        if (elementHasRichText(el)) populateElementRichText(m, (el as { richText?: RichTextDoc }).richText);
+      }
+    }
+
+    if (data.threads) for (const t of data.threads) y.threads.set(t.id, toPlain(t));
+  });
+}
+
+/** Read the Y.Doc back to a DeckData object (local view state supplied by caller). */
+export function serializeYDocToData(
+  ydoc: Y.Doc,
+  selection: DeckSelection,
+  activeSlideId: string
+): DeckData {
+  const y = getDeckYTypes(ydoc);
+
+  // Group elements by slide.
+  const bySlide = new Map<string, SlideElement[]>();
+  for (const [id, m] of y.elements.entries()) {
+    const el = yMapToElement(id, m);
+    const list = bySlide.get(el.containerId) ?? [];
+    list.push(el);
+    bySlide.set(el.containerId, list);
+  }
+
+  const slides: SlideData[] = [];
+  for (const [id, m] of y.slides.entries()) {
+    const slide = yMapToSlide(id, m);
+    const els = (bySlide.get(id) ?? []).sort((a, b) =>
+      a.index < b.index ? -1 : a.index > b.index ? 1 : a.id < b.id ? -1 : 1
+    );
+    slides.push({ ...slide, elements: els });
+  }
+  slides.sort((a, b) => (a.index < b.index ? -1 : a.index > b.index ? 1 : a.id < b.id ? -1 : 1));
+
+  const threads: SlidesCommentThread[] = [];
+  for (const t of y.threads.values()) threads.push(t);
+
+  return {
+    id: (y.meta.get('id') as string) ?? '',
+    title: (y.meta.get('title') as string) ?? '',
+    slideSize: (y.meta.get('slideSize') as DeckData['slideSize']) ?? { w: 1280, h: 720 },
+    theme: y.meta.get('theme') as DeckData['theme'],
+    layouts: y.meta.get('layouts') as DeckData['layouts'],
+    slides,
+    threads: threads.length ? threads : undefined,
+    selection: { slideId: activeSlideId, elementIds: [...selection.elementIds] },
+  };
+}
