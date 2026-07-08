@@ -20,9 +20,16 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
   const [fading, setFading] = useState(false);
   const numberBuffer = useRef('');
 
+  // Current index / count via refs so the keydown listener (subscribed once)
+  // always reads fresh values without re-subscribing on every navigation.
+  const indexRef = useRef(index);
+  indexRef.current = index;
+  const lenRef = useRef(slideIds.length);
+  lenRef.current = slideIds.length;
+
   const go = (i: number) => {
-    const next = Math.max(0, Math.min(slideIds.length - 1, i));
-    if (next === index) return;
+    const next = Math.max(0, Math.min(lenRef.current - 1, i));
+    if (next === indexRef.current) return;
     setFading(true);
     setIndex(next);
     window.setTimeout(() => setFading(false), 20);
@@ -35,28 +42,38 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
     return () => window.removeEventListener('resize', measure);
   }, [w, h]);
 
+  // Enter fullscreen once on mount; exit only on unmount. Doing this per
+  // navigation would exit fullscreen on every slide change (and the re-request
+  // is rejected outside a user gesture) — the slide would drop out of fullscreen.
   useEffect(() => {
     containerRef.current?.requestFullscreen?.().catch(() => {});
+    return () => {
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    };
+  }, []);
+
+  // Keyboard navigation — subscribe once; handlers read the refs above.
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       switch (e.key) {
         case 'ArrowRight':
         case 'ArrowDown':
         case 'PageDown':
         case ' ':
-          go(index + 1);
+          go(indexRef.current + 1);
           e.preventDefault();
           break;
         case 'ArrowLeft':
         case 'ArrowUp':
         case 'PageUp':
-          go(index - 1);
+          go(indexRef.current - 1);
           e.preventDefault();
           break;
         case 'Home':
           go(0);
           break;
         case 'End':
-          go(slideIds.length - 1);
+          go(lenRef.current - 1);
           break;
         case 'Escape':
           onExit();
@@ -71,12 +88,9 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
       }
     };
     window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-    };
+    return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index, slideIds.length]);
+  }, []);
 
   // Keep the engine's active slide in sync so the filmstrip reflects the jump.
   useEffect(() => {
