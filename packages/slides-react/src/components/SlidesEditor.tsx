@@ -3,7 +3,7 @@
 // not window) and the right-click context menu.
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Play, FileDown } from 'lucide-react';
+import { Play, FileDown, MessageSquare } from 'lucide-react';
 import { useDeck, useKeyboardShortcuts } from '../hooks';
 import { Toolbar } from './Toolbar';
 import { TextFormatBar } from './TextFormatBar';
@@ -12,6 +12,7 @@ import { SlideStage } from './SlideStage';
 import { NotesPanel } from './NotesPanel';
 import { ContextMenu } from './ContextMenu';
 import { PresentMode } from './PresentMode';
+import { CommentsPanel } from './CommentsPanel';
 import { exportDeckToPdf } from './pdf/export-pdf';
 
 const ZOOM_PRESETS: Array<{ label: string; zoom?: number }> = [
@@ -32,6 +33,7 @@ export function SlidesEditor({ style, readOnly = false }: SlidesEditorProps): Re
   const [zoomIdx, setZoomIdx] = useState(0);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [presenting, setPresenting] = useState(false);
+  const [showComments, setShowComments] = useState(false);
   const { onKeyDown } = useKeyboardShortcuts();
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -77,6 +79,13 @@ export function SlidesEditor({ style, readOnly = false }: SlidesEditorProps): Re
               >
                 <FileDown size={14} /> PDF
               </button>
+              <button
+                onClick={() => setShowComments((s) => !s)}
+                title="Comments"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #d5d9e0', background: showComments ? '#eef4ff' : '#fff', color: '#3e4c59', borderRadius: 5, padding: '6px 10px', fontSize: 13, cursor: 'pointer' }}
+              >
+                <MessageSquare size={14} />
+              </button>
             </>
           )}
         </div>
@@ -100,6 +109,7 @@ export function SlidesEditor({ style, readOnly = false }: SlidesEditorProps): Re
           <SlideStage zoom={ZOOM_PRESETS[zoomIdx].zoom} interactive={!readOnly} />
           {!readOnly && <NotesPanel />}
         </div>
+        {!readOnly && showComments && <CommentsPanel onClose={() => setShowComments(false)} />}
       </div>
       {menu && <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
       {presenting && <PresentMode onExit={() => setPresenting(false)} />}

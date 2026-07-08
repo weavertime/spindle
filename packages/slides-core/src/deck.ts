@@ -42,6 +42,7 @@ import type { ThemeData, LayoutData } from './theme/types';
 import { getBuiltinTheme, BUILTIN_LAYOUTS, DEFAULT_SLIDE_SIZE } from './theme/builtin';
 import { DeckHistory, type DeckSnapshot } from './history';
 import { normalizeDeckData } from './serialization';
+import { SlidesCommentStore } from './comments';
 import type { CollabHandle, AttachCollabOptions } from './collab/binding';
 import type { CollabIdentity, CollabProvider } from '@weavertime/spindle-shared';
 import type {
@@ -78,6 +79,7 @@ export class DeckImpl {
   private selection: DeckSelection = { elementIds: [] };
   private activeSlideId = '';
 
+  private comments = new SlidesCommentStore();
   private events = new EventEmitter<DeckEventType>();
   private history = new DeckHistory();
   private isRestoring = false;
@@ -97,6 +99,16 @@ export class DeckImpl {
     this.slides.set(first.id, first);
     this.activeSlideId = first.id;
     this.selection = { slideId: first.id, elementIds: [] };
+    this.wireCommentListener();
+  }
+
+  private wireCommentListener(): void {
+    this.comments.__setChangeListener((event) => {
+      // commentEvent fires for the local user's own actions only (the store
+      // notifies on API mutations, not on loadJSON from a remote/setData).
+      this.emit('commentEvent', event);
+      this.emit('commentChange', {});
+    });
   }
 
   // ── Events ─────────────────────────────────────────────────────────────────
@@ -643,6 +655,24 @@ export class DeckImpl {
 
   // ── Collaboration ────────────────────────────────────────────────────────────
 
+  // ── Comments ─────────────────────────────────────────────────────────────────
+
+  getComments(): SlidesCommentStore {
+    return this.comments;
+  }
+
+  /** True when a thread's anchored element no longer exists (orphaned). */
+  isThreadOrphaned(threadId: string): boolean {
+    const t = this.comments.getThread(threadId);
+    return !!t && !this.elements.has(t.anchor.elementId);
+  }
+
+  /** Replace the comment store from remote-synced JSON, then notify the UI. */
+  _applyRemoteComments(threads: import('./types').SlidesCommentThread[]): void {
+    this.comments.loadJSON(threads);
+    this.emit('commentChange', {});
+  }
+
   isCollabAttached(): boolean {
     return this.collabHandle !== null;
   }
@@ -715,6 +745,7 @@ export class DeckImpl {
       this.slides.set(slide.id, slide);
       for (const el of elements) this.elements.set(el.id, el);
     }
+    this.comments.loadJSON(data.threads);
     const first = this.getSlideIds()[0] ?? '';
     if (!this.slides.has(this.activeSlideId)) this.activeSlideId = first;
     this.selection = { slideId: this.activeSlideId, elementIds: [] };
@@ -747,6 +778,7 @@ export class DeckImpl {
       theme: structuredClone(this.theme),
       layouts: this.layouts.map((l) => structuredClone(l)),
       slides,
+      threads: this.comments.toJSON().length ? this.comments.toJSON() : undefined,
       selection: this.getSelection(),
     };
   }
@@ -769,6 +801,7 @@ export class DeckImpl {
         this.elements.set(el.id, el);
       }
     }
+    this.comments.loadJSON(normalized.threads);
 
     this.history.clear();
 

@@ -41,6 +41,7 @@ import {
 import type { DeckImpl } from '../deck';
 import type { Frame } from '../scene/types';
 import type { RichTextDoc } from '../text/model';
+import type { SlidesCommentThread } from '../types';
 
 export const LOCAL_ORIGIN = Symbol('spindle-slides-local');
 
@@ -197,6 +198,17 @@ export async function attachCollabToDeck(
       y.meta.set('layouts', toPlain(deck.getLayouts()));
     }));
     on('themeChange', () => tx(() => y.meta.set('theme', toPlain(deck.getTheme()))));
+
+    // Comments live in a top-level Y.Map outside the undo scope (not undoable,
+    // matching sheets). Full-sync on each change — thread volume is small.
+    on('commentChange', () => tx(() => {
+      const current = new Set<string>();
+      for (const t of deck.getComments().getThreads()) {
+        current.add(t.id);
+        y.threads.set(t.id, toPlain(t));
+      }
+      for (const id of [...y.threads.keys()]) if (!current.has(id)) y.threads.delete(id);
+    }));
   };
 
   // ── Observe: Y changes (remote / undo) → engine ────────────────────────────
@@ -249,10 +261,16 @@ export async function attachCollabToDeck(
     }));
   };
 
+  const onThreads = (_e: Y.YMapEvent<SlidesCommentThread>, transaction: Y.Transaction) => {
+    if (transaction.origin === LOCAL_ORIGIN) return;
+    applyRemote(() => deck._applyRemoteComments([...y.threads.values()]));
+  };
+
   const attachObservers = () => {
     y.elements.observeDeep(onElements);
     y.slides.observeDeep(onSlides);
     y.meta.observe(onMeta);
+    y.threads.observe(onThreads);
   };
 
   // ── Wire transport (identical shape to sheets/docs) ────────────────────────
@@ -309,6 +327,7 @@ export async function attachCollabToDeck(
     y.elements.unobserveDeep(onElements);
     y.slides.unobserveDeep(onSlides);
     y.meta.unobserve(onMeta);
+    y.threads.unobserve(onThreads);
     for (const off of offs) off();
     unsubDoc();
     unsubAwareness();

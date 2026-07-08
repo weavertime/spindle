@@ -4,7 +4,7 @@
 // panes or driven by collab.
 
 import React, { createContext, useContext, useEffect, useMemo } from 'react';
-import type { DeckImpl } from '@weavertime/spindle-slides-core';
+import type { DeckImpl, CommentAuthor, SlidesCommentEvent } from '@weavertime/spindle-slides-core';
 import { ElementStore } from './element-store';
 import { NodeRegistry } from '../interactions/node-registry';
 import { TransientStore } from '../interactions/transient-store';
@@ -19,6 +19,10 @@ export interface DeckContextValue {
   transient: TransientStore;
   /** Which element hosts the single live ProseMirror editor. */
   editing: EditingStore;
+  /** The signed-in user, used as the author of new comments. */
+  currentUser?: CommentAuthor;
+  /** Directory of users that can be @-mentioned in comments. */
+  mentionableUsers: CommentAuthor[];
 }
 
 const DeckContext = createContext<DeckContextValue | null>(null);
@@ -26,18 +30,27 @@ const DeckContext = createContext<DeckContextValue | null>(null);
 export interface DeckProviderProps {
   deck: DeckImpl;
   children: React.ReactNode;
+  currentUser?: CommentAuthor;
+  mentionableUsers?: CommentAuthor[];
+  /** Host hook for the local user's own comment activity (notifications, etc.). */
+  onCommentEvent?: (event: SlidesCommentEvent) => void;
 }
 
-export function DeckProvider({ deck, children }: DeckProviderProps): React.ReactElement {
+export function DeckProvider({ deck, children, currentUser, mentionableUsers, onCommentEvent }: DeckProviderProps): React.ReactElement {
   const store = useMemo(() => new ElementStore(deck), [deck]);
   const nodes = useMemo(() => new NodeRegistry(), [deck]);
   const transient = useMemo(() => new TransientStore(), [deck]);
   const editing = useMemo(() => new EditingStore(), [deck]);
   useEffect(() => () => store.dispose(), [store]);
 
+  useEffect(() => {
+    if (!onCommentEvent) return;
+    return deck.on('commentEvent', (e) => onCommentEvent(e.payload as SlidesCommentEvent));
+  }, [deck, onCommentEvent]);
+
   const value = useMemo<DeckContextValue>(
-    () => ({ deck, store, nodes, transient, editing }),
-    [deck, store, nodes, transient, editing]
+    () => ({ deck, store, nodes, transient, editing, currentUser, mentionableUsers: mentionableUsers ?? [] }),
+    [deck, store, nodes, transient, editing, currentUser, mentionableUsers]
   );
   return <DeckContext.Provider value={value}>{children}</DeckContext.Provider>;
 }

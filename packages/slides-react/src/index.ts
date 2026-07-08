@@ -38,6 +38,8 @@ export {
   useKeyboardShortcuts,
   useEditingId,
 } from './hooks';
+export { useComments } from './hooks/useComments';
+export type { UseComments } from './hooks/useComments';
 
 // Components
 export { SlidesEditor } from './components/SlidesEditor';
@@ -55,6 +57,8 @@ export { SlideView, ScaledSlide } from './components/SlideView';
 export { SelectionOverlay } from './components/SelectionOverlay';
 export { GuidesOverlay } from './components/GuidesOverlay';
 export { RemotePresenceOverlay } from './components/RemotePresenceOverlay';
+export { CommentsPanel } from './components/CommentsPanel';
+export { CommentBadgesOverlay } from './components/CommentBadgesOverlay';
 export { ContextMenu } from './components/ContextMenu';
 export { ElementView } from './components/elements/ElementView';
 export { StaticRichText } from './components/elements/StaticRichText';

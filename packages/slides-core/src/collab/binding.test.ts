@@ -106,6 +106,15 @@ describe('two-peer convergence over InMemoryProvider', () => {
     expect(a.getElement(created.id)).toBeDefined();
     expect(stripSelection(a.getData())).toEqual(stripSelection(b.getData()));
   });
+
+  it('syncs comment threads between peers', async () => {
+    const { a, b } = await attachedPair(seedDeck());
+    const t = a.getComments().addThread({ slideId: 's1', elementId: 'e1' }, 'looks good', { id: 'A', name: 'Alice' });
+    const remote = b.getComments().getThread(t.id);
+    expect(remote?.comments[0].body).toBe('looks good');
+    a.getComments().resolveThread(t.id, { id: 'A', name: 'Alice' });
+    expect(b.getComments().getThread(t.id)?.status).toBe('resolved');
+  });
 });
 
 describe('collab undo', () => {

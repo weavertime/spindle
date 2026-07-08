@@ -4,6 +4,9 @@
 // Deck-layer types + events
 export * from './types';
 
+// Comments
+export * from './comments';
+
 // Scene layer
 export * from './scene/types';
 export * from './scene/elements';
