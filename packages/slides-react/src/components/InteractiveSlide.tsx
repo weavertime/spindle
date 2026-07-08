@@ -139,7 +139,9 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
             startBind: { elementId: fromElementId, anchor: fromAnchor },
             endArrow: 'triangle',
             x: box.x, y: box.y, w: box.w, h: box.h, flipV: box.flipV,
-            ...(d.snap ? { endBind: { elementId: d.snap.elementId, anchor: d.snap.anchor } } : {}),
+            // Bound end → track the anchor; free end → pin the explicit drop
+            // point (the box corner alone can't say which end is the free one).
+            ...(d.snap ? { endBind: { elementId: d.snap.elementId, anchor: d.snap.anchor } } : { endPoint: { x: d.to.x, y: d.to.y } }),
           } as NewElementSpec;
           const el = deck.addElement(slideId, spec);
           deck.setSelection({ slideId, elementIds: [el.id] });

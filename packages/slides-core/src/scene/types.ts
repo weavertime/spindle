@@ -183,6 +183,13 @@ export interface LineElement extends ElementBase {
   /** When set, the endpoint tracks this element's anchor instead of the box corner. */
   startBind?: EndpointBind;
   endBind?: EndpointBind;
+  /**
+   * Explicit free-endpoint positions (slide coords), used when the endpoint is
+   * a connector end that is NOT bound — the box + flipV alone can't say which
+   * corner a free end occupies once the other end is bound, so we store it.
+   */
+  startPoint?: { x: number; y: number };
+  endPoint?: { x: number; y: number };
 }
 
 export type SlideElement = TextElement | ShapeElement | ImageElement | LineElement;

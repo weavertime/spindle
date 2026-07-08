@@ -38,15 +38,17 @@ function freeEnd(line: LineElement): Point {
 export type FrameLookup = (elementId: string) => Frame | undefined;
 
 /**
- * Resolve a line's two endpoints in slide coordinates. Bound endpoints derive
- * from the target's anchor (via `getFrame`); unbound endpoints use the box
- * corner. A binding whose target is missing falls back to the box corner.
+ * Resolve a line's two endpoints in slide coordinates. Priority per end:
+ *   1. bound → the target's anchor (via `getFrame`);
+ *   2. an explicit free point (startPoint/endPoint) — a connector's free end;
+ *   3. the box corner (a plain, unbound line).
+ * A binding whose target is missing falls through to (2)/(3).
  */
 export function resolveEndpoints(line: LineElement, getFrame: FrameLookup): { start: Point; end: Point } {
   const startFrame = line.startBind && getFrame(line.startBind.elementId);
   const endFrame = line.endBind && getFrame(line.endBind.elementId);
-  const start = startFrame ? anchorPoint(startFrame, line.startBind!.anchor) : freeStart(line);
-  const end = endFrame ? anchorPoint(endFrame, line.endBind!.anchor) : freeEnd(line);
+  const start = startFrame ? anchorPoint(startFrame, line.startBind!.anchor) : line.startPoint ?? freeStart(line);
+  const end = endFrame ? anchorPoint(endFrame, line.endBind!.anchor) : line.endPoint ?? freeEnd(line);
   return { start, end };
 }
 

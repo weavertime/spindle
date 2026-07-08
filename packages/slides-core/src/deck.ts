@@ -36,7 +36,7 @@ import {
 } from './scene/z-order';
 import { alignFrames, distributeFrames, type AlignMode, type FrameItem } from './scene/align';
 import type { Rect } from './scene/geometry';
-import { resolveConnectorFrame } from './scene/connector';
+import { resolveConnectorFrame, resolveEndpoints } from './scene/connector';
 import type { Frame, Fill, SlideElement, LineElement } from './scene/types';
 import { applyTextFormat, type RichTextDoc, type TextFormatSpec } from './text/model';
 import type { ThemeData, LayoutData } from './theme/types';
@@ -453,20 +453,28 @@ export class DeckImpl {
     }
   }
 
-  /** Clear any connector endpoints bound to `deletedIds` (leaves them free at
-   *  their last position). Applied in-place; call inside a history/emit cycle. */
+  /** Clear any connector endpoints bound to `deletedIds`, pinning them at their
+   *  last resolved position (an explicit point) so they stay put rather than
+   *  reverting to the ambiguous box corner. Applied in-place; call inside a
+   *  history/emit cycle. */
   private detachConnectors(deletedIds: Set<string>): void {
+    const getFrame = (elementId: string): Frame | undefined => {
+      const e = this.elements.get(elementId);
+      return e ? { x: e.x, y: e.y, w: e.w, h: e.h, rotation: e.rotation } : undefined;
+    };
     for (const el of this.elements.values()) {
       if (el.type !== 'line') continue;
       const line = el as LineElement;
       if (deletedIds.has(line.id)) continue;
+      const startGone = line.startBind && deletedIds.has(line.startBind.elementId);
+      const endGone = line.endBind && deletedIds.has(line.endBind.elementId);
+      if (!startGone && !endGone) continue;
+      const { start, end } = resolveEndpoints(line, getFrame);
       const patch: Partial<LineElement> = {};
-      if (line.startBind && deletedIds.has(line.startBind.elementId)) patch.startBind = undefined;
-      if (line.endBind && deletedIds.has(line.endBind.elementId)) patch.endBind = undefined;
-      const keys = Object.keys(patch);
-      if (!keys.length) continue;
+      if (startGone) { patch.startBind = undefined; patch.startPoint = { x: start.x, y: start.y }; }
+      if (endGone) { patch.endBind = undefined; patch.endPoint = { x: end.x, y: end.y }; }
       this.applyElementPatch(line.id, patch as Partial<SlideElement>);
-      this.emit('elementChange', { slideId: line.containerId, elementId: line.id, keys });
+      this.emit('elementChange', { slideId: line.containerId, elementId: line.id, keys: Object.keys(patch) });
     }
   }
 

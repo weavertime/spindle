@@ -73,6 +73,20 @@ describe('resolveEndpoints', () => {
     expect(end).toEqual({ x: 400, y: 400 });
   });
 
+  it('uses an explicit free point for an unbound end (mid-air connector)', () => {
+    // Bound start to A (east = 100,50); free end dropped up-left at (40,20).
+    // The box corner would ambiguously coincide with the source — the explicit
+    // point must win so the connector is not zero-length/invisible.
+    const line = { id: 'l', containerId: 's', index: 'a', type: 'line' as const,
+      x: 40, y: 20, w: 60, h: 30, rotation: 0, stroke: { color: { kind: 'rgb' as const, hex: '#000' }, width: 2 },
+      startBind: { elementId: 'A', anchor: 'e' as const }, endPoint: { x: 40, y: 20 } };
+    const { start, end } = resolveEndpoints(line, getFrame);
+    expect(start).toEqual({ x: 100, y: 50 });
+    expect(end).toEqual({ x: 40, y: 20 });
+    // Not zero-length.
+    expect(start).not.toEqual(end);
+  });
+
   it('falls back to box corner when a bound target is missing', () => {
     const { start } = resolveEndpoints(
       line({ x: 5, y: 6, w: 10, h: 10, startBind: { elementId: 'gone', anchor: 'n' } }),

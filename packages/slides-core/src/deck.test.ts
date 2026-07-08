@@ -289,6 +289,26 @@ describe('connectors (bound lines track their shapes)', () => {
     expect(line.endBind).toBeDefined(); // B still bound
   });
 
+  it('keeps a mid-air connector (bound start, free end) non-degenerate as the source moves', () => {
+    const deck = new DeckImpl();
+    const slide = deck.getActiveSlideId();
+    const a = deck.addElement(slide, { type: 'shape', x: 400, y: 300, w: 100, h: 100 });
+    // Free end dropped up-left of the source (the case that used to collapse).
+    const conn = deck.addElement(slide, {
+      type: 'line', x: 200, y: 150, w: 300, h: 200,
+      startBind: { elementId: a.id, anchor: 'w' }, endPoint: { x: 200, y: 150 },
+    });
+    let line = deck.getElement(conn.id)!;
+    if (line.type !== 'line') throw new Error('not a line');
+    expect(line.w !== 0 || line.h !== 0).toBe(true); // visible
+    // Move the source — the bound end follows, the free end stays pinned.
+    deck.moveElements([a.id], 100, 40);
+    line = deck.getElement(conn.id)!;
+    if (line.type !== 'line') throw new Error('not a line');
+    expect(line.endPoint).toEqual({ x: 200, y: 150 }); // free end unchanged
+    expect(line.w !== 0 || line.h !== 0).toBe(true); // still visible
+  });
+
   it('reconciliation is one undo entry with the move', () => {
     const { deck, a, conn } = setup();
     const before = deck.getElement(conn.id)!.x;
