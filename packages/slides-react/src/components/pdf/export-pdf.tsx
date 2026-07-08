@@ -31,7 +31,11 @@ export async function exportDeckToPdf(deck: DeckImpl): Promise<void> {
   const { w, h } = deck.getSlideSize();
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
-  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;opacity:0;border:0;';
+  // Give the print frame a real slide-sized layout viewport (off-screen). A
+  // 1px iframe leaves the print engine without a proper containing block, so
+  // Chrome ignores the @page size and falls back to the default paper —
+  // letterboxing the 16:9 slide with a white bar at the bottom.
+  iframe.style.cssText = `position:fixed;left:-10000px;top:0;width:${w}px;height:${h}px;opacity:0;border:0;`;
   document.body.appendChild(iframe);
 
   const doc = iframe.contentDocument!;
@@ -39,8 +43,8 @@ export async function exportDeckToPdf(deck: DeckImpl): Promise<void> {
   doc.write(
     `<!doctype html><html><head><style>` +
       `@page { size: ${w}px ${h}px; margin: 0; }` +
-      `html,body{margin:0;padding:0;background:#fff;}` +
-      `.print-page{ page-break-after: always; break-after: page; }` +
+      `html,body{margin:0;padding:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}` +
+      `.print-page{ width:${w}px; height:${h}px; overflow:hidden; page-break-after: always; break-after: page; -webkit-print-color-adjust:exact; print-color-adjust:exact; }` +
       `.print-page:last-child{ page-break-after: auto; break-after: auto; }` +
       `</style></head><body></body></html>`
   );
