@@ -36,7 +36,7 @@ function ensureEditorStyles(): void {
   const style = document.createElement('style');
   style.id = 'spindle-pm-styles';
   style.textContent = `
-.spindle-pm-editor .ProseMirror { outline: none; white-space: pre-wrap; word-break: break-word; }
+.spindle-pm-editor .ProseMirror { outline: none; white-space: pre-wrap; word-break: break-word; line-height: 1.2; }
 .spindle-pm-editor .ProseMirror p { margin: 0; }
 .spindle-pm-editor .ProseMirror { counter-reset: pm-list; }
 .spindle-pm-editor .ProseMirror p:not([data-list="number"]) { counter-reset: pm-list; }

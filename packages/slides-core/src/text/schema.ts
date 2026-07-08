@@ -37,7 +37,10 @@ export const slidesSchema = new Schema({
         const padLeft = isList ? (indent + 1) * 28 : indent * 28;
         const style =
           `text-align:${a.align};position:relative;` +
-          (a.lineHeight ? `line-height:${a.lineHeight};` : '') +
+          // Always emit line-height (default 1.2) so it matches StaticRichText —
+          // otherwise the editor inherits the browser's `normal` and the text
+          // shifts a hair when entering/leaving edit.
+          `line-height:${a.lineHeight || 1.2};` +
           (a.spaceBefore ? `margin-top:${a.spaceBefore}px;` : '') +
           (a.spaceAfter ? `margin-bottom:${a.spaceAfter}px;` : '') +
           (padLeft ? `padding-left:${padLeft}px;` : '');
