@@ -1,7 +1,9 @@
-// TextFormatBar — inline text formatting. Routes each action through
-// applyFormat, which targets the live editor (range formatting) when one is
-// open, or the selected element's stored JSON (idle, whole-body) otherwise.
-// Shown when a single text/shape element is selected or being edited.
+// TextFormatBar — inline text-formatting controls, rendered *inside* the main
+// Toolbar row (not as a separate bar) so selecting a text element doesn't shift
+// the layout. Routes each action through applyFormat, which targets the live
+// editor (range formatting) when one is open, or the selected element's stored
+// JSON (idle, whole-body) otherwise. Renders nothing unless a single text/shape
+// element is selected or being edited.
 
 import React from 'react';
 import { Bold, Italic, Underline, Strikethrough, AlignLeft, AlignCenter, AlignRight, List, ListOrdered } from 'lucide-react';
@@ -39,7 +41,8 @@ export function TextFormatBar(): React.ReactElement | null {
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderBottom: '1px solid #e2e4e8', background: '#fbfcfe', flexWrap: 'wrap' }}>
+    <>
+      <span style={{ width: 1, height: 22, background: '#e2e4e8', margin: '0 4px' }} />
       <button title="Bold (⌘B)" style={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => fmt({ toggleMark: 'bold' })}><Bold size={15} /></button>
       <button title="Italic (⌘I)" style={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => fmt({ toggleMark: 'italic' })}><Italic size={15} /></button>
       <button title="Underline (⌘U)" style={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => fmt({ toggleMark: 'underline' })}><Underline size={15} /></button>
@@ -78,6 +81,6 @@ export function TextFormatBar(): React.ReactElement | null {
           {l === 'bullet' ? <List size={15} /> : <ListOrdered size={15} />}
         </button>
       ))}
-    </div>
+    </>
   );
 }

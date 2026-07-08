@@ -12,6 +12,7 @@ import {
 import type { NewElementSpec, AlignMode } from '@weavertime/spindle-slides-core';
 import { useDeck, useSelection } from '../hooks';
 import { DeckControls } from './DeckControls';
+import { TextFormatBar } from './TextFormatBar';
 
 const btn: React.CSSProperties = {
   display: 'inline-flex',
@@ -77,7 +78,7 @@ export function Toolbar(): React.ReactElement {
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 12px', borderBottom: '1px solid #e2e4e8', background: '#fff', flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 12px', borderBottom: '1px solid #e2e4e8', background: '#fff', flexWrap: 'nowrap', overflowX: 'auto', minHeight: 46, boxSizing: 'border-box' }}>
       <DeckControls />
       <span style={sep} />
 
@@ -147,6 +148,9 @@ export function Toolbar(): React.ReactElement {
       <IconButton title="Redo (⌘⇧Z)" onClick={() => deck.redo()}>
         <Redo2 size={16} />
       </IconButton>
+
+      {/* Text formatting appears inline (same row) when a text/shape is selected. */}
+      <TextFormatBar />
     </div>
   );
 }

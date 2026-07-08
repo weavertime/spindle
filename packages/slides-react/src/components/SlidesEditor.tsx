@@ -6,7 +6,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Play, FileDown, MessageSquare } from 'lucide-react';
 import { useDeck, useKeyboardShortcuts } from '../hooks';
 import { Toolbar } from './Toolbar';
-import { TextFormatBar } from './TextFormatBar';
 import { Filmstrip } from './Filmstrip';
 import { SlideStage } from './SlideStage';
 import { NotesPanel } from './NotesPanel';
@@ -102,7 +101,6 @@ export function SlidesEditor({ style, readOnly = false }: SlidesEditorProps): Re
         </div>
       </header>
       {!readOnly && <Toolbar />}
-      {!readOnly && <TextFormatBar />}
       <div style={{ display: 'flex', flex: '1 1 auto', minHeight: 0 }}>
         <Filmstrip />
         <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minWidth: 0 }}>
