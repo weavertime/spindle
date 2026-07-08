@@ -7,7 +7,7 @@
 
 import React, { useCallback } from 'react';
 import { useSyncExternalStore } from 'react';
-import { resolveConnectorFrame, type Frame, type LineElement } from '@weavertime/spindle-slides-core';
+import { connectorBox, resolveEndpoints, type Frame, type LineElement } from '@weavertime/spindle-slides-core';
 import { useElement, useTheme } from '../../hooks';
 import { useDeckContext } from '../../context/DeckContext';
 import { LineView } from './LineView';
@@ -36,8 +36,12 @@ export function ConnectorView({ elementId, interactive }: { elementId: string; i
     return e ? { x: e.x, y: e.y, w: e.w, h: e.h, rotation: e.rotation } : undefined;
   };
 
-  const box = resolveConnectorFrame(el, getFrame);
+  const { start, end } = resolveEndpoints(el, getFrame);
+  const box = connectorBox(start, end);
   const effective: LineElement = { ...el, x: box.x, y: box.y, w: box.w, h: box.h, flipV: box.flipV, rotation: 0 };
+  // Local endpoints keep the arrowhead on the *bound* end regardless of where
+  // the shapes sit relative to each other (the box can't encode direction).
+  const endpoints = { x1: start.x - box.x, y1: start.y - box.y, x2: end.x - box.x, y2: end.y - box.y };
 
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -53,7 +57,7 @@ export function ConnectorView({ elementId, interactive }: { elementId: string; i
 
   return (
     <div ref={ref} data-element-id={el.id} style={style}>
-      <LineView el={effective} theme={theme} />
+      <LineView el={effective} theme={theme} endpoints={endpoints} />
     </div>
   );
 }

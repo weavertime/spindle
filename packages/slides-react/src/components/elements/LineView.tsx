@@ -34,7 +34,15 @@ function ArrowMarker({ id, head, color, place }: { id: string; head: ArrowHead; 
 // The element wrapper stays el.w×el.h; only this inner SVG overflows.
 const PAD = 12;
 
-export function LineView({ el, theme }: { el: LineElement; theme: ThemeData }): React.ReactElement {
+/** Explicit start/end in box-local coordinates (0..w, 0..h). */
+export interface LineEndpoints {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+export function LineView({ el, theme, endpoints }: { el: LineElement; theme: ThemeData; endpoints?: LineEndpoints }): React.ReactElement {
   const stroke = strokeAttrs(el.stroke, theme) ?? {
     stroke: resolveColor(el.stroke.color, theme),
     strokeWidth: Math.max(1, el.stroke.width),
@@ -48,7 +56,12 @@ export function LineView({ el, theme }: { el: LineElement; theme: ThemeData }): 
   const h = el.h;
   const top = PAD;
   const bottom = PAD + h;
-  const [x1, y1, x2, y2] = el.flipV ? [0, bottom, w, top] : [0, top, w, bottom];
+  // A connector passes explicit endpoints so start→end direction (hence the
+  // arrowhead) is exact; a free line infers its diagonal from flipV. The box
+  // alone can't encode direction — start could be any of the four corners.
+  const [x1, y1, x2, y2] = endpoints
+    ? [endpoints.x1, endpoints.y1 + PAD, endpoints.x2, endpoints.y2 + PAD]
+    : el.flipV ? [0, bottom, w, top] : [0, top, w, bottom];
 
   const startId = `arw-s-${el.id}`;
   const endId = `arw-e-${el.id}`;
