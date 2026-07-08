@@ -120,9 +120,9 @@ export function SlidesEditor({ style, readOnly = false }: SlidesEditorProps): Re
         </div>
       </header>
       {!readOnly && <Toolbar />}
-      <div style={{ display: 'flex', flex: '1 1 auto', minHeight: 0 }}>
+      <div style={{ display: 'flex', flex: '1 1 auto', minHeight: 0, gap: 12, padding: '4px 12px 12px', background: 'linear-gradient(180deg, #f1f5f9 0%, #eaeef4 100%)' }}>
         <Filmstrip />
-        <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minWidth: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minWidth: 0, gap: 12 }}>
           <SlideStage zoom={ZOOM_PRESETS[zoomIdx].zoom} interactive={!readOnly} />
           {!readOnly && <NotesPanel />}
         </div>

@@ -59,7 +59,7 @@ export function SlideStage({ zoom, interactive = false }: SlideStageProps): Reac
         alignItems: 'center',
         justifyContent: 'center',
         overflow: 'auto',
-        background: '#e9ebef',
+        background: 'transparent',
       }}
     >
       {activeSlideId && interactive ? (
