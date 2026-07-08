@@ -11,6 +11,7 @@ import { Filmstrip } from './Filmstrip';
 import { SlideStage } from './SlideStage';
 import { NotesPanel } from './NotesPanel';
 import { ContextMenu } from './ContextMenu';
+import { SlideContextMenu } from './SlideContextMenu';
 import { PresentMode } from './PresentMode';
 import { CommentsPanel } from './CommentsPanel';
 import { exportDeckToPdf } from './pdf/export-pdf';
@@ -31,7 +32,11 @@ export interface SlidesEditorProps {
 export function SlidesEditor({ style, readOnly = false }: SlidesEditorProps): React.ReactElement {
   const deck = useDeck();
   const [zoomIdx, setZoomIdx] = useState(0);
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<
+    | { x: number; y: number; kind: 'element' }
+    | { x: number; y: number; kind: 'slide'; slideId: string }
+    | null
+  >(null);
   const [presenting, setPresenting] = useState(false);
   const { ui } = useDeckContext();
   const showComments = useCommentsOpen();
@@ -50,8 +55,20 @@ export function SlidesEditor({ style, readOnly = false }: SlidesEditorProps): Re
       onKeyDown={readOnly ? undefined : onKeyDown}
       onContextMenu={(e) => {
         if (readOnly) return;
-        e.preventDefault();
-        setMenu({ x: e.clientX, y: e.clientY });
+        const target = e.target as HTMLElement;
+        // A slide thumbnail in the filmstrip → slide menu.
+        const thumb = target.closest('[data-slide-thumb]');
+        if (thumb) {
+          e.preventDefault();
+          setMenu({ x: e.clientX, y: e.clientY, kind: 'slide', slideId: thumb.getAttribute('data-slide-thumb')! });
+          return;
+        }
+        // Anywhere on the editing stage → element menu. Elsewhere (toolbar,
+        // header, notes) → leave the native menu, no custom popup.
+        if (target.closest('[data-slide-stage]')) {
+          e.preventDefault();
+          setMenu({ x: e.clientX, y: e.clientY, kind: 'element' });
+        }
       }}
       style={{
         display: 'flex',
@@ -111,7 +128,8 @@ export function SlidesEditor({ style, readOnly = false }: SlidesEditorProps): Re
         </div>
         {!readOnly && showComments && <CommentsPanel onClose={() => ui.setCommentsOpen(false)} />}
       </div>
-      {menu && <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
+      {menu?.kind === 'element' && <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
+      {menu?.kind === 'slide' && <SlideContextMenu slideId={menu.slideId} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
       {presenting && <PresentMode onExit={() => setPresenting(false)} />}
     </div>
   );

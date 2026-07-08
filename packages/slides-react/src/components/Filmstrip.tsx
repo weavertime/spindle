@@ -1,7 +1,8 @@
 // Filmstrip — the vertical slide navigator. Click to activate, drag to
-// reorder (HTML5 DnD → deck.moveSlide), and an add-slide button at the bottom.
+// reorder (HTML5 DnD → deck.moveSlide), arrow keys to move between slides, and
+// Delete to remove the focused slide. An add-slide button sits at the bottom.
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useDeck, useSlideIds, useActiveSlideId } from '../hooks';
 import { ScaledSlide } from './SlideView';
@@ -14,6 +15,7 @@ export function Filmstrip(): React.ReactElement {
   const activeSlideId = useActiveSlideId();
   const { w } = deck.getSlideSize();
   const scale = THUMB_WIDTH / w;
+  const containerRef = useRef<HTMLDivElement>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
 
@@ -25,8 +27,36 @@ export function Filmstrip(): React.ReactElement {
     setOverId(null);
   };
 
+  const focusThumb = (id: string) => {
+    (containerRef.current?.querySelector(`[data-slide-thumb="${id}"]`) as HTMLElement | null)?.focus();
+  };
+
+  const deleteSlide = (id: string) => {
+    if (slideIds.length <= 1) return;
+    const i = slideIds.indexOf(id);
+    const neighbor = slideIds[i + 1] ?? slideIds[i - 1];
+    deck.deleteSlide(id);
+    if (neighbor) { deck.setActiveSlide(neighbor); focusThumb(neighbor); }
+  };
+
+  const onThumbKeyDown = (e: React.KeyboardEvent, id: string, i: number) => {
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      e.stopPropagation();
+      deleteSlide(id);
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      // Handle navigation here (and stop it) so it doesn't also bubble to the
+      // editor's global handler and move twice.
+      e.preventDefault();
+      e.stopPropagation();
+      const next = slideIds[i + (e.key === 'ArrowDown' ? 1 : -1)];
+      if (next) { deck.setActiveSlide(next); focusThumb(next); }
+    }
+  };
+
   return (
     <div
+      ref={containerRef}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -53,7 +83,9 @@ export function Filmstrip(): React.ReactElement {
           >
             <span style={{ fontSize: 12, color: '#8a93a2', width: 16, textAlign: 'right', paddingTop: 4 }}>{i + 1}</span>
             <button
-              onClick={() => deck.setActiveSlide(id)}
+              data-slide-thumb={id}
+              onClick={(e) => { deck.setActiveSlide(id); e.currentTarget.focus(); }}
+              onKeyDown={(e) => onThumbKeyDown(e, id, i)}
               style={{ padding: 0, border: active ? '2px solid #2d7ff9' : '1px solid #d5d9e0', borderRadius: 4, overflow: 'hidden', cursor: 'pointer', background: '#fff', lineHeight: 0, boxShadow: active ? '0 0 0 2px rgba(45,127,249,0.2)' : 'none' }}
               aria-label={`Go to slide ${i + 1}`}
               aria-current={active}

@@ -51,6 +51,7 @@ export function SlideStage({ zoom, interactive = false }: SlideStageProps): Reac
   return (
     <div
       ref={containerRef}
+      data-slide-stage=""
       onPointerDown={onGreyPointerDown}
       style={{
         flex: '1 1 auto',

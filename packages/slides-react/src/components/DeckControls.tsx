@@ -7,6 +7,7 @@ import { Plus, Palette, ChevronDown } from 'lucide-react';
 import { BUILTIN_THEMES, getBuiltinTheme } from '@weavertime/spindle-slides-core';
 import { useDeck, useActiveSlideId, useTheme, useSlide } from '../hooks';
 import { Popover } from './Popover';
+import { LayoutThumb } from './LayoutThumb';
 
 const btn: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 4, height: 30, padding: '0 10px',
@@ -26,6 +27,7 @@ export function DeckControls(): React.ReactElement {
   const themeRef = useRef<HTMLButtonElement>(null);
 
   const layouts = deck.getLayouts();
+  const slideSize = deck.getSlideSize();
   const bgHex = slide?.background?.kind === 'solid' && slide.background.color.kind === 'rgb' ? slide.background.color.hex : '#ffffff';
 
   const hover = (e: React.MouseEvent, on: boolean) => ((e.currentTarget as HTMLElement).style.background = on ? '#f1f4f8' : 'transparent');
@@ -37,18 +39,23 @@ export function DeckControls(): React.ReactElement {
       </button>
       {open === 'layout' && (
         <Popover anchor={layoutRef.current} onClose={() => setOpen(null)}>
-          <div style={{ fontSize: 11, color: '#8a93a2', padding: '2px 6px 6px' }}>Add slide with layout</div>
-          {layouts.map((l) => (
-            <div
-              key={l.id}
-              onClick={() => { const s = deck.addSlide({ afterSlideId: activeSlideId, layoutId: l.id }); deck.setActiveSlide(s.id); setOpen(null); }}
-              style={item}
-              onMouseEnter={(e) => hover(e, true)}
-              onMouseLeave={(e) => hover(e, false)}
-            >
-              {l.name}
-            </div>
-          ))}
+          <div style={{ fontSize: 11, color: '#8a93a2', padding: '2px 6px 8px' }}>Add slide with layout</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, width: 300 }}>
+            {layouts.map((l) => (
+              <div
+                key={l.id}
+                onClick={() => { const s = deck.addSlide({ afterSlideId: activeSlideId, layoutId: l.id }); deck.setActiveSlide(s.id); setOpen(null); }}
+                style={{ cursor: 'pointer', borderRadius: 6, padding: 4 }}
+                onMouseEnter={(e) => hover(e, true)}
+                onMouseLeave={(e) => hover(e, false)}
+              >
+                <div style={{ border: '1px solid #d5d9e0', borderRadius: 4, overflow: 'hidden', aspectRatio: `${slideSize.w} / ${slideSize.h}`, background: '#fff' }}>
+                  <LayoutThumb layout={l} size={slideSize} />
+                </div>
+                <div style={{ fontSize: 12, color: '#3e4c59', textAlign: 'center', marginTop: 4 }}>{l.name}</div>
+              </div>
+            ))}
+          </div>
         </Popover>
       )}
 
