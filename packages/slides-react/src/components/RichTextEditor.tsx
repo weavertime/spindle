@@ -22,11 +22,29 @@ import { keymap } from 'prosemirror-keymap';
 import { baseKeymap, toggleMark } from 'prosemirror-commands';
 import { history, undo, redo } from 'prosemirror-history';
 import { ySyncPlugin, yUndoPlugin, undo as yUndo, redo as yRedo } from 'y-prosemirror';
-import { slidesSchema, resolveColor, resolveFont, type ThemeData, type BodyStyle, type RichTextDoc } from '@weavertime/spindle-slides-core';
+import { slidesSchema, resolveColor, resolveFont, emptyRichText, type ThemeData, type BodyStyle, type RichTextDoc } from '@weavertime/spindle-slides-core';
 import { useDeck } from '../hooks';
 import { useDeckContext } from '../context/DeckContext';
 
 const V_ALIGN = { top: 'flex-start', middle: 'center', bottom: 'flex-end' } as const;
+
+// Inject the editor's rendering rules once: no focus outline, list markers via
+// ::before (the flat PM schema has no list nodes; StaticRichText draws markers
+// itself, so this keeps edit mode consistent with idle rendering).
+function ensureEditorStyles(): void {
+  if (typeof document === 'undefined' || document.getElementById('spindle-pm-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'spindle-pm-styles';
+  style.textContent = `
+.spindle-pm-editor .ProseMirror { outline: none; white-space: pre-wrap; word-break: break-word; }
+.spindle-pm-editor .ProseMirror p { margin: 0; }
+.spindle-pm-editor .ProseMirror { counter-reset: pm-list; }
+.spindle-pm-editor .ProseMirror p:not([data-list="number"]) { counter-reset: pm-list; }
+.spindle-pm-editor .ProseMirror p[data-list="bullet"]::before { content: "•"; position: absolute; left: 8px; opacity: 0.9; }
+.spindle-pm-editor .ProseMirror p[data-list="number"] { counter-increment: pm-list; }
+.spindle-pm-editor .ProseMirror p[data-list="number"]::before { content: counter(pm-list) "."; position: absolute; left: 2px; opacity: 0.9; }`;
+  document.head.appendChild(style);
+}
 
 export function RichTextEditor({
   elementId,
@@ -44,9 +62,13 @@ export function RichTextEditor({
   const mountRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    ensureEditorStyles();
     const mount = mountRef.current;
     const el = deck.getElement(elementId);
-    if (!mount || !el || !('richText' in el)) return;
+    // text and shape elements can hold rich text; a shape may not have any yet,
+    // so fall back to an empty body rather than bailing.
+    if (!mount || !el || (el.type !== 'text' && el.type !== 'shape')) return;
+    const initialDoc = (el as { richText?: RichTextDoc }).richText ?? emptyRichText();
 
     const bold = slidesSchema.marks.bold;
     const italic = slidesSchema.marks.italic;
@@ -90,7 +112,7 @@ export function RichTextEditor({
       handle!.awareness.setLocalStateField('editing', { slideId: el.containerId, elementId });
     } else {
       const state = EditorState.create({
-        doc: slidesSchema.nodeFromJSON((el as { richText: RichTextDoc }).richText),
+        doc: slidesSchema.nodeFromJSON(initialDoc),
         plugins: [
           history(),
           keymap({ ...markKeys, 'Mod-z': undo, 'Mod-y': redo, 'Shift-Mod-z': redo }),

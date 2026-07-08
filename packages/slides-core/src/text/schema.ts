@@ -30,12 +30,17 @@ export const slidesSchema = new Schema({
       parseDOM: [{ tag: 'p' }],
       toDOM(node) {
         const a = node.attrs;
+        const indent = (a.indent as number) || 0;
+        const isList = a.listType && a.listType !== 'none';
+        // List items reserve a left gutter for the marker (drawn by the editor
+        // stylesheet's ::before, since the flat schema has no list nodes).
+        const padLeft = isList ? (indent + 1) * 28 : indent * 28;
         const style =
-          `text-align:${a.align};` +
+          `text-align:${a.align};position:relative;` +
           (a.lineHeight ? `line-height:${a.lineHeight};` : '') +
           (a.spaceBefore ? `margin-top:${a.spaceBefore}px;` : '') +
           (a.spaceAfter ? `margin-bottom:${a.spaceAfter}px;` : '') +
-          (a.indent ? `padding-left:${(a.indent as number) * 28}px;` : '');
+          (padLeft ? `padding-left:${padLeft}px;` : '');
         return ['p', { style, 'data-list': a.listType }, 0];
       },
     },

@@ -56,6 +56,10 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
     // editor stops propagation on its own pointerdowns), so this is a genuine
     // "click away" → leave edit mode. The editor's blur commits the text.
     if (editing.getEditingId()) editing.setEditingId(null);
+    // Focus the surface so keyboard shortcuts (Delete, arrows, ⌘Z) fire — they
+    // live on the editor root, and keydown only bubbles there if focus is inside
+    // it. (A text-edit gesture re-focuses the ProseMirror editor afterwards.)
+    surface.focus({ preventScroll: true });
     const rect = surface.getBoundingClientRect();
     const metrics = { rect: { left: rect.left, top: rect.top }, scale };
     const toSlide = (clientX: number, clientY: number) => screenToSlide(clientX, clientY, metrics);
@@ -129,7 +133,8 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
     <div
       ref={surfaceRef}
       onPointerDown={onPointerDown}
-      style={{ position: 'relative', width: w * scale, height: h * scale, flex: 'none', boxShadow: '0 4px 24px rgba(0,0,0,0.16)' }}
+      tabIndex={-1}
+      style={{ position: 'relative', width: w * scale, height: h * scale, flex: 'none', boxShadow: '0 4px 24px rgba(0,0,0,0.16)', outline: 'none' }}
     >
       <div style={{ position: 'absolute', left: 0, top: 0, transform: `scale(${scale})`, transformOrigin: 'top left', width: w, height: h }}>
         <SlideView slideId={slideId} interactive />
