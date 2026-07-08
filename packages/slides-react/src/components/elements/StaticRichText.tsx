@@ -100,11 +100,14 @@ function renderParagraph(
     );
   }
 
+  // Mirror the live editor's list layout (schema toDOM + editor stylesheet):
+  // a (indent+1)*INDENT_PX gutter with the marker hanging in it, so there's no
+  // indent jump when entering/leaving edit mode.
   const marker = listType === 'bullet' ? '•' : `${ordinal}.`;
   return (
-    <div key={key} style={{ ...style, display: 'flex', gap: '0.4em', paddingLeft: indent * INDENT_PX + INDENT_PX }}>
-      <span style={{ flex: 'none', opacity: 0.9 }}>{marker}</span>
-      <span style={{ flex: '1 1 auto', textAlign: attrs.align ?? 'left' }}>{body}</span>
+    <div key={key} style={{ ...style, position: 'relative', paddingLeft: (indent + 1) * INDENT_PX }}>
+      <span style={{ position: 'absolute', left: listType === 'bullet' ? 8 : 2, opacity: 0.9 }}>{marker}</span>
+      {body}
     </div>
   );
 }
