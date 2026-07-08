@@ -70,7 +70,10 @@ export function SlideStage({ zoom, interactive = false, onZoomChange }: SlideSta
       // a plain wheel keeps scrolling the canvas.
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
-      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, scaleRef.current * Math.exp(-e.deltaY * 0.0015)));
+      // Clamp the per-event delta so one big mouse notch (~120) doesn't
+      // overshoot, then scale exponentially — snappy on both mouse and pinch.
+      const dy = Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 50);
+      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, scaleRef.current * Math.exp(-dy * 0.01)));
       if (next === scaleRef.current) return;
       const content = contentRef.current;
       if (content) {
