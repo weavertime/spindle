@@ -46,22 +46,16 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
   const { nodes, transient, editing } = useDeckContext();
   const { w, h } = deck.getSlideSize();
   const surfaceRef = useRef<HTMLDivElement>(null);
-
-  const onDoubleClick = (e: React.MouseEvent) => {
-    const elEl = (e.target as HTMLElement).closest('[data-element-id]') as HTMLElement | null;
-    const id = elEl?.dataset.elementId;
-    if (!id) return;
-    const el = deck.getElement(id);
-    if (el && (el.type === 'text' || el.type === 'shape')) {
-      deck.setSelection({ slideId, elementIds: [id] });
-      editing.setEditingId(id);
-    }
-  };
+  const lastDown = useRef<{ id: string; t: number }>({ id: '', t: 0 });
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     const surface = surfaceRef.current;
     if (!surface) return;
+    // Any pointerdown that reaches the surface is outside the live editor (the
+    // editor stops propagation on its own pointerdowns), so this is a genuine
+    // "click away" → leave edit mode. The editor's blur commits the text.
+    if (editing.getEditingId()) editing.setEditingId(null);
     const rect = surface.getBoundingClientRect();
     const metrics = { rect: { left: rect.left, top: rect.top }, scale };
     const toSlide = (clientX: number, clientY: number) => screenToSlide(clientX, clientY, metrics);
@@ -88,7 +82,22 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
         shiftKey: e.shiftKey,
       });
     } else if (elEl?.dataset.elementId) {
-      const ids = selectOnDown(deck, slideId, elEl.dataset.elementId, e.shiftKey);
+      const id = elEl.dataset.elementId;
+      const el = deck.getElement(id);
+      // A second pointerdown on the same element within 400ms is a double-click
+      // → enter text edit instead of starting a move. Timing-based (not a
+      // separate onDoubleClick) because the pointerdown preventDefault below
+      // swallows the native dblclick, and pointerdown `detail` is unreliable.
+      const now = Date.now();
+      const isDouble = lastDown.current.id === id && now - lastDown.current.t < 400;
+      lastDown.current = { id, t: now };
+      if (isDouble && el && (el.type === 'text' || el.type === 'shape')) {
+        deck.setSelection({ slideId, elementIds: [id] });
+        editing.setEditingId(id);
+        e.preventDefault();
+        return;
+      }
+      const ids = selectOnDown(deck, slideId, id, e.shiftKey);
       gesture = createMoveGesture(ctx, toSlide(e.clientX, e.clientY), ids);
     } else {
       if (!e.shiftKey) deck.setSelection({ slideId, elementIds: [] });
@@ -110,7 +119,6 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
     <div
       ref={surfaceRef}
       onPointerDown={onPointerDown}
-      onDoubleClick={onDoubleClick}
       style={{ position: 'relative', width: w * scale, height: h * scale, flex: 'none', boxShadow: '0 4px 24px rgba(0,0,0,0.16)' }}
     >
       <div style={{ position: 'absolute', left: 0, top: 0, transform: `scale(${scale})`, transformOrigin: 'top left', width: w, height: h }}>

@@ -16,12 +16,12 @@ import { ShapeView } from './ShapeView';
 import { ImageView } from './ImageView';
 import { LineView } from './LineView';
 
-function renderInner(el: SlideElement, theme: ReturnType<typeof useTheme>): React.ReactElement {
+function renderInner(el: SlideElement, theme: ReturnType<typeof useTheme>, interactive: boolean): React.ReactElement {
   switch (el.type) {
     case 'text':
-      return <TextView el={el} theme={theme} />;
+      return <TextView el={el} theme={theme} interactive={interactive} />;
     case 'shape':
-      return <ShapeView el={el} theme={theme} />;
+      return <ShapeView el={el} theme={theme} interactive={interactive} />;
     case 'image':
       return <ImageView el={el} />;
     case 'line':
@@ -66,7 +66,7 @@ export function ElementView({
 
   return (
     <div ref={ref} data-element-id={el.id} style={style}>
-      {renderInner(el, theme)}
+      {renderInner(el, theme, interactive)}
     </div>
   );
 }

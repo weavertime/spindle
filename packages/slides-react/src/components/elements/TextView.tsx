@@ -29,12 +29,14 @@ export function bodyDefaults(body: TextElement['bodyStyle'], theme: ThemeData): 
   };
 }
 
-export function TextView({ el, theme }: { el: TextElement; theme: ThemeData }): React.ReactElement {
+export function TextView({ el, theme, interactive = false }: { el: TextElement; theme: ThemeData; interactive?: boolean }): React.ReactElement {
   const deck = useDeck();
   const body = el.bodyStyle ?? {};
   const bg = el.fill ? resolveFill(el.fill, theme) : null;
   const border = strokeAttrs(el.stroke, theme);
-  const editing = useEditingId() === el.id;
+  // Only the interactive stage mounts the live editor — never the filmstrip
+  // thumbnails or a read-only view (two editors on one element fight over focus).
+  const editing = interactive && useEditingId() === el.id;
   const empty = isRichTextEmpty(el.richText);
   const prompt = empty && el.placeholder ? deck.getPlaceholderPrompt(el.containerId, el.placeholder) : undefined;
 

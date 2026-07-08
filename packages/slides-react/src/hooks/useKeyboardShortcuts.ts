@@ -63,7 +63,18 @@ export function useKeyboardShortcuts(): { onKeyDown: (e: React.KeyboardEvent) =>
         case 'ArrowLeft':
         case 'ArrowRight': {
           const ids = selectedIds();
-          if (!ids.length) return;
+          if (!ids.length) {
+            // Nothing selected → navigate slides.
+            const slides = deck.getSlideIds();
+            const cur = slides.indexOf(deck.getActiveSlideId());
+            const delta = e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 1;
+            const next = slides[cur + delta];
+            if (next) {
+              deck.setActiveSlide(next);
+              e.preventDefault();
+            }
+            return;
+          }
           const d = e.shiftKey ? NUDGE_LARGE : NUDGE;
           const dx = e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0;
           const dy = e.key === 'ArrowUp' ? -d : e.key === 'ArrowDown' ? d : 0;

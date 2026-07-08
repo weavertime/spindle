@@ -48,6 +48,19 @@ export class ElementStore {
     this.slideIdsCache = deck.getSlideIds();
     this.selectionCache = deck.getSelection();
     this.activeSlideCache = deck.getActiveSlideId();
+  }
+
+  /**
+   * Subscribe to the engine's events. Called from a DeckProvider effect (not
+   * the constructor) so it survives React StrictMode's mount→unmount→mount:
+   * connect → dispose → connect leaves the store subscribed. Idempotent.
+   */
+  connect(): void {
+    if (this.offFns.length > 0) return; // already connected
+    // Caches may have gone stale between construction and connect — refresh.
+    this.slideIdsCache = this.deck.getSlideIds();
+    this.selectionCache = this.deck.getSelection();
+    this.activeSlideCache = this.deck.getActiveSlideId();
     this.wire();
   }
 
@@ -90,10 +103,12 @@ export class ElementStore {
     );
   }
 
+  /** Unsubscribe from the engine. Component listeners (managed by the hooks'
+   *  own useSyncExternalStore subscribe/unsubscribe) are left intact so a
+   *  StrictMode reconnect keeps working. */
   dispose(): void {
     for (const off of this.offFns) off();
     this.offFns = [];
-    this.listeners.clear();
   }
 
   // ── Subscriptions ────────────────────────────────────────────────────────────

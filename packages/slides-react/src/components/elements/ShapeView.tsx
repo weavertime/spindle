@@ -6,8 +6,8 @@ import { RichTextEditor } from '../RichTextEditor';
 import { useEditingId } from '../../hooks';
 import { strokeAttrs } from './style';
 
-export function ShapeView({ el, theme }: { el: ShapeElement; theme: ThemeData }): React.ReactElement {
-  const editing = useEditingId() === el.id;
+export function ShapeView({ el, theme, interactive = false }: { el: ShapeElement; theme: ThemeData; interactive?: boolean }): React.ReactElement {
+  const editing = interactive && useEditingId() === el.id;
   const w = Math.max(1, el.w);
   const h = Math.max(1, el.h);
   const geom = shapeGeom(el.shape, w, h, el.adjustments);

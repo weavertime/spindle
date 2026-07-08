@@ -102,15 +102,28 @@ export function RichTextEditor({
     }
 
     editing.setView(view);
-    view.focus();
+
+    // Focus on the next frame, after the pointer sequence that opened the
+    // editor (the double-click's mouseup would otherwise blur the freshly
+    // focused contenteditable and immediately exit). Ignore any blur that
+    // fires before we've actually taken focus.
+    let focused = false;
+    const raf = requestAnimationFrame(() => {
+      focused = true;
+      view.focus();
+    });
 
     const onBlur = () => {
-      if (view.composing) return; // never tear down mid-IME
-      exit();
+      if (view.composing || !focused) return; // never commit mid-IME or pre-focus
+      // Commit on blur, but DON'T leave edit mode here — a transient blur during
+      // a re-render must not close the editor. Exit is driven explicitly by
+      // Escape or a pointerdown outside the editor (see InteractiveSlide).
+      commit();
     };
     view.dom.addEventListener('blur', onBlur);
 
     return () => {
+      cancelAnimationFrame(raf);
       view.dom.removeEventListener('blur', onBlur);
       if (collab) {
         handle!.awareness.setLocalStateField('editing', null);

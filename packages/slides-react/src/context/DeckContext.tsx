@@ -41,7 +41,12 @@ export function DeckProvider({ deck, children, currentUser, mentionableUsers, on
   const nodes = useMemo(() => new NodeRegistry(), [deck]);
   const transient = useMemo(() => new TransientStore(), [deck]);
   const editing = useMemo(() => new EditingStore(), [deck]);
-  useEffect(() => () => store.dispose(), [store]);
+  // Subscribe in the effect (not the store constructor) so it survives React
+  // StrictMode's mount→unmount→mount: connect → dispose → connect.
+  useEffect(() => {
+    store.connect();
+    return () => store.dispose();
+  }, [store]);
 
   useEffect(() => {
     if (!onCommentEvent) return;
