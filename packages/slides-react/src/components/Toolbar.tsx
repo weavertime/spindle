@@ -4,7 +4,7 @@
 
 import React, { useRef } from 'react';
 import {
-  Type, Square, Circle, Minus, Image as ImageIcon,
+  Type, Minus, Image as ImageIcon,
   Trash2, Copy, Undo2, Redo2, Group, Ungroup,
   BringToFront, SendToBack, AlignHorizontalJustifyCenter, AlignVerticalJustifyCenter,
   AlignStartVertical, AlignEndVertical, AlignStartHorizontal, AlignEndHorizontal,
@@ -13,6 +13,7 @@ import type { NewElementSpec, AlignMode } from '@weavertime/spindle-slides-core'
 import { useDeck, useSelection } from '../hooks';
 import { DeckControls } from './DeckControls';
 import { TextFormatBar } from './TextFormatBar';
+import { ShapePicker } from './ShapePicker';
 
 const btn: React.CSSProperties = {
   display: 'inline-flex',
@@ -85,12 +86,7 @@ export function Toolbar(): React.ReactElement {
       <IconButton title="Text box" onClick={() => insert({ type: 'text' } as NewElementSpec, { w: 400, h: 100 })}>
         <Type size={16} />
       </IconButton>
-      <IconButton title="Rectangle" onClick={() => insert({ type: 'shape', shape: 'rect' } as NewElementSpec, { w: 240, h: 200 })}>
-        <Square size={16} />
-      </IconButton>
-      <IconButton title="Ellipse" onClick={() => insert({ type: 'shape', shape: 'ellipse' } as NewElementSpec, { w: 200, h: 200 })}>
-        <Circle size={16} />
-      </IconButton>
+      <ShapePicker />
       <IconButton title="Line" onClick={() => insert({ type: 'line' } as NewElementSpec, { w: 300, h: 0 })}>
         <Minus size={16} />
       </IconButton>

@@ -68,7 +68,12 @@ export function RichTextEditor({
     // text and shape elements can hold rich text; a shape may not have any yet,
     // so fall back to an empty body rather than bailing.
     if (!mount || !el || (el.type !== 'text' && el.type !== 'shape')) return;
-    const initialDoc = (el as { richText?: RichTextDoc }).richText ?? emptyRichText();
+    // Shapes default to centered text; a fresh (empty) shape body starts with a
+    // centre-aligned paragraph so typing lands centre-centre, not top-left.
+    const emptyDoc: RichTextDoc = centered
+      ? { type: 'doc', content: [{ type: 'paragraph', attrs: { align: 'center' } }] }
+      : emptyRichText();
+    const initialDoc = (el as { richText?: RichTextDoc }).richText ?? emptyDoc;
 
     const bold = slidesSchema.marks.bold;
     const italic = slidesSchema.marks.italic;
@@ -182,7 +187,7 @@ export function RichTextEditor({
         padding: bodyStyle?.padding ?? 8,
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: V_ALIGN[bodyStyle?.vAlign ?? 'top'],
+        justifyContent: V_ALIGN[bodyStyle?.vAlign ?? (centered ? 'middle' : 'top')],
         fontFamily: resolveFont(bodyStyle?.fontFamily, theme),
         fontSize: bodyStyle?.fontSize ?? 18,
         fontWeight: bodyStyle?.bold ? 700 : 400,
