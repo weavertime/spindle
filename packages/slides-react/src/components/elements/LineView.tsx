@@ -4,7 +4,6 @@ import { strokeAttrs } from './style';
 
 function ArrowMarker({ id, head, color, place }: { id: string; head: ArrowHead; color: string; place: 'start' | 'end' }): React.ReactElement | null {
   if (head === 'none') return null;
-  // Marker drawn pointing right (+x); orient='auto' rotates it to the line.
   const path =
     head === 'triangle'
       ? 'M0 0 L10 5 L0 10 Z'
@@ -30,16 +29,26 @@ function ArrowMarker({ id, head, color, place }: { id: string; head: ArrowHead; 
   );
 }
 
+// Vertical padding (slide units) added above and below the line's box so the
+// SVG has a real, hit-testable height even for a horizontal line (box height 0).
+// The element wrapper stays el.w×el.h; only this inner SVG overflows.
+const PAD = 12;
+
 export function LineView({ el, theme }: { el: LineElement; theme: ThemeData }): React.ReactElement {
-  const w = Math.max(1, el.w);
-  const h = Math.max(1, el.h);
   const stroke = strokeAttrs(el.stroke, theme) ?? {
     stroke: resolveColor(el.stroke.color, theme),
     strokeWidth: Math.max(1, el.stroke.width),
   };
 
-  // Line runs along the box diagonal; flipV picks the other diagonal.
-  const [x1, y1, x2, y2] = el.flipV ? [0, h, w, 0] : [0, 0, w, h];
+  // Draw in absolute user units (no viewBox) so the stroke keeps a constant
+  // width regardless of the box aspect — a viewBox with preserveAspectRatio
+  // "none" would scale a horizontal line's stroke to nothing. The box occupies
+  // y ∈ [PAD, PAD+h]; the SVG is offset up by PAD so it centres on the box.
+  const w = el.w;
+  const h = el.h;
+  const top = PAD;
+  const bottom = PAD + h;
+  const [x1, y1, x2, y2] = el.flipV ? [0, bottom, w, top] : [0, top, w, bottom];
 
   const startId = `arw-s-${el.id}`;
   const endId = `arw-e-${el.id}`;
@@ -47,11 +56,17 @@ export function LineView({ el, theme }: { el: LineElement; theme: ThemeData }): 
   const endHead = el.endArrow ?? 'none';
 
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ display: 'block', width: '100%', height: '100%', overflow: 'visible' }}>
+    <svg
+      width={w}
+      height={h + 2 * PAD}
+      style={{ position: 'absolute', left: 0, top: -PAD, overflow: 'visible', pointerEvents: 'none' }}
+    >
       <defs>
         <ArrowMarker id={startId} head={startHead} color={stroke.stroke} place="start" />
         <ArrowMarker id={endId} head={endHead} color={stroke.stroke} place="end" />
       </defs>
+      {/* Wide transparent hit-stroke so the thin line is easy to click. */}
+      <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="transparent" strokeWidth={Math.max(14, stroke.strokeWidth + 12)} strokeLinecap="round" style={{ pointerEvents: 'stroke' }} />
       <line
         x1={x1}
         y1={y1}

@@ -13,6 +13,7 @@ import type { NewElementSpec, AlignMode } from '@weavertime/spindle-slides-core'
 import { useDeck, useSelection } from '../hooks';
 import { DeckControls } from './DeckControls';
 import { TextFormatBar } from './TextFormatBar';
+import { LineFormatBar } from './LineFormatBar';
 import { ShapePicker } from './ShapePicker';
 
 const btn: React.CSSProperties = {
@@ -148,8 +149,10 @@ export function Toolbar(): React.ReactElement {
         <Redo2 size={16} />
       </IconButton>
 
-      {/* Text formatting appears inline (same row) when a text/shape is selected. */}
+      {/* Text / line formatting appears inline (same row) when the matching kind
+          of element is selected. */}
       <TextFormatBar />
+      <LineFormatBar />
     </div>
   );
 }
