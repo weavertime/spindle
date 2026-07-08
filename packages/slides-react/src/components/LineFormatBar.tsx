@@ -7,13 +7,7 @@ import React from 'react';
 import { Minus, MoveLeft, MoveRight, MoveHorizontal } from 'lucide-react';
 import type { ArrowHead, LineElement } from '@weavertime/spindle-slides-core';
 import { useDeck, useSelection, useElement } from '../hooks';
-
-const btn: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  width: 28, height: 28, border: '1px solid #d5d9e0', borderRadius: 5,
-  background: '#fff', color: '#3e4c59', cursor: 'pointer',
-};
-const active: React.CSSProperties = { background: '#e8f0fe', borderColor: '#4c8bf5', color: '#1a56db' };
+import { ToolbarButton, ToolbarDivider } from './toolbarUI';
 
 const HEAD: ArrowHead = 'triangle';
 
@@ -30,23 +24,22 @@ export function LineFormatBar(): React.ReactElement | null {
     hasStart && hasEnd ? 'both' : hasStart ? 'start' : hasEnd ? 'end' : 'none';
 
   const set = (startArrow: ArrowHead, endArrow: ArrowHead) => deck.updateElement(id, { startArrow, endArrow });
-  const style = (m: typeof mode) => (mode === m ? { ...btn, ...active } : btn);
 
   return (
     <>
-      <span style={{ width: 1, height: 22, background: '#e2e4e8', margin: '0 4px' }} />
-      <button title="No arrow" style={style('none')} onClick={() => set('none', 'none')}>
+      <ToolbarDivider />
+      <ToolbarButton title="No arrow" active={mode === 'none'} onClick={() => set('none', 'none')}>
         <Minus size={15} />
-      </button>
-      <button title="Arrow (start)" style={style('start')} onClick={() => set(HEAD, 'none')}>
+      </ToolbarButton>
+      <ToolbarButton title="Arrow (start)" active={mode === 'start'} onClick={() => set(HEAD, 'none')}>
         <MoveLeft size={15} />
-      </button>
-      <button title="Arrow (end)" style={style('end')} onClick={() => set('none', HEAD)}>
+      </ToolbarButton>
+      <ToolbarButton title="Arrow (end)" active={mode === 'end'} onClick={() => set('none', HEAD)}>
         <MoveRight size={15} />
-      </button>
-      <button title="Arrows (both sides)" style={style('both')} onClick={() => set(HEAD, HEAD)}>
+      </ToolbarButton>
+      <ToolbarButton title="Arrows (both sides)" active={mode === 'both'} onClick={() => set(HEAD, HEAD)}>
         <MoveHorizontal size={15} />
-      </button>
+      </ToolbarButton>
     </>
   );
 }

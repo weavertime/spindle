@@ -8,12 +8,9 @@ import { BUILTIN_THEMES, getBuiltinTheme } from '@weavertime/spindle-slides-core
 import { useDeck, useActiveSlideId, useTheme, useSlide } from '../hooks';
 import { Popover } from './Popover';
 import { LayoutThumb } from './LayoutThumb';
+import { TB } from './toolbarUI';
 
-const btn: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 4, height: 30, padding: '0 10px',
-  border: '1px solid #d5d9e0', borderRadius: 5, background: '#fff', color: '#3e4c59',
-  cursor: 'pointer', fontSize: 13,
-};
+const btn: React.CSSProperties = TB.dropdownButton;
 
 const item: React.CSSProperties = { padding: '7px 10px', borderRadius: 5, cursor: 'pointer', fontSize: 13 };
 

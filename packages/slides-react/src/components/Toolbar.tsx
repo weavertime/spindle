@@ -15,28 +15,7 @@ import { DeckControls } from './DeckControls';
 import { TextFormatBar } from './TextFormatBar';
 import { LineFormatBar } from './LineFormatBar';
 import { ShapePicker } from './ShapePicker';
-
-const btn: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: 30,
-  height: 30,
-  border: '1px solid #d5d9e0',
-  borderRadius: 5,
-  background: '#fff',
-  color: '#3e4c59',
-  cursor: 'pointer',
-};
-const sep: React.CSSProperties = { width: 1, height: 22, background: '#e2e4e8', margin: '0 4px' };
-
-function IconButton({ title, onClick, disabled, children }: { title: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }): React.ReactElement {
-  return (
-    <button title={title} onClick={onClick} disabled={disabled} style={{ ...btn, opacity: disabled ? 0.4 : 1, cursor: disabled ? 'default' : 'pointer' }}>
-      {children}
-    </button>
-  );
-}
+import { TB, ToolbarButton as IconButton, ToolbarDivider } from './toolbarUI';
 
 export function Toolbar(): React.ReactElement {
   const deck = useDeck();
@@ -80,9 +59,10 @@ export function Toolbar(): React.ReactElement {
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 12px', borderBottom: '1px solid #e2e4e8', background: '#fff', flexWrap: 'nowrap', overflowX: 'auto', minHeight: 46, boxSizing: 'border-box' }}>
+    <div style={TB.strip}>
+      <div style={TB.pill}>
       <DeckControls />
-      <span style={sep} />
+      <ToolbarDivider />
 
       <IconButton title="Text box" onClick={() => insert({ type: 'text' } as NewElementSpec, { w: 400, h: 100 })}>
         <Type size={16} />
@@ -98,7 +78,7 @@ export function Toolbar(): React.ReactElement {
         <ImageIcon size={16} />
       </IconButton>
       <input ref={fileRef} type="file" accept="image/*" onChange={onImageFile} style={{ display: 'none' }} />
-      <span style={sep} />
+      <ToolbarDivider />
 
       <IconButton title="Duplicate (⌘D)" disabled={!hasSel} onClick={() => { const c = ids.map((id) => deck.duplicateElement(id)).filter(Boolean); if (c.length) deck.setSelection({ slideId: deck.getActiveSlideId(), elementIds: c.map((x) => x!.id) }); }}>
         <Copy size={16} />
@@ -106,7 +86,7 @@ export function Toolbar(): React.ReactElement {
       <IconButton title="Delete (⌦)" disabled={!hasSel} onClick={() => { deck.deleteElements(ids); deck.setSelection({ slideId: deck.getActiveSlideId(), elementIds: [] }); }}>
         <Trash2 size={16} />
       </IconButton>
-      <span style={sep} />
+      <ToolbarDivider />
 
       <IconButton title="Bring to front (⌘⇧])" disabled={!hasSel} onClick={() => deck.bringToFront(ids)}>
         <BringToFront size={16} />
@@ -120,7 +100,7 @@ export function Toolbar(): React.ReactElement {
       <IconButton title="Ungroup (⌘⇧G)" disabled={!hasSel} onClick={() => deck.ungroupElements(ids)}>
         <Ungroup size={16} />
       </IconButton>
-      <span style={sep} />
+      <ToolbarDivider />
 
       <IconButton title="Align left" disabled={!hasSel} onClick={() => align('left')}>
         <AlignStartVertical size={16} />
@@ -140,7 +120,7 @@ export function Toolbar(): React.ReactElement {
       <IconButton title="Align bottom" disabled={!hasSel} onClick={() => align('bottom')}>
         <AlignEndHorizontal size={16} />
       </IconButton>
-      <span style={sep} />
+      <ToolbarDivider />
 
       <IconButton title="Undo (⌘Z)" onClick={() => deck.undo()}>
         <Undo2 size={16} />
@@ -153,6 +133,7 @@ export function Toolbar(): React.ReactElement {
           of element is selected. */}
       <TextFormatBar />
       <LineFormatBar />
+      </div>
     </div>
   );
 }

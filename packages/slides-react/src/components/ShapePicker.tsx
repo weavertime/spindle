@@ -9,6 +9,7 @@ import type { ShapePreset, NewElementSpec } from '@weavertime/spindle-slides-cor
 import { shapeGeom } from './elements/shapes';
 import { useDeck } from '../hooks';
 import { Popover } from './Popover';
+import { TB } from './toolbarUI';
 
 const PRESETS: ShapePreset[] = [
   'rect', 'roundRect', 'ellipse', 'triangle', 'rightTriangle', 'diamond',
@@ -16,10 +17,7 @@ const PRESETS: ShapePreset[] = [
   'chevron', 'parallelogram', 'trapezoid', 'plus', 'heart', 'cloud',
 ];
 
-const btn: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 2, height: 30, padding: '0 6px',
-  border: '1px solid #d5d9e0', borderRadius: 5, background: '#fff', color: '#3e4c59', cursor: 'pointer',
-};
+const btn: React.CSSProperties = { ...TB.dropdownButton, gap: 2, padding: '0 6px' };
 
 function ShapeIcon({ preset }: { preset: ShapePreset }): React.ReactElement {
   const g = shapeGeom(preset, 22, 22);

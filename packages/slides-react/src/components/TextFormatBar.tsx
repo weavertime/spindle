@@ -11,13 +11,14 @@ import type { TextFormatSpec, TextAlign, ListType } from '@weavertime/spindle-sl
 import { useDeck, useSelection, useEditingId } from '../hooks';
 import { useDeckContext } from '../context/DeckContext';
 import { applyFormat } from '../interactions/formatting';
+import { ToolbarButton, ToolbarDivider } from './toolbarUI';
 
 const FONT_SIZES = [12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 54, 66, 80];
 
-const btn: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  width: 28, height: 28, border: '1px solid #d5d9e0', borderRadius: 5,
-  background: '#fff', color: '#3e4c59', cursor: 'pointer',
+const field: React.CSSProperties = {
+  height: 30, border: '1px solid rgba(0,0,0,0.1)', borderRadius: 8,
+  background: 'rgba(255,255,255,0.8)', color: '#334155', padding: '0 6px',
+  fontSize: 13, fontFamily: '"Inter", sans-serif', cursor: 'pointer',
 };
 
 /** The single text/shape element eligible for idle formatting, if any. */
@@ -42,20 +43,20 @@ export function TextFormatBar(): React.ReactElement | null {
 
   return (
     <>
-      <span style={{ width: 1, height: 22, background: '#e2e4e8', margin: '0 4px' }} />
-      <button title="Bold (⌘B)" style={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => fmt({ toggleMark: 'bold' })}><Bold size={15} /></button>
-      <button title="Italic (⌘I)" style={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => fmt({ toggleMark: 'italic' })}><Italic size={15} /></button>
-      <button title="Underline (⌘U)" style={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => fmt({ toggleMark: 'underline' })}><Underline size={15} /></button>
-      <button title="Strikethrough" style={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => fmt({ toggleMark: 'strikethrough' })}><Strikethrough size={15} /></button>
+      <ToolbarDivider />
+      <ToolbarButton title="Bold (⌘B)" onClick={() => fmt({ toggleMark: 'bold' })}><Bold size={15} /></ToolbarButton>
+      <ToolbarButton title="Italic (⌘I)" onClick={() => fmt({ toggleMark: 'italic' })}><Italic size={15} /></ToolbarButton>
+      <ToolbarButton title="Underline (⌘U)" onClick={() => fmt({ toggleMark: 'underline' })}><Underline size={15} /></ToolbarButton>
+      <ToolbarButton title="Strikethrough" onClick={() => fmt({ toggleMark: 'strikethrough' })}><Strikethrough size={15} /></ToolbarButton>
 
-      <span style={{ width: 1, height: 20, background: '#e2e4e8', margin: '0 4px' }} />
+      <ToolbarDivider />
 
       <select
         title="Font size"
         defaultValue={18}
         onMouseDown={(e) => e.stopPropagation()}
         onChange={(e) => fmt({ setMark: { type: 'fontSize', attrs: { size: Number(e.target.value) } } })}
-        style={{ height: 28, border: '1px solid #d5d9e0', borderRadius: 5, background: '#fff', color: '#3e4c59', padding: '0 4px' }}
+        style={field}
       >
         {FONT_SIZES.map((s) => (
           <option key={s} value={s}>{s}</option>
@@ -66,20 +67,20 @@ export function TextFormatBar(): React.ReactElement | null {
         title="Text color"
         onMouseDown={(e) => e.preventDefault()}
         onChange={(e) => fmt({ setMark: { type: 'textColor', attrs: { color: { kind: 'rgb', hex: e.target.value } } } })}
-        style={{ width: 28, height: 28, border: '1px solid #d5d9e0', borderRadius: 5, background: '#fff', padding: 2, cursor: 'pointer' }}
+        style={{ ...field, width: 30, padding: 3, marginLeft: 2 }}
       />
 
-      <span style={{ width: 1, height: 20, background: '#e2e4e8', margin: '0 4px' }} />
+      <ToolbarDivider />
 
       {(['left', 'center', 'right'] as TextAlign[]).map((a) => (
-        <button key={a} title={`Align ${a}`} style={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => fmt({ paragraph: { align: a } })}>
+        <ToolbarButton key={a} title={`Align ${a}`} onClick={() => fmt({ paragraph: { align: a } })}>
           {a === 'left' ? <AlignLeft size={15} /> : a === 'center' ? <AlignCenter size={15} /> : <AlignRight size={15} />}
-        </button>
+        </ToolbarButton>
       ))}
       {(['bullet', 'number'] as ListType[]).map((l) => (
-        <button key={l} title={`${l === 'bullet' ? 'Bulleted' : 'Numbered'} list`} style={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => fmt({ paragraph: { listType: l } })}>
+        <ToolbarButton key={l} title={`${l === 'bullet' ? 'Bulleted' : 'Numbered'} list`} onClick={() => fmt({ paragraph: { listType: l } })}>
           {l === 'bullet' ? <List size={15} /> : <ListOrdered size={15} />}
-        </button>
+        </ToolbarButton>
       ))}
     </>
   );
