@@ -103,6 +103,16 @@ export function RichTextEditor({
 
     editing.setView(view);
 
+    // Remove the browser's default focus outline on the contenteditable — it
+    // draws a second (mismatched) box inside the selection box. Fill the box so
+    // the caret/click target matches the element frame.
+    const pmDom = view.dom as HTMLElement;
+    pmDom.style.outline = 'none';
+    pmDom.style.minHeight = '1em';
+    pmDom.style.width = '100%';
+    pmDom.style.whiteSpace = 'pre-wrap';
+    pmDom.style.wordBreak = 'break-word';
+
     // Focus on the next frame, after the pointer sequence that opened the
     // editor (the double-click's mouseup would otherwise blur the freshly
     // focused contenteditable and immediately exit). Ignore any blur that
