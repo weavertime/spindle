@@ -584,7 +584,11 @@ export class DeckImpl {
   setActiveSlide(slideId: string): void {
     if (!this.slides.has(slideId) || slideId === this.activeSlideId) return;
     this.activeSlideId = slideId;
+    // The element selection belonged to the previous slide — clear it so its
+    // bounding box doesn't linger on the new slide.
+    this.selection = { slideId, elementIds: [] };
     this.emit('activeSlideChange', { slideId });
+    this.emit('selectionChange', { selection: this.getSelection() });
   }
 
   // ── History ────────────────────────────────────────────────────────────────

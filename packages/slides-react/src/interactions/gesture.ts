@@ -122,6 +122,7 @@ export function createResizeGesture(
         }
         const nf = resizeFrame(startFrame, handle, pt, { lockAspect });
         writeNode(ctx.nodes, single.id, nf);
+        ctx.transient.set({ liveFrames: new Map([[single.id, nf]]) });
         last = nf;
       },
       onEnd() {
@@ -160,6 +161,7 @@ export function createResizeGesture(
         writeNode(ctx.nodes, id, frame);
         live.set(id, frame);
       }
+      ctx.transient.set({ liveFrames: live });
       last = live;
     },
     onEnd() {
@@ -181,6 +183,7 @@ export function createRotateGesture(ctx: GestureContext, selectedIds: string[], 
       onMove(p) {
         const nf = rotateFrame(startFrame, p, { snap: opts.shiftKey });
         writeNode(ctx.nodes, single.id, nf);
+        ctx.transient.set({ liveFrames: new Map([[single.id, nf]]) });
         last = nf;
       },
       onEnd() {
@@ -212,6 +215,7 @@ export function createRotateGesture(ctx: GestureContext, selectedIds: string[], 
         writeNode(ctx.nodes, id, frame);
         live.set(id, frame);
       }
+      ctx.transient.set({ liveFrames: live });
       last = live;
     },
     onEnd() {

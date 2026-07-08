@@ -6,17 +6,28 @@
 // Handles carry data-handle / data-rotate attributes; the interactive stage
 // reads them on pointerdown to start the right gesture.
 
-import React, { useEffect, useReducer } from 'react';
+import React, { useEffect, useReducer, useSyncExternalStore } from 'react';
 import { unionAABB, type Frame, type Rect } from '@weavertime/spindle-slides-core';
 import { useDeckContext } from '../context/DeckContext';
 import { useSelection } from '../hooks';
-import type { TransientState } from '../interactions/transient-store';
 
 const ACCENT = '#2d7ff9';
 const CORNER_CURSOR: Record<string, string> = {
   nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize',
   n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
 };
+
+// A circular-arrow rotate cursor (white body + dark outline so it reads on any
+// background), hotspot centred.
+const ROTATE_CURSOR =
+  'url("data:image/svg+xml,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M5 12a7 7 0 1 1 2 4.9" stroke="#fff" stroke-width="4.5"/><path d="M5 17.5v-4h4" stroke="#fff" stroke-width="4.5"/>' +
+      '<path d="M5 12a7 7 0 1 1 2 4.9" stroke="#111" stroke-width="2"/><path d="M5 17.5v-4h4" stroke="#111" stroke-width="2"/>' +
+      '</svg>'
+  ) +
+  '") 12 12, grab';
 
 function frameOf(el: { x: number; y: number; w: number; h: number; rotation: number }): Frame {
   return { x: el.x, y: el.y, w: el.w, h: el.h, rotation: el.rotation };
@@ -57,7 +68,7 @@ function RotateHandle({ cx, top, hs }: { cx: number; top: number; hs: number }):
         border: `${hs * 0.14}px solid ${ACCENT}`,
         borderRadius: '50%',
         boxSizing: 'border-box',
-        cursor: 'grab',
+        cursor: ROTATE_CURSOR,
         pointerEvents: 'auto',
       }}
     />
@@ -75,7 +86,10 @@ export function SelectionOverlay({ scale }: { scale: number }): React.ReactEleme
     return () => offs.forEach((o) => o());
   }, [deck]);
 
-  const live = ((): TransientState['liveFrames'] => transient.get().liveFrames)();
+  // Subscribe to the transient store so the box follows the element live during
+  // a gesture (move/resize/rotate write frames here per pointermove).
+  const transientState = useSyncExternalStore(transient.subscribe, transient.get);
+  const live = transientState.liveFrames;
 
   const ids = selection.elementIds.filter((id) => deck.getElement(id));
   if (ids.length === 0) return null;

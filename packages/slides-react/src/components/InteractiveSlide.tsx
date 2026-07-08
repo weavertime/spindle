@@ -84,21 +84,31 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
     } else if (elEl?.dataset.elementId) {
       const id = elEl.dataset.elementId;
       const el = deck.getElement(id);
-      // A second pointerdown on the same element within 400ms is a double-click
-      // → enter text edit instead of starting a move. Timing-based (not a
-      // separate onDoubleClick) because the pointerdown preventDefault below
-      // swallows the native dblclick, and pointerdown `detail` is unreliable.
+      // A second pointerdown on the same element within 400ms is a double-click.
+      // But only enter text edit if it does NOT turn into a drag — otherwise a
+      // quick select-then-drag would wrongly open the editor. So we always start
+      // a move gesture and, at pointerup, enter edit only when nothing moved.
       const now = Date.now();
       const isDouble = lastDown.current.id === id && now - lastDown.current.t < 400;
       lastDown.current = { id, t: now };
-      if (isDouble && el && (el.type === 'text' || el.type === 'shape')) {
-        deck.setSelection({ slideId, elementIds: [id] });
-        editing.setEditingId(id);
-        e.preventDefault();
-        return;
-      }
       const ids = selectOnDown(deck, slideId, id, e.shiftKey);
-      gesture = createMoveGesture(ctx, toSlide(e.clientX, e.clientY), ids);
+      const move = createMoveGesture(ctx, toSlide(e.clientX, e.clientY), ids);
+      const canEdit = isDouble && !!el && (el.type === 'text' || el.type === 'shape');
+      const startP = toSlide(e.clientX, e.clientY);
+      let moved = false;
+      gesture = {
+        onMove(p) {
+          if (Math.hypot(p.x - startP.x, p.y - startP.y) > 3 / scale) moved = true;
+          move.onMove(p);
+        },
+        onEnd() {
+          move.onEnd();
+          if (canEdit && !moved) {
+            deck.setSelection({ slideId, elementIds: [id] });
+            editing.setEditingId(id);
+          }
+        },
+      };
     } else {
       if (!e.shiftKey) deck.setSelection({ slideId, elementIds: [] });
       gesture = createMarqueeGesture(ctx, toSlide(e.clientX, e.clientY), e.shiftKey, deck.getSelection().elementIds);
