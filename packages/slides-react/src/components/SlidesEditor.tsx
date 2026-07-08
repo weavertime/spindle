@@ -4,7 +4,8 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Play, FileDown, MessageSquare } from 'lucide-react';
-import { useDeck, useKeyboardShortcuts } from '../hooks';
+import { useDeck, useKeyboardShortcuts, useCommentsOpen } from '../hooks';
+import { useDeckContext } from '../context/DeckContext';
 import { Toolbar } from './Toolbar';
 import { Filmstrip } from './Filmstrip';
 import { SlideStage } from './SlideStage';
@@ -32,7 +33,8 @@ export function SlidesEditor({ style, readOnly = false }: SlidesEditorProps): Re
   const [zoomIdx, setZoomIdx] = useState(0);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [presenting, setPresenting] = useState(false);
-  const [showComments, setShowComments] = useState(false);
+  const { ui } = useDeckContext();
+  const showComments = useCommentsOpen();
   const { onKeyDown } = useKeyboardShortcuts();
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -79,7 +81,7 @@ export function SlidesEditor({ style, readOnly = false }: SlidesEditorProps): Re
                 <FileDown size={14} /> PDF
               </button>
               <button
-                onClick={() => setShowComments((s) => !s)}
+                onClick={() => ui.toggleComments()}
                 title="Comments"
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #d5d9e0', background: showComments ? '#eef4ff' : '#fff', color: '#3e4c59', borderRadius: 5, padding: '6px 10px', fontSize: 13, cursor: 'pointer' }}
               >
@@ -107,7 +109,7 @@ export function SlidesEditor({ style, readOnly = false }: SlidesEditorProps): Re
           <SlideStage zoom={ZOOM_PRESETS[zoomIdx].zoom} interactive={!readOnly} />
           {!readOnly && <NotesPanel />}
         </div>
-        {!readOnly && showComments && <CommentsPanel onClose={() => setShowComments(false)} />}
+        {!readOnly && showComments && <CommentsPanel onClose={() => ui.setCommentsOpen(false)} />}
       </div>
       {menu && <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
       {presenting && <PresentMode onExit={() => setPresenting(false)} />}

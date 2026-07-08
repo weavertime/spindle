@@ -3,11 +3,12 @@
 // a mini inline-SVG using the same geometry as the canvas; selecting one
 // inserts it centred on the active slide.
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Shapes as ShapesIcon, ChevronDown } from 'lucide-react';
 import type { ShapePreset, NewElementSpec } from '@weavertime/spindle-slides-core';
 import { shapeGeom } from './elements/shapes';
 import { useDeck } from '../hooks';
+import { Popover } from './Popover';
 
 const PRESETS: ShapePreset[] = [
   'rect', 'roundRect', 'ellipse', 'triangle', 'rightTriangle', 'diamond',
@@ -36,6 +37,7 @@ function ShapeIcon({ preset }: { preset: ShapePreset }): React.ReactElement {
 export function ShapePicker(): React.ReactElement {
   const deck = useDeck();
   const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLButtonElement>(null);
   const { w, h } = deck.getSlideSize();
 
   const insert = (preset: ShapePreset) => {
@@ -52,15 +54,14 @@ export function ShapePicker(): React.ReactElement {
   };
 
   return (
-    <div style={{ position: 'relative' }}>
-      <button title="Shapes" style={btn} onClick={() => setOpen((o) => !o)}>
+    <>
+      <button ref={anchorRef} title="Shapes" style={btn} onClick={() => setOpen((o) => !o)}>
         <ShapesIcon size={16} />
         <ChevronDown size={12} />
       </button>
       {open && (
-        <>
-          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-          <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 41, background: '#fff', border: '1px solid #d5d9e0', borderRadius: 8, boxShadow: '0 8px 28px rgba(0,0,0,0.16)', padding: 8, display: 'grid', gridTemplateColumns: 'repeat(6, 32px)', gap: 4 }}>
+        <Popover anchor={anchorRef.current} onClose={() => setOpen(false)}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 32px)', gap: 4 }}>
             {PRESETS.map((p) => (
               <button
                 key={p}
@@ -74,8 +75,8 @@ export function ShapePicker(): React.ReactElement {
               </button>
             ))}
           </div>
-        </>
+        </Popover>
       )}
-    </div>
+    </>
   );
 }

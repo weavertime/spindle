@@ -5,9 +5,11 @@
 import React, { useEffect, useReducer } from 'react';
 import { MessageSquare } from 'lucide-react';
 import { useDeck, useSlideElementIds } from '../hooks';
+import { useDeckContext } from '../context/DeckContext';
 
 export function CommentBadgesOverlay({ slideId, scale }: { slideId: string; scale: number }): React.ReactElement | null {
   const deck = useDeck();
+  const { ui } = useDeckContext();
   const elementIds = useSlideElementIds(slideId);
   const [, force] = useReducer((n) => n + 1, 0);
 
@@ -18,6 +20,7 @@ export function CommentBadgesOverlay({ slideId, scale }: { slideId: string; scal
 
   const store = deck.getComments();
   const size = 20 / scale;
+  console.log('[BADGE] render ids=', elementIds.length, 'withThreads=', elementIds.filter(id=>store.getThreadsForElement(id).length>0).join(','), 'total=', store.getThreads().length);
 
   const badges = elementIds
     .map((id) => {
@@ -29,6 +32,12 @@ export function CommentBadgesOverlay({ slideId, scale }: { slideId: string; scal
       return (
         <div
           key={id}
+          title="Open comments"
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            deck.setSelection({ slideId, elementIds: [id] });
+            ui.setCommentsOpen(true);
+          }}
           style={{
             position: 'absolute',
             left: el.x + el.w - size / 2,
@@ -42,6 +51,8 @@ export function CommentBadgesOverlay({ slideId, scale }: { slideId: string; scal
             alignItems: 'center',
             justifyContent: 'center',
             boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+            pointerEvents: 'auto',
+            cursor: 'pointer',
           }}
         >
           <MessageSquare size={size * 0.55} />

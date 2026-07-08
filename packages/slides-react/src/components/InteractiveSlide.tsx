@@ -139,9 +139,10 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
       <div style={{ position: 'absolute', left: 0, top: 0, transform: `scale(${scale})`, transformOrigin: 'top left', width: w, height: h }}>
         <SlideView slideId={slideId} interactive />
         <GuidesOverlay scale={scale} />
-        <CommentBadgesOverlay slideId={slideId} scale={scale} />
         <RemotePresenceOverlay scale={scale} />
         <SelectionOverlay scale={scale} />
+        {/* Badges last so they stay clickable on top of the selection handles. */}
+        <CommentBadgesOverlay slideId={slideId} scale={scale} />
       </div>
     </div>
   );

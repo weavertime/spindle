@@ -37,6 +37,7 @@ export {
   useClipboard,
   useKeyboardShortcuts,
   useEditingId,
+  useCommentsOpen,
 } from './hooks';
 export { useComments } from './hooks/useComments';
 export type { UseComments } from './hooks/useComments';

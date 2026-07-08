@@ -71,3 +71,9 @@ export function useEditingId(): string | null {
   const { editing } = useDeckContext();
   return useSyncExternalStore(editing.subscribe, editing.getEditingId);
 }
+
+/** Whether the comments sidebar is open (shared UI state). */
+export function useCommentsOpen(): boolean {
+  const { ui } = useDeckContext();
+  return useSyncExternalStore(ui.subscribe, ui.getCommentsOpen);
+}
