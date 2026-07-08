@@ -16,8 +16,9 @@ import { PresentMode } from './PresentMode';
 import { CommentsPanel } from './CommentsPanel';
 import { exportDeckToPdf } from './pdf/export-pdf';
 
-const ZOOM_PRESETS: Array<{ label: string; zoom?: number }> = [
-  { label: 'Fit', zoom: undefined },
+type Zoom = number | 'fit';
+const ZOOM_PRESETS: Array<{ label: string; zoom: Zoom }> = [
+  { label: 'Fit', zoom: 'fit' },
   { label: '50%', zoom: 0.5 },
   { label: '100%', zoom: 1 },
   { label: '200%', zoom: 2 },
@@ -31,7 +32,7 @@ export interface SlidesEditorProps {
 
 export function SlidesEditor({ style, readOnly = false }: SlidesEditorProps): React.ReactElement {
   const deck = useDeck();
-  const [zoomIdx, setZoomIdx] = useState(0);
+  const [zoom, setZoom] = useState<Zoom>('fit');
   const [menu, setMenu] = useState<
     | { x: number; y: number; kind: 'element' }
     | { x: number; y: number; kind: 'slide'; slideId: string }
@@ -107,23 +108,29 @@ export function SlidesEditor({ style, readOnly = false }: SlidesEditorProps): Re
             </>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {ZOOM_PRESETS.map((p, i) => (
-            <button
-              key={p.label}
-              onClick={() => setZoomIdx(i)}
-              style={{ border: '1px solid #d5d9e0', background: i === zoomIdx ? '#2d7ff9' : '#fff', color: i === zoomIdx ? '#fff' : '#3e4c59', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}
-            >
-              {p.label}
-            </button>
-          ))}
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          {zoom !== 'fit' && !ZOOM_PRESETS.some((p) => p.zoom === zoom) && (
+            <span style={{ fontSize: 12, color: '#8a93a2', minWidth: 40, textAlign: 'right' }}>{Math.round(zoom * 100)}%</span>
+          )}
+          {ZOOM_PRESETS.map((p) => {
+            const active = p.zoom === zoom;
+            return (
+              <button
+                key={p.label}
+                onClick={() => setZoom(p.zoom)}
+                style={{ border: '1px solid #d5d9e0', background: active ? '#2d7ff9' : '#fff', color: active ? '#fff' : '#3e4c59', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}
+              >
+                {p.label}
+              </button>
+            );
+          })}
         </div>
       </header>
       {!readOnly && <Toolbar />}
       <div style={{ display: 'flex', flex: '1 1 auto', minHeight: 0, gap: 12, padding: '4px 12px 12px', background: 'linear-gradient(180deg, #f1f5f9 0%, #eaeef4 100%)' }}>
         <Filmstrip />
         <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minWidth: 0, gap: 12 }}>
-          <SlideStage zoom={ZOOM_PRESETS[zoomIdx].zoom} interactive={!readOnly} />
+          <SlideStage zoom={zoom === 'fit' ? undefined : zoom} interactive={!readOnly} onZoomChange={setZoom} />
           {!readOnly && <NotesPanel />}
         </div>
         {!readOnly && showComments && <CommentsPanel onClose={() => ui.setCommentsOpen(false)} />}
