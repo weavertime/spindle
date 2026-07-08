@@ -36,7 +36,8 @@ import {
 } from './scene/z-order';
 import { alignFrames, distributeFrames, type AlignMode, type FrameItem } from './scene/align';
 import type { Rect } from './scene/geometry';
-import type { Frame, Fill, SlideElement } from './scene/types';
+import { resolveConnectorFrame } from './scene/connector';
+import type { Frame, Fill, SlideElement, LineElement } from './scene/types';
 import { applyTextFormat, type RichTextDoc, type TextFormatSpec } from './text/model';
 import type { ThemeData, LayoutData } from './theme/types';
 import { getBuiltinTheme, BUILTIN_LAYOUTS, DEFAULT_SLIDE_SIZE } from './theme/builtin';
@@ -58,6 +59,12 @@ export type NewElementSpec =
   | ({ type: 'shape' } & Omit<ShapeElementInput, 'containerId' | 'index'>)
   | ({ type: 'image' } & Omit<ImageElementInput, 'containerId' | 'index'>)
   | ({ type: 'line' } & Omit<LineElementInput, 'containerId' | 'index'>);
+
+const FRAME_KEYS = ['x', 'y', 'w', 'h', 'rotation'] as const;
+/** Whether a patch changes any geometry a bound connector must track. */
+function touchesFrame(patch: Partial<SlideElement>): boolean {
+  return FRAME_KEYS.some((k) => k in patch);
+}
 
 export interface AddSlideOptions {
   /** Insert immediately after this slide; defaults to the end. */
@@ -390,11 +397,14 @@ export class DeckImpl {
     const el = this.elements.get(id);
     if (!el) return;
     this.recordHistory();
-    this.applyElementPatch(id, patch);
-    this.emit('elementChange', {
-      slideId: el.containerId,
-      elementId: id,
-      keys: Object.keys(patch),
+    this.events.batch(() => {
+      this.applyElementPatch(id, patch);
+      this.emit('elementChange', {
+        slideId: el.containerId,
+        elementId: id,
+        keys: Object.keys(patch),
+      });
+      if (touchesFrame(patch)) this.reconcileConnectors(new Set([id]));
     });
   }
 
@@ -402,6 +412,7 @@ export class DeckImpl {
   updateElements(patches: Array<{ id: string; patch: Partial<SlideElement> }>): void {
     this.recordHistory();
     this.events.batch(() => {
+      const framed = new Set<string>();
       for (const { id, patch } of patches) {
         const el = this.elements.get(id);
         if (!el) continue;
@@ -411,8 +422,52 @@ export class DeckImpl {
           elementId: id,
           keys: Object.keys(patch),
         });
+        if (touchesFrame(patch)) framed.add(id);
       }
+      if (framed.size) this.reconcileConnectors(framed);
     });
+  }
+
+  /**
+   * Recompute the box of every connector bound to one of `changedIds`, so it
+   * keeps tracking its shape. Applied in-place inside the caller's history/emit
+   * cycle (no new undo entry). Connectors bound to nothing that moved, and
+   * connectors whose own box was just set directly, are left alone.
+   */
+  private reconcileConnectors(changedIds: Set<string>): void {
+    const getFrame = (elementId: string): Frame | undefined => {
+      const e = this.elements.get(elementId);
+      return e ? { x: e.x, y: e.y, w: e.w, h: e.h, rotation: e.rotation } : undefined;
+    };
+    for (const el of this.elements.values()) {
+      if (el.type !== 'line') continue;
+      const line = el as LineElement;
+      if (changedIds.has(line.id)) continue;
+      const hit =
+        (line.startBind && changedIds.has(line.startBind.elementId)) ||
+        (line.endBind && changedIds.has(line.endBind.elementId));
+      if (!hit) continue;
+      const box = resolveConnectorFrame(line, getFrame);
+      this.applyElementPatch(line.id, box as Partial<SlideElement>);
+      this.emit('elementChange', { slideId: line.containerId, elementId: line.id, keys: ['x', 'y', 'w', 'h', 'flipV'] });
+    }
+  }
+
+  /** Clear any connector endpoints bound to `deletedIds` (leaves them free at
+   *  their last position). Applied in-place; call inside a history/emit cycle. */
+  private detachConnectors(deletedIds: Set<string>): void {
+    for (const el of this.elements.values()) {
+      if (el.type !== 'line') continue;
+      const line = el as LineElement;
+      if (deletedIds.has(line.id)) continue;
+      const patch: Partial<LineElement> = {};
+      if (line.startBind && deletedIds.has(line.startBind.elementId)) patch.startBind = undefined;
+      if (line.endBind && deletedIds.has(line.endBind.elementId)) patch.endBind = undefined;
+      const keys = Object.keys(patch);
+      if (!keys.length) continue;
+      this.applyElementPatch(line.id, patch as Partial<SlideElement>);
+      this.emit('elementChange', { slideId: line.containerId, elementId: line.id, keys });
+    }
   }
 
   private applyElementPatch(id: string, patch: Partial<SlideElement>): void {
@@ -427,20 +482,26 @@ export class DeckImpl {
     const el = this.elements.get(id);
     if (!el) return;
     this.recordHistory();
-    this.elements.delete(id);
-    this.emit('elementDelete', { slideId: el.containerId, elementId: id });
+    this.events.batch(() => {
+      this.elements.delete(id);
+      this.emit('elementDelete', { slideId: el.containerId, elementId: id });
+      this.detachConnectors(new Set([id]));
+    });
   }
 
   deleteElements(ids: string[]): void {
     if (ids.length === 0) return;
     this.recordHistory();
     this.events.batch(() => {
+      const deleted = new Set<string>();
       for (const id of ids) {
         const el = this.elements.get(id);
         if (!el) continue;
         this.elements.delete(id);
         this.emit('elementDelete', { slideId: el.containerId, elementId: id });
+        deleted.add(id);
       }
+      this.detachConnectors(deleted);
     });
   }
 

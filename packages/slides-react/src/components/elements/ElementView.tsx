@@ -15,6 +15,7 @@ import { TextView } from './TextView';
 import { ShapeView } from './ShapeView';
 import { ImageView } from './ImageView';
 import { LineView } from './LineView';
+import { ConnectorView } from './ConnectorView';
 
 function renderInner(el: SlideElement, theme: ReturnType<typeof useTheme>, interactive: boolean): React.ReactElement {
   switch (el.type) {
@@ -50,6 +51,13 @@ export function ElementView({
   );
 
   if (!el) return null;
+
+  // A bound line is a connector: its geometry is derived from the shapes it
+  // links, so a dedicated view resolves + tracks that (subscribing to the
+  // transient store for live drags). Ordinary elements never pay that cost.
+  if (el.type === 'line' && (el.startBind || el.endBind)) {
+    return <ConnectorView elementId={elementId} interactive={interactive} />;
+  }
 
   const style: React.CSSProperties = {
     position: 'absolute',

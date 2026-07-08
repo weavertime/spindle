@@ -17,6 +17,7 @@ import type {
   LineElement,
   ShapePreset,
   ArrowHead,
+  EndpointBind,
   PlaceholderMeta,
   ElementType,
 } from './types';
@@ -132,6 +133,8 @@ export interface LineElementInput extends BaseElementInput {
   endArrow?: ArrowHead;
   flipH?: boolean;
   flipV?: boolean;
+  startBind?: EndpointBind;
+  endBind?: EndpointBind;
 }
 
 export function createLineElement(input: LineElementInput): LineElement {
@@ -144,6 +147,8 @@ export function createLineElement(input: LineElementInput): LineElement {
   if (input.endArrow) el.endArrow = input.endArrow;
   if (input.flipH) el.flipH = input.flipH;
   if (input.flipV) el.flipV = input.flipV;
+  if (input.startBind) el.startBind = input.startBind;
+  if (input.endBind) el.endBind = input.endBind;
   return el;
 }
 

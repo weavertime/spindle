@@ -244,3 +244,58 @@ describe('getData / setData', () => {
     expect(dataB).toEqual(dataA);
   });
 });
+
+describe('connectors (bound lines track their shapes)', () => {
+  function setup() {
+    const deck = new DeckImpl();
+    const slide = deck.getActiveSlideId();
+    const a = deck.addElement(slide, { type: 'shape', x: 0, y: 0, w: 100, h: 100 });
+    const b = deck.addElement(slide, { type: 'shape', x: 400, y: 400, w: 100, h: 100 });
+    const conn = deck.addElement(slide, {
+      type: 'line', x: 100, y: 100, w: 300, h: 300,
+      startBind: { elementId: a.id, anchor: 'e' },
+      endBind: { elementId: b.id, anchor: 'w' },
+    });
+    return { deck, slide, a, b, conn };
+  }
+
+  it('recomputes the connector box when a bound shape moves', () => {
+    const { deck, a, conn } = setup();
+    deck.moveElements([a.id], 50, 20); // A → (50,20,100,100); east anchor (150,70)
+    const line = deck.getElement(conn.id)!;
+    // B west anchor stays (400,450). Box spans (150,70)→(400,450).
+    expect(line.x).toBe(150);
+    expect(line.y).toBe(70);
+    expect(line.w).toBe(250);
+    expect(line.h).toBe(380);
+  });
+
+  it('tracks a bound shape through resize', () => {
+    const { deck, b, conn } = setup();
+    deck.updateElement(b.id, { x: 300, w: 200 }); // west anchor now (300,450)
+    const line = deck.getElement(conn.id)!;
+    expect(line.x).toBe(100); // A east (100,50)
+    expect(line.w).toBe(200); // to (300,450)
+  });
+
+  it('detaches (clears the binding) when a bound shape is deleted, keeping the connector', () => {
+    const { deck, a, conn } = setup();
+    deck.deleteElements([a.id]);
+    const line = deck.getElement(conn.id)!;
+    expect(line).toBeDefined();
+    expect(line.type).toBe('line');
+    if (line.type !== 'line') return;
+    expect(line.startBind).toBeUndefined();
+    expect(line.endBind).toBeDefined(); // B still bound
+  });
+
+  it('reconciliation is one undo entry with the move', () => {
+    const { deck, a, conn } = setup();
+    const before = deck.getElement(conn.id)!.x;
+    deck.moveElements([a.id], 50, 20);
+    expect(deck.getElement(conn.id)!.x).not.toBe(before);
+    deck.undo();
+    expect(deck.getElement(conn.id)!.x).toBe(before); // connector restored too
+    expect(deck.getElement(a.id)!.x).toBe(0);
+  });
+});

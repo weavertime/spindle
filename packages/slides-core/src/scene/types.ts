@@ -129,6 +129,19 @@ export type ShapePreset =
 
 export type ArrowHead = 'none' | 'arrow' | 'triangle' | 'circle';
 
+/** The 8 connection anchors on a box: 4 edge midpoints + 4 corners. */
+export type AnchorId = 'n' | 'e' | 's' | 'w' | 'nw' | 'ne' | 'se' | 'sw';
+
+/**
+ * A connector endpoint bound to another element's anchor. The endpoint's pixel
+ * position is derived from the target's current frame — never stored — so the
+ * connector tracks the shape when it moves, resizes, or rotates.
+ */
+export interface EndpointBind {
+  elementId: string;
+  anchor: AnchorId;
+}
+
 export interface TextElement extends ElementBase {
   type: 'text';
   richText: RichTextDoc;
@@ -167,6 +180,9 @@ export interface LineElement extends ElementBase {
   stroke: Stroke;
   startArrow?: ArrowHead;
   endArrow?: ArrowHead;
+  /** When set, the endpoint tracks this element's anchor instead of the box corner. */
+  startBind?: EndpointBind;
+  endBind?: EndpointBind;
 }
 
 export type SlideElement = TextElement | ShapeElement | ImageElement | LineElement;

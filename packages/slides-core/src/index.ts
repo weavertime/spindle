@@ -12,6 +12,7 @@ export * from './scene/types';
 export * from './scene/elements';
 export * from './scene/fractional-index';
 export * from './scene/geometry';
+export * from './scene/connector';
 export * from './scene/transform';
 export * from './scene/snapping';
 export * from './scene/align';
