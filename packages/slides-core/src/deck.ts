@@ -37,7 +37,7 @@ import {
 import { alignFrames, distributeFrames, type AlignMode, type FrameItem } from './scene/align';
 import type { Rect } from './scene/geometry';
 import { resolveConnectorFrame, resolveEndpoints } from './scene/connector';
-import type { Frame, Fill, SlideElement, LineElement } from './scene/types';
+import type { Frame, Fill, SlideElement, LineElement, EndpointBind } from './scene/types';
 import { applyTextFormat, type RichTextDoc, type TextFormatSpec } from './text/model';
 import type { ThemeData, LayoutData } from './theme/types';
 import { getBuiltinTheme, BUILTIN_LAYOUTS, DEFAULT_SLIDE_SIZE } from './theme/builtin';
@@ -555,13 +555,53 @@ export class DeckImpl {
     this.updateElements(frames.map(({ id, frame }) => ({ id, patch: frame as Partial<SlideElement> })));
   }
 
-  /** Translate several elements by (dx, dy). */
+  /** Translate several elements by (dx, dy). Line connectors also shift their
+   *  explicit free endpoints (bound ends stay on their shapes via reconcile). */
   moveElements(ids: string[], dx: number, dy: number): void {
-    const frames = ids
+    const patches = ids
       .map((id) => this.elements.get(id))
       .filter((el): el is SlideElement => !!el)
-      .map((el) => ({ id: el.id, frame: { x: el.x + dx, y: el.y + dy } }));
-    this.setFrames(frames);
+      .map((el) => {
+        const patch: Partial<SlideElement> = { x: el.x + dx, y: el.y + dy };
+        if (el.type === 'line') {
+          const l = el as LineElement;
+          if (l.startPoint) (patch as Partial<LineElement>).startPoint = { x: l.startPoint.x + dx, y: l.startPoint.y + dy };
+          if (l.endPoint) (patch as Partial<LineElement>).endPoint = { x: l.endPoint.x + dx, y: l.endPoint.y + dy };
+        }
+        return { id: el.id, patch };
+      });
+    this.updateElements(patches);
+  }
+
+  /**
+   * Set one end of a line to either bind to an element's anchor or a free point.
+   * Converts the other end to an explicit point if it was a bare box corner, so
+   * the geometry (and arrow direction) survives; recomputes the box. One undo.
+   */
+  setLineEndpoint(id: string, end: 'start' | 'end', to: { bind?: EndpointBind; point?: { x: number; y: number } }): void {
+    const el = this.elements.get(id);
+    if (!el || el.type !== 'line') return;
+    const line = el as LineElement;
+    const getFrame = (elementId: string): Frame | undefined => {
+      const e = this.elements.get(elementId);
+      return e ? { x: e.x, y: e.y, w: e.w, h: e.h, rotation: e.rotation } : undefined;
+    };
+    const resolved = resolveEndpoints(line, getFrame);
+    const patch: Partial<LineElement> = {};
+    // Freeze the untouched end if it's still a bare box corner.
+    if (end === 'end' && !line.startBind && !line.startPoint) patch.startPoint = { x: resolved.start.x, y: resolved.start.y };
+    if (end === 'start' && !line.endBind && !line.endPoint) patch.endPoint = { x: resolved.end.x, y: resolved.end.y };
+    // Apply the edited end.
+    if (end === 'start') {
+      if (to.bind) { patch.startBind = to.bind; patch.startPoint = undefined; }
+      else { patch.startPoint = to.point; patch.startBind = undefined; }
+    } else {
+      if (to.bind) { patch.endBind = to.bind; patch.endPoint = undefined; }
+      else { patch.endPoint = to.point; patch.endBind = undefined; }
+    }
+    const box = resolveConnectorFrame({ ...line, ...patch } as LineElement, getFrame);
+    Object.assign(patch, box);
+    this.updateElement(id, patch as Partial<SlideElement>);
   }
 
   // ── Z-order / align / group (thin wrappers over scene/* pure fns) ────────────

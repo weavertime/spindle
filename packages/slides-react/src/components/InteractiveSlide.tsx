@@ -5,7 +5,7 @@
 // only re-renders on the commit at pointerup.
 
 import React, { useRef } from 'react';
-import { anchorPoint, connectorBox, type AnchorId, type DeckImpl, type Frame, type NewElementSpec, type ResizeHandle } from '@weavertime/spindle-slides-core';
+import { anchorPoint, connectorBox, resolveEndpoints, type AnchorId, type DeckImpl, type Frame, type NewElementSpec, type ResizeHandle } from '@weavertime/spindle-slides-core';
 import { useDeck } from '../hooks';
 import { useDeckContext } from '../context/DeckContext';
 import { SlideView } from './SlideView';
@@ -99,12 +99,37 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
     // Any pointerdown that isn't starting a connector clears the hover dots, so
     // they never linger over a shape's resize handles once it's selected.
     if (!connectEl) connectors.setHover(null);
+    const endpointEl = target.closest('[data-endpoint]') as HTMLElement | null;
     const rotateEl = target.closest('[data-rotate]');
     const handleEl = target.closest('[data-handle]') as HTMLElement | null;
     const elEl = target.closest('[data-element-id]') as HTMLElement | null;
 
     let gesture: Gesture;
-    if (connectEl?.dataset.connectAnchor) {
+    if (endpointEl?.dataset.endpoint) {
+      // Drag a selected line's tip: resize + rotate at once. The tip snaps to a
+      // shape anchor and binds on release, or stays a free point. Previewed live
+      // via the connector store's edit state (committed once at pointerup).
+      const which = endpointEl.dataset.endpoint as 'start' | 'end';
+      const lineId = deck.getSelection().elementIds[0];
+      const lineEl = lineId ? deck.getElement(lineId) : undefined;
+      if (!lineEl || lineEl.type !== 'line') return;
+      const getFrame = (elId: string): Frame | undefined => { const el = deck.getElement(elId); return el ? frameOf(el) : undefined; };
+      const orig = resolveEndpoints(lineEl, getFrame)[which];
+      gesture = {
+        onMove(p) {
+          const snap = nearestAnchor(deck, slideId, p, lineId, ANCHOR_GRAB / scale);
+          const over = snap ? snap.elementId : elementUnderPoint(deck, slideId, p, 0);
+          connectors.setEdit({ elementId: lineId, end: which, point: snap ? snap.point : p, snap: snap ? { elementId: snap.elementId, anchor: snap.anchor } : null, overElementId: over });
+        },
+        onEnd() {
+          const ed = connectors.get().edit;
+          connectors.setEdit(null);
+          if (!ed || Math.hypot(ed.point.x - orig.x, ed.point.y - orig.y) <= 3 / scale) return;
+          if (ed.snap) deck.setLineEndpoint(lineId, which, { bind: { elementId: ed.snap.elementId, anchor: ed.snap.anchor } });
+          else deck.setLineEndpoint(lineId, which, { point: { x: ed.point.x, y: ed.point.y } });
+        },
+      };
+    } else if (connectEl?.dataset.connectAnchor) {
       // Draw a connector from this shape's anchor. The endpoint tracks the
       // cursor, snapping to the nearest anchor of any other shape; on release it
       // binds to that anchor (or hangs free in mid-air). Previewed live via the

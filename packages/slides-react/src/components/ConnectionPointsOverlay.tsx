@@ -43,9 +43,13 @@ export function ConnectionPointsOverlay({ scale }: { scale: number }): React.Rea
   const r = 5 / scale;
 
   const draft = state.draft;
-  const dotsForId = draft ? draft.overElementId : state.hoverId;
+  const edit = state.edit;
+  // While drawing → the draft's candidate target; while editing a tip → its snap
+  // target; otherwise → the hovered shape.
+  const snap = draft?.snap ?? edit?.snap ?? null;
+  const dotsForId = draft ? draft.overElementId : edit ? edit.snap?.elementId ?? edit.overElementId : state.hoverId;
   const dotsEl = dotsForId ? deck.getElement(dotsForId) : null;
-  const snapAnchor = draft?.snap && draft.snap.elementId === dotsForId ? draft.snap.anchor : null;
+  const snapAnchor = snap && snap.elementId === dotsForId ? snap.anchor : null;
 
   if (!draft && !dotsEl) return null;
 

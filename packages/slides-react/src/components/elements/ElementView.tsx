@@ -52,10 +52,11 @@ export function ElementView({
 
   if (!el) return null;
 
-  // A bound line is a connector: its geometry is derived from the shapes it
-  // links, so a dedicated view resolves + tracks that (subscribing to the
-  // transient store for live drags). Ordinary elements never pay that cost.
-  if (el.type === 'line' && (el.startBind || el.endBind)) {
+  // A line with a binding or an explicit endpoint is a connector: its geometry
+  // is derived (from linked shapes and/or stored endpoints), so a dedicated view
+  // resolves + tracks it (subscribing to the transient store for live drags).
+  // Ordinary elements never pay that cost.
+  if (el.type === 'line' && (el.startBind || el.endBind || el.startPoint || el.endPoint)) {
     return <ConnectorView elementId={elementId} interactive={interactive} />;
   }
 

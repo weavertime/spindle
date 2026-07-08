@@ -309,6 +309,37 @@ describe('connectors (bound lines track their shapes)', () => {
     expect(line.w !== 0 || line.h !== 0).toBe(true); // still visible
   });
 
+  it('setLineEndpoint pins a free tip and freezes the other end explicitly', () => {
+    const deck = new DeckImpl();
+    const slide = deck.getActiveSlideId();
+    const line = deck.addElement(slide, { type: 'line', x: 100, y: 100, w: 200, h: 0 });
+    deck.setLineEndpoint(line.id, 'end', { point: { x: 400, y: 250 } });
+    const l = deck.getElement(line.id)!;
+    if (l.type !== 'line') throw new Error('not a line');
+    expect(l.endPoint).toEqual({ x: 400, y: 250 });
+    expect(l.startPoint).toEqual({ x: 100, y: 100 }); // frozen from the old box corner
+    expect(l.endBind).toBeUndefined();
+    // box spans the two points
+    expect({ x: l.x, y: l.y, w: l.w, h: l.h }).toEqual({ x: 100, y: 100, w: 300, h: 150 });
+  });
+
+  it('setLineEndpoint can bind a tip to a shape anchor (clearing its free point)', () => {
+    const deck = new DeckImpl();
+    const slide = deck.getActiveSlideId();
+    const shape = deck.addElement(slide, { type: 'shape', x: 500, y: 500, w: 100, h: 100 });
+    const line = deck.addElement(slide, { type: 'line', x: 100, y: 100, w: 200, h: 0 });
+    deck.setLineEndpoint(line.id, 'end', { bind: { elementId: shape.id, anchor: 'w' } });
+    const l = deck.getElement(line.id)!;
+    if (l.type !== 'line') throw new Error('not a line');
+    expect(l.endBind).toEqual({ elementId: shape.id, anchor: 'w' });
+    expect(l.endPoint).toBeUndefined();
+    // Moving the shape now drags the bound tip (start stays at x=100, so the
+    // width grows as the shape's west anchor moves right).
+    const beforeW = l.w;
+    deck.moveElements([shape.id], 100, 0);
+    expect(deck.getElement(line.id)!.w).not.toBe(beforeW);
+  });
+
   it('reconciliation is one undo entry with the move', () => {
     const { deck, a, conn } = setup();
     const before = deck.getElement(conn.id)!.x;

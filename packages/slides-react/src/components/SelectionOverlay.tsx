@@ -7,7 +7,7 @@
 // reads them on pointerdown to start the right gesture.
 
 import React, { useEffect, useReducer, useSyncExternalStore } from 'react';
-import { unionAABB, type Frame, type Rect } from '@weavertime/spindle-slides-core';
+import { unionAABB, resolveEndpoints, type Frame, type LineElement, type Point, type Rect } from '@weavertime/spindle-slides-core';
 import { useDeckContext } from '../context/DeckContext';
 import { useSelection } from '../hooks';
 
@@ -75,8 +75,30 @@ function RotateHandle({ cx, top, hs }: { cx: number; top: number; hs: number }):
   );
 }
 
+/** A round handle at a line tip; drag it to resize+rotate the line at once. */
+function EndpointHandle({ end, x, y, hs }: { end: 'start' | 'end'; x: number; y: number; hs: number }): React.ReactElement {
+  return (
+    <div
+      data-endpoint={end}
+      style={{
+        position: 'absolute',
+        left: x - hs / 2,
+        top: y - hs / 2,
+        width: hs,
+        height: hs,
+        background: '#fff',
+        border: `${hs * 0.16}px solid ${ACCENT}`,
+        borderRadius: '50%',
+        boxSizing: 'border-box',
+        cursor: 'crosshair',
+        pointerEvents: 'auto',
+      }}
+    />
+  );
+}
+
 export function SelectionOverlay({ scale }: { scale: number }): React.ReactElement | null {
-  const { deck, transient } = useDeckContext();
+  const { deck, transient, connectors } = useDeckContext();
   const selection = useSelection();
   const [, force] = useReducer((n) => n + 1, 0);
 
@@ -90,6 +112,7 @@ export function SelectionOverlay({ scale }: { scale: number }): React.ReactEleme
   // a gesture (move/resize/rotate write frames here per pointermove).
   const transientState = useSyncExternalStore(transient.subscribe, transient.get);
   const live = transientState.liveFrames;
+  const edit = useSyncExternalStore(connectors.subscribe, connectors.get).edit;
 
   const ids = selection.elementIds.filter((id) => deck.getElement(id));
   if (ids.length === 0) return null;
@@ -99,7 +122,30 @@ export function SelectionOverlay({ scale }: { scale: number }): React.ReactEleme
 
   const getFrame = (id: string): Frame => live?.get(id) ?? frameOf(deck.getElement(id)!);
 
+  // A single selected line shows tip handles instead of a box — a line is two
+  // endpoints, and dragging a tip resizes and rotates it together.
   if (ids.length === 1) {
+    const only = deck.getElement(ids[0])!;
+    if (only.type === 'line') {
+      const line = only as LineElement;
+      const getEndpointFrame = (elId: string): Frame | undefined => {
+        const l = live?.get(elId);
+        if (l) return l;
+        const e = deck.getElement(elId);
+        return e ? frameOf(e) : undefined;
+      };
+      const resolved = resolveEndpoints(line, getEndpointFrame);
+      const editing = edit?.elementId === line.id ? edit : null;
+      const start: Point = editing?.end === 'start' ? editing.point : resolved.start;
+      const end: Point = editing?.end === 'end' ? editing.point : resolved.end;
+      const eh = hs * 1.1;
+      return (
+        <div style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }}>
+          <EndpointHandle end="start" x={start.x} y={start.y} hs={eh} />
+          <EndpointHandle end="end" x={end.x} y={end.y} hs={eh} />
+        </div>
+      );
+    }
     const f = getFrame(ids[0]);
     return (
       <div style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }}>

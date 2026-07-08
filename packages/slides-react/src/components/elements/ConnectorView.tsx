@@ -15,8 +15,9 @@ import { LineView } from './LineView';
 export function ConnectorView({ elementId, interactive }: { elementId: string; interactive: boolean }): React.ReactElement | null {
   const el = useElement(elementId) as LineElement | undefined;
   const theme = useTheme();
-  const { deck, transient, nodes } = useDeckContext();
+  const { deck, transient, nodes, connectors } = useDeckContext();
   const live = useSyncExternalStore(transient.subscribe, transient.get).liveFrames;
+  const edit = useSyncExternalStore(connectors.subscribe, connectors.get).edit;
 
   const ref = useCallback(
     (node: HTMLDivElement | null) => {
@@ -36,7 +37,10 @@ export function ConnectorView({ elementId, interactive }: { elementId: string; i
     return e ? { x: e.x, y: e.y, w: e.w, h: e.h, rotation: e.rotation } : undefined;
   };
 
-  const { start, end } = resolveEndpoints(el, getFrame);
+  const resolved = resolveEndpoints(el, getFrame);
+  // While dragging one of this line's tips, override that end live.
+  const start = edit?.elementId === el.id && edit.end === 'start' ? edit.point : resolved.start;
+  const end = edit?.elementId === el.id && edit.end === 'end' ? edit.point : resolved.end;
   const box = connectorBox(start, end);
   const effective: LineElement = { ...el, x: box.x, y: box.y, w: box.w, h: box.h, flipV: box.flipV, rotation: 0 };
   // Local endpoints keep the arrowhead on the *bound* end regardless of where
