@@ -174,6 +174,12 @@ export function RichTextEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [elementId]);
 
+  // Bind the current theme's color slots + fonts to CSS variables the schema's
+  // toDOM references, so theme-slot text colors and major/minor fonts render in
+  // the editor exactly as StaticRichText resolves them.
+  const themeVars: Record<string, string> = { '--font-major': theme.fonts.major, '--font-minor': theme.fonts.minor };
+  for (const [slot, hex] of Object.entries(theme.colors)) themeVars[`--slot-${slot}`] = hex;
+
   return (
     <div
       className="spindle-pm-editor"
@@ -181,6 +187,7 @@ export function RichTextEditor({
       onDoubleClick={(e) => e.stopPropagation()}
       ref={mountRef}
       style={{
+        ...(themeVars as React.CSSProperties),
         width: '100%',
         height: '100%',
         boxSizing: 'border-box',

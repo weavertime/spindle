@@ -70,15 +70,21 @@ export const slidesSchema = new Schema({
       attrs: { href: { default: '' } },
       inclusive: false,
       parseDOM: [{ tag: 'a[href]', getAttrs: (dom) => ({ href: (dom as HTMLElement).getAttribute('href') }) }],
-      toDOM: (mark) => ['a', { href: mark.attrs.href as string, rel: 'noreferrer', target: '_blank' }, 0],
+      // hlink slot resolved via the editor's CSS variable (see RichTextEditor).
+      toDOM: (mark) => ['a', { href: mark.attrs.href as string, rel: 'noreferrer', target: '_blank', style: 'color:var(--slot-hlink);text-decoration:underline' }, 0],
     },
+    // Theme slots and 'major'/'minor' fonts can't be resolved in a
+    // theme-agnostic schema, so toDOM emits CSS variables that the editor
+    // container binds to the current theme — keeping edit mode's colors/fonts
+    // consistent with StaticRichText.
     textColor: {
       attrs: { color: { default: null } },
       parseDOM: [{ style: 'color', getAttrs: (v) => ({ color: { kind: 'rgb', hex: v as string } }) }],
       toDOM: (mark) => {
         const c = mark.attrs.color as Color | null;
-        const css = c && c.kind === 'rgb' ? c.hex : undefined;
-        return ['span', css ? { style: `color:${css}` } : {}, 0];
+        if (!c) return ['span', {}, 0];
+        const css = c.kind === 'rgb' ? c.hex : `var(--slot-${c.slot})`;
+        return ['span', { style: `color:${css}` }, 0];
       },
     },
     fontFamily: {
@@ -86,8 +92,8 @@ export const slidesSchema = new Schema({
       parseDOM: [{ style: 'font-family', getAttrs: (v) => ({ family: v as string }) }],
       toDOM: (mark) => {
         const fam = mark.attrs.family as string;
-        const literal = fam === 'major' || fam === 'minor' ? undefined : fam;
-        return ['span', literal ? { style: `font-family:${literal}` } : {}, 0];
+        const css = fam === 'major' ? 'var(--font-major)' : fam === 'minor' ? 'var(--font-minor)' : fam;
+        return ['span', { style: `font-family:${css}` }, 0];
       },
     },
     fontSize: {
