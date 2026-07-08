@@ -11,19 +11,19 @@ export const TB = {
   /** The gradient strip the pill floats on. */
   strip: {
     display: 'flex',
-    justifyContent: 'center',
-    flexWrap: 'wrap' as const,
-    gap: 8,
     padding: '8px 12px',
     background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
   } as React.CSSProperties,
 
-  /** The floating pill container. */
+  /** The floating pill — spans the full width so contextual items append on the
+   *  right instead of re-centring (which read as a jump). Wraps to a new row
+   *  when it runs out of horizontal space. */
   pill: {
     display: 'flex',
     alignItems: 'center',
     flexWrap: 'wrap' as const,
     gap: 2,
+    flex: '1 1 auto',
     padding: '6px 10px',
     background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(248,250,252,0.95) 100%)',
     backdropFilter: 'blur(20px) saturate(180%)',
@@ -32,7 +32,6 @@ export const TB = {
     boxShadow:
       '0 4px 6px -1px rgba(0,0,0,0.05), 0 10px 15px -3px rgba(0,0,0,0.08), 0 20px 25px -5px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.9), 0 0 0 1px rgba(0,0,0,0.04)',
     fontFamily: FONT,
-    maxWidth: 'fit-content',
   } as React.CSSProperties,
 
   button: {
