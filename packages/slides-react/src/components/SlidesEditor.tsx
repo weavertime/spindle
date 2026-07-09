@@ -3,7 +3,7 @@
 // not window) and the right-click context menu.
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Play, FileDown, MessageSquare } from 'lucide-react';
+import { Play, MessageSquare } from 'lucide-react';
 import { useDeck, useKeyboardShortcuts, useCommentsOpen } from '../hooks';
 import { useDeckContext } from '../context/DeckContext';
 import { Toolbar } from './Toolbar';
@@ -14,7 +14,6 @@ import { ContextMenu } from './ContextMenu';
 import { SlideContextMenu } from './SlideContextMenu';
 import { PresentMode } from './PresentMode';
 import { CommentsPanel } from './CommentsPanel';
-import { exportDeckToPdf } from './pdf/export-pdf';
 
 type Zoom = number | 'fit';
 const ZOOM_PRESETS: Array<{ label: string; zoom: Zoom }> = [
@@ -28,9 +27,15 @@ export interface SlidesEditorProps {
   style?: React.CSSProperties;
   /** Read-only viewer (no toolbar, gestures, or shortcuts). */
   readOnly?: boolean;
+  /**
+   * Extra buttons for the header's action group (rendered before Present).
+   * App-level concerns like PDF/PNG export live here — export is intentionally
+   * kept out of this package; the host wires it up from the public render API.
+   */
+  headerActions?: React.ReactNode;
 }
 
-export function SlidesEditor({ style, readOnly = false }: SlidesEditorProps): React.ReactElement {
+export function SlidesEditor({ style, readOnly = false, headerActions }: SlidesEditorProps): React.ReactElement {
   const deck = useDeck();
   const [zoom, setZoom] = useState<Zoom>('fit');
   const [menu, setMenu] = useState<
@@ -86,17 +91,12 @@ export function SlidesEditor({ style, readOnly = false }: SlidesEditorProps): Re
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           {!readOnly && (
             <>
+              {headerActions}
               <button
                 onClick={() => setPresenting(true)}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', background: '#2d7ff9', color: '#fff', borderRadius: 5, padding: '6px 12px', fontSize: 13, cursor: 'pointer' }}
               >
                 <Play size={14} /> Present
-              </button>
-              <button
-                onClick={() => exportDeckToPdf(deck)}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #d5d9e0', background: '#fff', color: '#3e4c59', borderRadius: 5, padding: '6px 12px', fontSize: 13, cursor: 'pointer' }}
-              >
-                <FileDown size={14} /> PDF
               </button>
               <button
                 onClick={() => ui.toggleComments()}

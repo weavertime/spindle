@@ -52,7 +52,6 @@ export { RichTextEditor } from './components/RichTextEditor';
 export { NotesPanel } from './components/NotesPanel';
 export { DeckControls } from './components/DeckControls';
 export { PresentMode } from './components/PresentMode';
-export { exportDeckToPdf } from './components/pdf/export-pdf';
 export { SlideStage } from './components/SlideStage';
 export { InteractiveSlide } from './components/InteractiveSlide';
 export { Filmstrip } from './components/Filmstrip';

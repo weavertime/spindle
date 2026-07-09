@@ -3,6 +3,7 @@ import { DeckProvider, SlidesEditor } from '@weavertime/spindle-slides-react';
 import { DeckImpl, richTextFromPlainText, getBuiltinTheme } from '@weavertime/spindle-slides-core';
 import type { DeckData } from '@weavertime/spindle-slides-core';
 import DemoChrome from './DemoChrome';
+import { exportDeckToPdf } from './export-pdf';
 
 // A small three-slide deck rendered by the real Spindle Slides engine: text,
 // shapes, an inline-SVG image, a line, and themed colors. Select an element and
@@ -77,7 +78,16 @@ export default function SlidesDemo() {
       {({ width, height }) => (
         <div style={{ width, height, overflow: 'hidden', background: '#fff' }}>
           <DeckProvider deck={deck} currentUser={DEMO_USERS[0]} mentionableUsers={DEMO_USERS}>
-            <SlidesEditor />
+            <SlidesEditor
+              headerActions={
+                <button
+                  onClick={() => exportDeckToPdf(deck)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #d5d9e0', background: '#fff', color: '#3e4c59', borderRadius: 5, padding: '6px 12px', fontSize: 13, cursor: 'pointer' }}
+                >
+                  PDF
+                </button>
+              }
+            />
           </DeckProvider>
         </div>
       )}
