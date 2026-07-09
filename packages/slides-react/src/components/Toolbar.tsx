@@ -17,6 +17,7 @@ import { TextFormatBar } from './TextFormatBar';
 import { LineFormatBar } from './LineFormatBar';
 import { ShapeFormatBar } from './ShapeFormatBar';
 import { ImageFormatBar } from './ImageFormatBar';
+import { TableFormatBar } from './TableFormatBar';
 import { ShapePicker } from './ShapePicker';
 import { TB, ToolbarButton as IconButton, ToolbarDivider } from './toolbarUI';
 
@@ -156,6 +157,7 @@ export function Toolbar(): React.ReactElement {
       <TextFormatBar />
       <ShapeFormatBar />
       <ImageFormatBar />
+      <TableFormatBar />
       <LineFormatBar />
       </div>
     </div>

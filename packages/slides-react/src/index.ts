@@ -49,6 +49,8 @@ export { TextFormatBar } from './components/TextFormatBar';
 export { LineFormatBar } from './components/LineFormatBar';
 export { ShapeFormatBar } from './components/ShapeFormatBar';
 export { ImageFormatBar } from './components/ImageFormatBar';
+export { TableFormatBar } from './components/TableFormatBar';
+export { TableCellMenu } from './components/TableCellMenu';
 export { RichTextEditor } from './components/RichTextEditor';
 export { NotesPanel } from './components/NotesPanel';
 export { DeckControls } from './components/DeckControls';
