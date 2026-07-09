@@ -7,7 +7,8 @@ import { useEditingId } from '../../hooks';
 import { strokeAttrs } from './style';
 
 export function ShapeView({ el, theme, interactive = false }: { el: ShapeElement; theme: ThemeData; interactive?: boolean }): React.ReactElement {
-  const editing = interactive && useEditingId() === el.id;
+  const editingId = useEditingId();
+  const editing = interactive && editingId === el.id;
   const w = Math.max(1, el.w);
   const h = Math.max(1, el.h);
   const geom = shapeGeom(el.shape, w, h, el.adjustments);

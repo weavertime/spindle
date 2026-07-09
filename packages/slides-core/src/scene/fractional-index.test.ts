@@ -38,7 +38,7 @@ describe('indexBetween', () => {
   it('keeps order across thousands of random insertions', () => {
     // Maintain a sorted list of keys; repeatedly insert into a random gap and
     // assert the list stays strictly ascending and free of duplicates.
-    let keys: string[] = [indexBetween(null, null)];
+    const keys: string[] = [indexBetween(null, null)];
     for (let i = 0; i < 3000; i++) {
       const pos = Math.floor(Math.random() * (keys.length + 1));
       const a = pos > 0 ? keys[pos - 1] : null;

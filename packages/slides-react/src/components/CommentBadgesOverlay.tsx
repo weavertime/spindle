@@ -20,7 +20,6 @@ export function CommentBadgesOverlay({ slideId, scale }: { slideId: string; scal
 
   const store = deck.getComments();
   const size = 20 / scale;
-  console.log('[BADGE] render ids=', elementIds.length, 'withThreads=', elementIds.filter(id=>store.getThreadsForElement(id).length>0).join(','), 'total=', store.getThreads().length);
 
   const badges = elementIds
     .map((id) => {

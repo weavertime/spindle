@@ -27,7 +27,7 @@ function clamp255(v: number): number {
  */
 export function resolveColor(color: Color, theme: ThemeData): string {
   let rgb: [number, number, number];
-  let alpha = color.alpha;
+  const alpha = color.alpha;
 
   if (color.kind === 'rgb') {
     rgb = hexToRgb(color.hex);

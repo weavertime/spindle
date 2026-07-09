@@ -14,12 +14,7 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "baseUrl": ".",
-    "paths": {
-      "@weavertime/spindle-slides-core": ["../packages/slides-core/src"],
-      "@weavertime/spindle-slides-react": ["../packages/slides-react/src"]
-    }
+    "noFallthroughCasesInSwitch": true
   },
   "include": ["src", "vite.config.ts"]
 }

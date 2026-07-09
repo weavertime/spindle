@@ -36,7 +36,8 @@ export function TextView({ el, theme, interactive = false }: { el: TextElement; 
   const border = strokeAttrs(el.stroke, theme);
   // Only the interactive stage mounts the live editor — never the filmstrip
   // thumbnails or a read-only view (two editors on one element fight over focus).
-  const editing = interactive && useEditingId() === el.id;
+  const editingId = useEditingId();
+  const editing = interactive && editingId === el.id;
   const empty = isRichTextEmpty(el.richText);
   const prompt = empty && el.placeholder ? deck.getPlaceholderPrompt(el.containerId, el.placeholder) : undefined;
 
