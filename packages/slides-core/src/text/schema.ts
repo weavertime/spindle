@@ -101,5 +101,15 @@ export const slidesSchema = new Schema({
       parseDOM: [{ style: 'font-size', getAttrs: (v) => ({ size: parseInt(v as string, 10) || 18 }) }],
       toDOM: (mark) => ['span', { style: `font-size:${mark.attrs.size}px` }, 0],
     },
+    highlight: {
+      attrs: { color: { default: null } },
+      parseDOM: [{ style: 'background-color', getAttrs: (v) => ({ color: { kind: 'rgb', hex: v as string } }) }],
+      toDOM: (mark) => {
+        const c = mark.attrs.color as Color | null;
+        if (!c) return ['span', {}, 0];
+        const css = c.kind === 'rgb' ? c.hex : `var(--slot-${c.slot})`;
+        return ['span', { style: `background-color:${css}` }, 0];
+      },
+    },
   },
 });

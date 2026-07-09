@@ -6,7 +6,7 @@
 // element is selected or being edited.
 
 import React from 'react';
-import { Bold, Italic, Underline, Strikethrough, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, Link } from 'lucide-react';
+import { Bold, Italic, Underline, Strikethrough, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, Link, Highlighter } from 'lucide-react';
 import type { TextFormatSpec, TextAlign, ListType } from '@weavertime/spindle-slides-core';
 import { useDeck, useSelection, useEditingId } from '../hooks';
 import { useDeckContext } from '../context/DeckContext';
@@ -91,6 +91,17 @@ export function TextFormatBar(): React.ReactElement | null {
         onChange={(e) => fmt({ setMark: { type: 'textColor', attrs: { color: { kind: 'rgb', hex: e.target.value } } } })}
         style={{ ...field, width: 30, padding: 3, marginLeft: 2 }}
       />
+      <Highlighter size={14} style={{ color: '#64748b', marginLeft: 4 }} aria-hidden />
+      <input
+        type="color"
+        title="Highlight color"
+        onMouseDown={(e) => e.preventDefault()}
+        onChange={(e) => fmt({ setMark: { type: 'highlight', attrs: { color: { kind: 'rgb', hex: e.target.value } } } })}
+        style={{ ...field, width: 30, padding: 3 }}
+      />
+      <ToolbarButton title="No highlight" onClick={() => fmt({ removeMark: 'highlight' })}>
+        <span style={{ fontSize: 13, fontWeight: 700 }}>⦸</span>
+      </ToolbarButton>
 
       <ToolbarDivider />
 
