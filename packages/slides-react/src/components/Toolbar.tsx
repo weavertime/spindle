@@ -8,12 +8,14 @@ import {
   Trash2, Copy, Undo2, Redo2, Group, Ungroup,
   BringToFront, SendToBack, AlignHorizontalJustifyCenter, AlignVerticalJustifyCenter,
   AlignStartVertical, AlignEndVertical, AlignStartHorizontal, AlignEndHorizontal,
+  AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter,
 } from 'lucide-react';
 import type { NewElementSpec, AlignMode } from '@weavertime/spindle-slides-core';
 import { useDeck, useSelection } from '../hooks';
 import { DeckControls } from './DeckControls';
 import { TextFormatBar } from './TextFormatBar';
 import { LineFormatBar } from './LineFormatBar';
+import { ShapeFormatBar } from './ShapeFormatBar';
 import { ShapePicker } from './ShapePicker';
 import { TB, ToolbarButton as IconButton, ToolbarDivider } from './toolbarUI';
 
@@ -24,6 +26,7 @@ export function Toolbar(): React.ReactElement {
   const ids = selection.elementIds;
   const hasSel = ids.length > 0;
   const hasMulti = ids.length > 1;
+  const canDistribute = ids.length >= 3;
   const { w, h } = deck.getSlideSize();
 
   const insert = (spec: NewElementSpec, size: { w: number; h: number }) => {
@@ -120,6 +123,12 @@ export function Toolbar(): React.ReactElement {
       <IconButton title="Align bottom" disabled={!hasSel} onClick={() => align('bottom')}>
         <AlignEndHorizontal size={16} />
       </IconButton>
+      <IconButton title="Distribute horizontally" disabled={!canDistribute} onClick={() => deck.distributeElements(ids, 'h')}>
+        <AlignHorizontalDistributeCenter size={16} />
+      </IconButton>
+      <IconButton title="Distribute vertically" disabled={!canDistribute} onClick={() => deck.distributeElements(ids, 'v')}>
+        <AlignVerticalDistributeCenter size={16} />
+      </IconButton>
       <ToolbarDivider />
 
       <IconButton title="Undo (⌘Z)" onClick={() => deck.undo()}>
@@ -132,6 +141,7 @@ export function Toolbar(): React.ReactElement {
       {/* Text / line formatting appears inline (same row) when the matching kind
           of element is selected. */}
       <TextFormatBar />
+      <ShapeFormatBar />
       <LineFormatBar />
       </div>
     </div>

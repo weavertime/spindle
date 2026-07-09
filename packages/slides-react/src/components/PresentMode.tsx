@@ -5,6 +5,7 @@
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { richTextToPlainText } from '@weavertime/spindle-slides-core';
 import { useDeck, useSlideIds, useActiveSlideId } from '../hooks';
 import { SlideView } from './SlideView';
 
@@ -18,6 +19,7 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
   const [index, setIndex] = useState(() => Math.max(0, slideIds.indexOf(active)));
   const [scale, setScale] = useState(1);
   const [fading, setFading] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
   const numberBuffer = useRef('');
 
   // Current index / count via refs so the keydown listener (subscribed once)
@@ -78,6 +80,10 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
         case 'Escape':
           onExit();
           break;
+        case 's':
+        case 'S':
+          setShowNotes((v) => !v);
+          break;
         default:
           if (/^[0-9]$/.test(e.key)) {
             numberBuffer.current += e.key;
@@ -98,6 +104,8 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
   }, [index, slideIds, deck]);
 
   const slideId = slideIds[index];
+  const notesDoc = slideId ? deck.getSlide(slideId)?.notes : undefined;
+  const notes = notesDoc ? richTextToPlainText(notesDoc).trim() : '';
 
   return createPortal(
     <div
@@ -128,6 +136,26 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
       <div style={{ position: 'fixed', bottom: 16, right: 20, color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>
         {index + 1} / {slideIds.length}
       </div>
+      <div style={{ position: 'fixed', bottom: 16, left: 20, color: 'rgba(255,255,255,0.35)', fontSize: 12 }}>
+        Press S for speaker notes
+      </div>
+      {showNotes && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'fixed', left: 0, right: 0, bottom: 0, maxHeight: '32vh', overflowY: 'auto',
+            background: 'rgba(15,17,23,0.94)', backdropFilter: 'blur(8px)', color: '#e7e9f1',
+            borderTop: '1px solid rgba(255,255,255,0.12)', padding: '18px 40px 22px',
+          }}
+        >
+          <div style={{ fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)', marginBottom: 8, fontFamily: 'ui-monospace, monospace' }}>
+            Speaker notes · slide {index + 1}
+          </div>
+          <div style={{ fontSize: 18, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+            {notes || <span style={{ color: 'rgba(255,255,255,0.4)' }}>No notes for this slide.</span>}
+          </div>
+        </div>
+      )}
     </div>,
     document.body
   );

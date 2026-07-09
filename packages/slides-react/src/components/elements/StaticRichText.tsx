@@ -44,6 +44,9 @@ function inlineStyle(inline: RichTextInline, theme: ThemeData): { style: React.C
       case 'fontSize':
         if (typeof mark.attrs?.size === 'number') style.fontSize = `${mark.attrs.size}px`;
         break;
+      case 'highlight':
+        if (mark.attrs?.color) style.backgroundColor = resolveColor(mark.attrs.color as Color, theme);
+        break;
       case 'link':
         href = mark.attrs?.href as string | undefined;
         if (!style.color) style.color = resolveColor({ kind: 'theme', slot: 'hlink' }, theme);

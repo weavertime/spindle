@@ -47,6 +47,7 @@ export { SlidesEditor } from './components/SlidesEditor';
 export { Toolbar } from './components/Toolbar';
 export { TextFormatBar } from './components/TextFormatBar';
 export { LineFormatBar } from './components/LineFormatBar';
+export { ShapeFormatBar } from './components/ShapeFormatBar';
 export { RichTextEditor } from './components/RichTextEditor';
 export { NotesPanel } from './components/NotesPanel';
 export { DeckControls } from './components/DeckControls';
