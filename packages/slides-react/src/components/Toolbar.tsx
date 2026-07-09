@@ -4,7 +4,7 @@
 
 import React, { useRef } from 'react';
 import {
-  Type, Minus, MoveUpRight, Image as ImageIcon,
+  Type, Minus, MoveUpRight, Image as ImageIcon, Link2,
   Trash2, Copy, Undo2, Redo2, Group, Ungroup,
   BringToFront, SendToBack, AlignHorizontalJustifyCenter, AlignVerticalJustifyCenter,
   AlignStartVertical, AlignEndVertical, AlignStartHorizontal, AlignEndHorizontal,
@@ -16,6 +16,7 @@ import { DeckControls } from './DeckControls';
 import { TextFormatBar } from './TextFormatBar';
 import { LineFormatBar } from './LineFormatBar';
 import { ShapeFormatBar } from './ShapeFormatBar';
+import { ImageFormatBar } from './ImageFormatBar';
 import { ShapePicker } from './ShapePicker';
 import { TB, ToolbarButton as IconButton, ToolbarDivider } from './toolbarUI';
 
@@ -35,25 +36,31 @@ export function Toolbar(): React.ReactElement {
     deck.setSelection({ slideId, elementIds: [el.id] });
   };
 
+  const insertImage = (src: string) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxW = w * 0.6;
+      const scale = Math.min(1, maxW / img.naturalWidth);
+      insert(
+        { type: 'image', src, naturalW: img.naturalWidth, naturalH: img.naturalHeight } as NewElementSpec,
+        { w: img.naturalWidth * scale, h: img.naturalHeight * scale }
+      );
+    };
+    img.src = src;
+  };
+
   const onImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      const src = reader.result as string;
-      const img = new Image();
-      img.onload = () => {
-        const maxW = w * 0.6;
-        const scale = Math.min(1, maxW / img.naturalWidth);
-        insert(
-          { type: 'image', src, naturalW: img.naturalWidth, naturalH: img.naturalHeight } as NewElementSpec,
-          { w: img.naturalWidth * scale, h: img.naturalHeight * scale }
-        );
-      };
-      img.src = src;
-    };
+    reader.onload = () => insertImage(reader.result as string);
     reader.readAsDataURL(file);
     e.target.value = '';
+  };
+
+  const onImageUrl = () => {
+    const url = window.prompt('Image URL', '');
+    if (url && url.trim()) insertImage(url.trim());
   };
 
   const align = (mode: AlignMode) => {
@@ -77,8 +84,11 @@ export function Toolbar(): React.ReactElement {
       <IconButton title="Arrow" onClick={() => insert({ type: 'line', endArrow: 'triangle' } as NewElementSpec, { w: 300, h: 0 })}>
         <MoveUpRight size={16} />
       </IconButton>
-      <IconButton title="Image" onClick={() => fileRef.current?.click()}>
+      <IconButton title="Image (upload)" onClick={() => fileRef.current?.click()}>
         <ImageIcon size={16} />
+      </IconButton>
+      <IconButton title="Image from URL" onClick={onImageUrl}>
+        <Link2 size={16} />
       </IconButton>
       <input ref={fileRef} type="file" accept="image/*" onChange={onImageFile} style={{ display: 'none' }} />
       <ToolbarDivider />
@@ -142,6 +152,7 @@ export function Toolbar(): React.ReactElement {
           of element is selected. */}
       <TextFormatBar />
       <ShapeFormatBar />
+      <ImageFormatBar />
       <LineFormatBar />
       </div>
     </div>
