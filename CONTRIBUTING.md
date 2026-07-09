@@ -13,8 +13,10 @@ packages/
   spindle-shared               Framework-agnostic utilities & collaboration primitives
   spindle-sheets-core          Spreadsheet engine (sparse store, formulas) — zero React
   spindle-sheets-react         React canvas grid, formula bar, toolbar & dialogs
-  spindle-docs-core            Document & slides engine (True Layout) — zero React
-  spindle-docs-react           React document & presentation editor components
+  spindle-docs-core            Document engine (True Layout) — zero React
+  spindle-docs-react           React document editor components
+  spindle-slides-core          Presentation engine (scene layer, fractional index) — zero React
+  spindle-slides-react         React slide editor: canvas, gestures, present mode & PDF
   spindle-transport-websocket  WebSocket CollabProvider for real-time collaboration
 website/                       The spindle.weavertime.com marketing + docs site (standalone)
 documentation/                 Markdown docs (rendered by the website)
