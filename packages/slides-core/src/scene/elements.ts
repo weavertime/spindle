@@ -112,6 +112,7 @@ export interface ImageElementInput extends BaseElementInput {
   naturalH: number;
   flipH?: boolean;
   flipV?: boolean;
+  fit?: 'fill' | 'contain' | 'cover';
 }
 
 export function createImageElement(input: ImageElementInput): ImageElement {
@@ -124,6 +125,7 @@ export function createImageElement(input: ImageElementInput): ImageElement {
   };
   if (input.flipH) el.flipH = input.flipH;
   if (input.flipV) el.flipV = input.flipV;
+  if (input.fit) el.fit = input.fit;
   return el;
 }
 

@@ -11,7 +11,7 @@ export function ImageView({ el }: { el: ImageElement }): React.ReactElement {
       style={{
         width: '100%',
         height: '100%',
-        objectFit: 'fill',
+        objectFit: el.fit ?? 'fill',
         display: 'block',
         transform: flip,
         transformOrigin: 'center center',
