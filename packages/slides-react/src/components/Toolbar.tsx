@@ -4,7 +4,7 @@
 
 import React, { useRef } from 'react';
 import {
-  Type, Minus, MoveUpRight, Image as ImageIcon, Link2,
+  Type, Minus, MoveUpRight, Image as ImageIcon, Link2, Table,
   Trash2, Copy, Undo2, Redo2, Group, Ungroup,
   BringToFront, SendToBack, AlignHorizontalJustifyCenter, AlignVerticalJustifyCenter,
   AlignStartVertical, AlignEndVertical, AlignStartHorizontal, AlignEndHorizontal,
@@ -89,6 +89,9 @@ export function Toolbar(): React.ReactElement {
       </IconButton>
       <IconButton title="Image from URL" onClick={onImageUrl}>
         <Link2 size={16} />
+      </IconButton>
+      <IconButton title="Table (3×3)" onClick={() => insert({ type: 'table', rows: 3, cols: 3 } as NewElementSpec, { w: 720, h: 300 })}>
+        <Table size={16} />
       </IconButton>
       <input ref={fileRef} type="file" accept="image/*" onChange={onImageFile} style={{ display: 'none' }} />
       <ToolbarDivider />

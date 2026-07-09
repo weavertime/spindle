@@ -198,5 +198,26 @@ export interface LineElement extends ElementBase {
   endPoint?: { x: number; y: number };
 }
 
-export type SlideElement = TextElement | ShapeElement | ImageElement | LineElement;
+/** One cell of a table: its own rich-text body, optional fill and vertical align. */
+export interface TableCell {
+  richText: RichTextDoc;
+  fill?: Fill;
+  bodyStyle?: BodyStyle;
+}
+
+export interface TableElement extends ElementBase {
+  type: 'table';
+  rows: number;
+  cols: number;
+  /** Column widths as fractions of the table width (sum ≈ 1). */
+  colFractions: number[];
+  /** Row heights as fractions of the table height (sum ≈ 1). */
+  rowFractions: number[];
+  /** Row-major grid: cells[row][col]. */
+  cells: TableCell[][];
+  /** Grid line style (applied to every cell edge). */
+  border?: Stroke;
+}
+
+export type SlideElement = TextElement | ShapeElement | ImageElement | LineElement | TableElement;
 export type ElementType = SlideElement['type'];

@@ -16,6 +16,7 @@ import { ShapeView } from './ShapeView';
 import { ImageView } from './ImageView';
 import { LineView } from './LineView';
 import { ConnectorView } from './ConnectorView';
+import { TableView } from './TableView';
 
 function renderInner(el: SlideElement, theme: ReturnType<typeof useTheme>, interactive: boolean): React.ReactElement {
   switch (el.type) {
@@ -27,6 +28,8 @@ function renderInner(el: SlideElement, theme: ReturnType<typeof useTheme>, inter
       return <ImageView el={el} />;
     case 'line':
       return <LineView el={el} theme={theme} />;
+    case 'table':
+      return <TableView el={el} theme={theme} interactive={interactive} />;
   }
 }
 
