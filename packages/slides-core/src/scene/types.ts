@@ -170,6 +170,12 @@ export interface ImageElement extends ElementBase {
   naturalH: number;
   flipH?: boolean;
   flipV?: boolean;
+  /**
+   * How the image sits in its box (CSS object-fit). 'fill' stretches to the box
+   * (default, back-compat); 'contain' letterboxes; 'cover' crops to fill without
+   * distortion. Free-form region crop is a separate follow-up.
+   */
+  fit?: 'fill' | 'contain' | 'cover';
 }
 
 export interface LineElement extends ElementBase {

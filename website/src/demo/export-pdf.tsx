@@ -1,17 +1,14 @@
-// PDF export via the print pipeline (v1). Renders every slide at native size
-// into a hidden iframe with `@page { size: WxH; margin: 0 }` and a page break
-// per slide, waits for fonts + images, then calls print(). The user picks
-// "Save as PDF". A real PDF backend is a follow-up.
-//
-// Documented limitations: relies on the browser's print-to-PDF; Firefox has
-// `@page size` quirks; exact colors depend on the user's "background graphics"
-// print setting.
+// PDF export via the browser print pipeline — CLIENT-owned, on purpose. Export
+// (print/rasterization/file IO) is kept out of the @weavertime/spindle-*
+// packages; apps wire it up themselves from the public rendering API. Renders
+// every slide at native size into a hidden, slide-sized off-screen iframe with
+// `@page { size: WxH; margin: 0 }` + a page break per slide, then print(); the
+// user picks "Save as PDF".
 
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { DeckProvider, SlideView } from '@weavertime/spindle-slides-react';
 import type { DeckImpl } from '@weavertime/spindle-slides-core';
-import { DeckProvider } from '../../context/DeckContext';
-import { SlideView } from '../SlideView';
 
 function PrintDeck({ deck }: { deck: DeckImpl }): React.ReactElement {
   const ids = deck.getSlideIds();
@@ -31,10 +28,8 @@ export async function exportDeckToPdf(deck: DeckImpl): Promise<void> {
   const { w, h } = deck.getSlideSize();
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
-  // Give the print frame a real slide-sized layout viewport (off-screen). A
-  // 1px iframe leaves the print engine without a proper containing block, so
-  // Chrome ignores the @page size and falls back to the default paper —
-  // letterboxing the 16:9 slide with a white bar at the bottom.
+  // A slide-sized off-screen frame gives the print engine a proper containing
+  // block; a 1px frame makes Chrome ignore @page size and letterbox the slide.
   iframe.style.cssText = `position:fixed;left:-10000px;top:0;width:${w}px;height:${h}px;opacity:0;border:0;`;
   document.body.appendChild(iframe);
 
@@ -70,7 +65,6 @@ export async function exportDeckToPdf(deck: DeckImpl): Promise<void> {
   iframe.contentWindow?.focus();
   iframe.contentWindow?.print();
 
-  // Leave the iframe up briefly (the print dialog is modal), then clean up.
   setTimeout(() => {
     root.unmount();
     iframe.remove();

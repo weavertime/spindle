@@ -7,7 +7,13 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { richTextToPlainText } from '@weavertime/spindle-slides-core';
 import { useDeck, useSlideIds, useActiveSlideId } from '../hooks';
-import { SlideView } from './SlideView';
+import { SlideView, ScaledSlide } from './SlideView';
+
+function mmss(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
 
 export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElement {
   const deck = useDeck();
@@ -43,6 +49,14 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
   }, [w, h]);
+
+  // Elapsed presentation timer (from mount).
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const start = Date.now();
+    const t = window.setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => window.clearInterval(t);
+  }, []);
 
   // Enter fullscreen once on mount; exit only on unmount. Doing this per
   // navigation would exit fullscreen on every slide change (and the re-request
@@ -104,8 +118,10 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
   }, [index, slideIds, deck]);
 
   const slideId = slideIds[index];
+  const nextId = slideIds[index + 1];
   const notesDoc = slideId ? deck.getSlide(slideId)?.notes : undefined;
   const notes = notesDoc ? richTextToPlainText(notesDoc).trim() : '';
+  const nextThumb = 220 / w;
 
   return createPortal(
     <div
@@ -133,26 +149,42 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
       >
         Exit (Esc)
       </button>
-      <div style={{ position: 'fixed', bottom: 16, right: 20, color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>
-        {index + 1} / {slideIds.length}
+      <div style={{ position: 'fixed', bottom: 16, right: 20, color: 'rgba(255,255,255,0.65)', fontSize: 13, fontFamily: 'ui-monospace, monospace', display: 'flex', gap: 14, fontVariantNumeric: 'tabular-nums' }}>
+        <span title="Elapsed">{mmss(elapsed)}</span>
+        <span>{index + 1} / {slideIds.length}</span>
       </div>
       <div style={{ position: 'fixed', bottom: 16, left: 20, color: 'rgba(255,255,255,0.35)', fontSize: 12 }}>
-        Press S for speaker notes
+        Press S for presenter panel
       </div>
       {showNotes && (
         <div
           onClick={(e) => e.stopPropagation()}
           style={{
-            position: 'fixed', left: 0, right: 0, bottom: 0, maxHeight: '32vh', overflowY: 'auto',
+            position: 'fixed', left: 0, right: 0, bottom: 0, maxHeight: '34vh', overflowY: 'auto',
             background: 'rgba(15,17,23,0.94)', backdropFilter: 'blur(8px)', color: '#e7e9f1',
             borderTop: '1px solid rgba(255,255,255,0.12)', padding: '18px 40px 22px',
+            display: 'flex', gap: 36, alignItems: 'flex-start',
           }}
         >
-          <div style={{ fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)', marginBottom: 8, fontFamily: 'ui-monospace, monospace' }}>
-            Speaker notes · slide {index + 1}
+          <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+            <div style={{ fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)', marginBottom: 8, fontFamily: 'ui-monospace, monospace' }}>
+              Speaker notes · slide {index + 1}
+            </div>
+            <div style={{ fontSize: 18, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+              {notes || <span style={{ color: 'rgba(255,255,255,0.4)' }}>No notes for this slide.</span>}
+            </div>
           </div>
-          <div style={{ fontSize: 18, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-            {notes || <span style={{ color: 'rgba(255,255,255,0.4)' }}>No notes for this slide.</span>}
+          <div style={{ flex: 'none', width: 220 }}>
+            <div style={{ fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)', marginBottom: 8, fontFamily: 'ui-monospace, monospace' }}>
+              Next
+            </div>
+            {nextId ? (
+              <div style={{ borderRadius: 6, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.14)', lineHeight: 0 }}>
+                <ScaledSlide slideId={nextId} scale={nextThumb} />
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>End of deck</div>
+            )}
           </div>
         </div>
       )}
