@@ -190,7 +190,10 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
       lastDown.current = { id, t: now };
       const ids = selectOnDown(deck, slideId, id, e.shiftKey);
       const move = createMoveGesture(ctx, toSlide(e.clientX, e.clientY), ids);
-      const canEdit = isDouble && !!el && (el.type === 'text' || el.type === 'shape');
+      // For a table, a double-click edits the specific cell under the pointer.
+      const cellAttr = (e.target as HTMLElement).closest('[data-cell]')?.getAttribute('data-cell');
+      const cell = el?.type === 'table' && cellAttr ? (cellAttr.split(',').map(Number) as [number, number]) : null;
+      const canEdit = isDouble && !!el && (el.type === 'text' || el.type === 'shape' || (el.type === 'table' && !!cell));
       const startP = toSlide(e.clientX, e.clientY);
       let moved = false;
       gesture = {
@@ -202,7 +205,7 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
           move.onEnd();
           if (canEdit && !moved) {
             deck.setSelection({ slideId, elementIds: [id] });
-            editing.setEditingId(id);
+            editing.setEditingId(id, cell);
           }
         },
       };
