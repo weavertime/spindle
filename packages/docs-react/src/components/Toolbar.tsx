@@ -11,6 +11,7 @@ import {
 import type { HeadingLevel } from '@weavertime/spindle-docs-core';
 import type { ActiveMarks } from './ProseMirrorEditor';
 import type { CellSelection } from '../core';
+import { ResponsiveToolbar } from '@weavertime/spindle-shared/react';
 import { LinkDialog } from './LinkDialog';
 import { ImageDialog } from './ImageDialog';
 import { TableSizePicker } from './TableSizePicker';
@@ -74,8 +75,9 @@ const styles = {
     fontFamily: '"Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
     position: 'relative' as const,
     zIndex: 100,
-    margin: '8px auto',
-    maxWidth: 'fit-content',
+    margin: '8px 0',
+    width: '100%',
+    boxSizing: 'border-box' as const,
   } as React.CSSProperties,
   
   // Button base style
@@ -544,6 +546,7 @@ export const Toolbar = memo(function Toolbar({
       className="docs-toolbar"
       style={styles.toolbar}
     >
+      <ResponsiveToolbar gap={2}>
       {/* Undo/Redo */}
       <ToolbarButton onClick={handleUndo} disabled={!canUndo && !editorView} tooltip="Undo">
         <Undo2 size={18} strokeWidth={2} />
@@ -873,7 +876,8 @@ export const Toolbar = memo(function Toolbar({
       <ToolbarButton onClick={onPageSetup} tooltip="Page setup">
         <Settings2 size={18} strokeWidth={2} />
       </ToolbarButton>
-      
+      </ResponsiveToolbar>
+
       {/* Dialogs */}
       <LinkDialog
         editorView={editorView ?? null}
