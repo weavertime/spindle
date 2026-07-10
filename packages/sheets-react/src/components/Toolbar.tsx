@@ -31,6 +31,8 @@ import {
   Minus,
   Plus,
   MessageSquare,
+  Type,
+  ALargeSmall,
 } from 'lucide-react';
 
 // ============================================================================
@@ -392,6 +394,110 @@ const MenuButton = memo(function MenuButton({ icon, label, active, disabled, wid
   );
 });
 
+// Load the given Google Fonts on demand (used by the font picker in both modes).
+function loadGoogleFonts(fonts: string[], loaded: React.MutableRefObject<Set<string>>) {
+  const toLoad = fonts.filter((f) => {
+    if (loaded.current.has(f)) return false;
+    if (document.querySelector(`link[data-fonts*="${f}"]`)) { loaded.current.add(f); return false; }
+    return true;
+  });
+  for (let i = 0; i < toLoad.length; i += 10) {
+    const batch = toLoad.slice(i, i + 10);
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?family=${batch.map((f) => f.replace(/\s+/g, '+')).join('&family=')}:wght@400&display=swap`;
+    link.setAttribute('data-fonts', batch.join(','));
+    document.head.appendChild(link);
+    batch.forEach((f) => loaded.current.add(f));
+  }
+}
+
+// The searchable font list used inside the font picker (its own state, so it
+// works both in the inline dropdown and in the overflow modal).
+const FontPickerPanel = memo(function FontPickerPanel({ fonts, value, onPick }: {
+  fonts: string[]; value: string; onPick: (f: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const loadedRef = useRef<Set<string>>(new Set());
+  const filtered = useMemo(() => fonts.filter((f) => f.toLowerCase().includes(query.toLowerCase())), [fonts, query]);
+  useEffect(() => { loadGoogleFonts(filtered.slice(0, 50), loadedRef); }, [filtered]);
+  return (
+    <div>
+      <div style={{ paddingBottom: 8, borderBottom: '1px solid rgba(0,0,0,0.06)', marginBottom: 6 }}>
+        <input type="text" placeholder="Search fonts…" value={query} onChange={(e) => setQuery(e.target.value)} onClick={(e) => e.stopPropagation()} style={styles.searchInput} autoFocus />
+      </div>
+      <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+        {filtered.length === 0 ? (
+          <div style={{ padding: 12, color: '#94a3b8', fontSize: 13, textAlign: 'center' }}>No fonts found</div>
+        ) : filtered.map((font, i) => (
+          <DropdownItem key={`${font}-${i}`} onClick={() => onPick(font)} active={value === font} style={{ fontFamily: `"${font}", sans-serif` }}>{font}</DropdownItem>
+        ))}
+      </div>
+    </div>
+  );
+});
+
+const FontFamilyControl = memo(function FontFamilyControl({ value, fonts, onPick }: {
+  value: string; fonts: string[]; onPick?: (f: string) => void;
+}) {
+  const menu = useToolbarMenu();
+  const [open, setOpen] = useState(false);
+  if (menu.inMenu) {
+    return <MenuRow icon={<Type size={17} />} label="Font" hint={value} onClick={() => menu.openModal('Font', <FontPickerPanel fonts={fonts} value={value} onPick={(f) => { onPick?.(f); menu.closeMenu(); }} />)} />;
+  }
+  return (
+    <div style={{ position: 'relative' }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ ...styles.dropdownButton, minWidth: 116, ...(open ? styles.buttonActive : {}) }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 84, fontFamily: `"${value}", sans-serif` }}>{value}</span>
+        <ChevronDown size={14} />
+      </button>
+      {open && (
+        <div style={{ ...styles.dropdown, padding: 8, minWidth: 240 }} onMouseLeave={() => setOpen(false)}>
+          <FontPickerPanel fonts={fonts} value={value} onPick={(f) => { onPick?.(f); setOpen(false); }} />
+        </div>
+      )}
+    </div>
+  );
+});
+
+const FontSizeControl = memo(function FontSizeControl({ value, sizes, onPick }: {
+  value: number; sizes: number[]; onPick?: (s: number) => void;
+}) {
+  const menu = useToolbarMenu();
+  const [open, setOpen] = useState(false);
+  const step = (dir: 'down' | 'up') => {
+    const idx = sizes.indexOf(value);
+    if (dir === 'down') { if (idx > 0) onPick?.(sizes[idx - 1]); else if (idx === -1) { const s = [...sizes].reverse().find((x) => x < value); if (s) onPick?.(s); } }
+    else { if (idx !== -1 && idx < sizes.length - 1) onPick?.(sizes[idx + 1]); else if (idx === -1) { const s = sizes.find((x) => x > value); if (s) onPick?.(s); } }
+  };
+  const grid = (done: () => void) => (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 48px)', gap: 6, justifyContent: 'center' }}>
+      {sizes.map((s) => (
+        <button key={s} onClick={() => { onPick?.(s); done(); }} style={{ height: 40, borderRadius: 8, border: s === value ? '2px solid #2d7ff9' : '1px solid #d5d9e0', background: '#fff', cursor: 'pointer', fontSize: 14, color: '#334155' }}>{s}</button>
+      ))}
+    </div>
+  );
+  if (menu.inMenu) {
+    return <MenuRow icon={<ALargeSmall size={17} />} label="Font size" hint={value} onClick={() => menu.openModal('Font size', grid(() => menu.closeMenu()))} />;
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+      <ToolbarButton onClick={() => step('down')} tooltip="Decrease font size"><Minus size={14} strokeWidth={2.5} /></ToolbarButton>
+      <div style={{ position: 'relative' }}>
+        <input type="text" value={value} readOnly onClick={() => setOpen((o) => !o)} style={styles.fontSizeInput} />
+        {open && (
+          <div style={{ ...styles.dropdown, left: '50%', transform: 'translateX(-50%)', minWidth: 64, maxHeight: 240, overflowY: 'auto' }} onMouseLeave={() => setOpen(false)}>
+            {sizes.map((s) => (
+              <DropdownItem key={s} onClick={() => { onPick?.(s); setOpen(false); }} active={value === s} style={{ justifyContent: 'center' }}>{s}</DropdownItem>
+            ))}
+          </div>
+        )}
+      </div>
+      <ToolbarButton onClick={() => step('up')} tooltip="Increase font size"><Plus size={14} strokeWidth={2.5} /></ToolbarButton>
+    </div>
+  );
+});
+
 interface DropdownMenuProps {
   isOpen: boolean;
   onClose: () => void;
@@ -548,12 +654,8 @@ export const Toolbar = memo(function Toolbar({
   commentsActive,
   selectedFormat,
 }: ToolbarProps) {
-  const [showFontDropdown, setShowFontDropdown] = useState(false);
-  const [showFontSizeDropdown, setShowFontSizeDropdown] = useState(false);
   const [showRotationMenu, setShowRotationMenu] = useState(false);
   const [showHyperlinkModal, setShowHyperlinkModal] = useState(false);
-  const [fontSearchQuery, setFontSearchQuery] = useState('');
-  const loadedFontsRef = useRef<Set<string>>(new Set());
   const toolbarRef = useRef<HTMLDivElement>(null);
 
   const hasFrozenPanes = frozenRows > 0 || frozenCols > 0;
@@ -562,19 +664,6 @@ export const Toolbar = memo(function Toolbar({
   // Inject animation styles once
   useEffect(() => {
     injectStyles();
-  }, []);
-
-  // Close all dropdowns when clicking outside the toolbar
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) {
-        setShowFontDropdown(false);
-        setShowFontSizeDropdown(false);
-        setFontSearchQuery('');
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   // Comprehensive list of Google Fonts
@@ -690,50 +779,6 @@ export const Toolbar = memo(function Toolbar({
     'Yantramanav', 'Yatra One', 'Yellowtail', 'Yeseva One', 'Yesteryear', 'Yrsa', 'Zeyada', 'Zilla Slab'
   ];
 
-  // Filter fonts based on search query
-  const filteredFonts = useMemo(
-    () =>
-      googleFonts.filter((font) =>
-        font.toLowerCase().includes(fontSearchQuery.toLowerCase())
-      ),
-    [fontSearchQuery]
-  );
-
-  // Dynamically load Google Fonts on demand
-  useEffect(() => {
-    if (!showFontDropdown) return;
-
-    const loadGoogleFontsBatch = (fontFamilies: string[]) => {
-      const fontsToLoad = fontFamilies.filter((font) => {
-        if (loadedFontsRef.current.has(font)) return false;
-        const existingLink = document.querySelector(`link[data-font="${font}"]`);
-        if (existingLink) {
-          loadedFontsRef.current.add(font);
-          return false;
-        }
-        return true;
-      });
-
-      if (fontsToLoad.length === 0) return;
-
-      const batchSize = 10;
-      for (let i = 0; i < fontsToLoad.length; i += batchSize) {
-        const batch = fontsToLoad.slice(i, i + batchSize);
-        const fontNames = batch.map((font) => font.replace(/\s+/g, '+')).join('&family=');
-
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = `https://fonts.googleapis.com/css2?family=${fontNames}:wght@400&display=swap`;
-        link.setAttribute('data-fonts', batch.join(','));
-        document.head.appendChild(link);
-
-        batch.forEach((font) => loadedFontsRef.current.add(font));
-      }
-    };
-
-    const fontsToLoad = filteredFonts.slice(0, 50);
-    loadGoogleFontsBatch(fontsToLoad);
-  }, [showFontDropdown, filteredFonts]);
 
   const commonFontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72];
   const commonColors = [
@@ -750,24 +795,6 @@ export const Toolbar = memo(function Toolbar({
   const currentFontSize = selectedFormat?.fontSize || 11;
   const currentFontFamily = selectedFormat?.fontFamily || 'Arial';
 
-  const stepFontSize = (direction: 'down' | 'up') => {
-    const idx = commonFontSizes.indexOf(currentFontSize);
-    if (direction === 'down') {
-      if (idx > 0) {
-        onFontSize?.(commonFontSizes[idx - 1]);
-      } else if (idx === -1) {
-        const smaller = [...commonFontSizes].reverse().find((s) => s < currentFontSize);
-        if (smaller) onFontSize?.(smaller);
-      }
-    } else {
-      if (idx !== -1 && idx < commonFontSizes.length - 1) {
-        onFontSize?.(commonFontSizes[idx + 1]);
-      } else if (idx === -1) {
-        const next = commonFontSizes.find((s) => s > currentFontSize);
-        if (next) onFontSize?.(next);
-      }
-    }
-  };
 
   return (
     <div ref={toolbarRef} className="sheets-toolbar" style={styles.toolbar}>
@@ -783,128 +810,10 @@ export const Toolbar = memo(function Toolbar({
       <Divider />
 
       {/* Font Family */}
-      <div style={{ position: 'relative' }}>
-        <button
-          onClick={() => setShowFontDropdown(!showFontDropdown)}
-          style={{
-            ...styles.dropdownButton,
-            minWidth: 116,
-            ...(showFontDropdown ? styles.buttonActive : {}),
-          }}
-        >
-          <span
-            style={{
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              maxWidth: 84,
-              fontFamily: `"${currentFontFamily}", sans-serif`,
-            }}
-          >
-            {currentFontFamily}
-          </span>
-          <ChevronDown size={14} />
-        </button>
-        {showFontDropdown && (
-          <div
-            style={{
-              ...styles.dropdown,
-              padding: 0,
-              minWidth: 240,
-            }}
-            onMouseLeave={() => {
-              setShowFontDropdown(false);
-              setFontSearchQuery('');
-            }}
-          >
-            <div style={{ padding: '8px', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-              <input
-                type="text"
-                placeholder="Search fonts..."
-                value={fontSearchQuery}
-                onChange={(e) => setFontSearchQuery(e.target.value)}
-                onClick={(e) => e.stopPropagation()}
-                style={styles.searchInput}
-                autoFocus
-              />
-            </div>
-            <div style={{ maxHeight: 320, overflowY: 'auto', padding: '6px' }}>
-              {filteredFonts.length === 0 ? (
-                <div
-                  style={{
-                    padding: '12px',
-                    color: '#94a3b8',
-                    fontSize: '13px',
-                    textAlign: 'center',
-                  }}
-                >
-                  No fonts found
-                </div>
-              ) : (
-                filteredFonts.map((font, index) => (
-                  <DropdownItem
-                    key={`${font}-${index}`}
-                    onClick={() => {
-                      onFontFamily?.(font);
-                      setShowFontDropdown(false);
-                      setFontSearchQuery('');
-                    }}
-                    active={selectedFormat?.fontFamily === font}
-                    style={{ fontFamily: `"${font}", sans-serif` }}
-                  >
-                    {font}
-                  </DropdownItem>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+      <FontFamilyControl value={currentFontFamily} fonts={googleFonts} onPick={onFontFamily} />
 
       {/* Font Size */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-        <ToolbarButton onClick={() => stepFontSize('down')} tooltip="Decrease font size">
-          <Minus size={14} strokeWidth={2.5} />
-        </ToolbarButton>
-        <div style={{ position: 'relative' }}>
-          <input
-            type="text"
-            value={currentFontSize}
-            readOnly
-            onClick={() => setShowFontSizeDropdown(!showFontSizeDropdown)}
-            style={styles.fontSizeInput}
-          />
-          {showFontSizeDropdown && (
-            <div
-              style={{
-                ...styles.dropdown,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                minWidth: 64,
-                maxHeight: 240,
-                overflowY: 'auto',
-              }}
-              onMouseLeave={() => setShowFontSizeDropdown(false)}
-            >
-              {commonFontSizes.map((size) => (
-                <DropdownItem
-                  key={size}
-                  onClick={() => {
-                    onFontSize?.(size);
-                    setShowFontSizeDropdown(false);
-                  }}
-                  active={currentFontSize === size}
-                  style={{ justifyContent: 'center' }}
-                >
-                  {size}
-                </DropdownItem>
-              ))}
-            </div>
-          )}
-        </div>
-        <ToolbarButton onClick={() => stepFontSize('up')} tooltip="Increase font size">
-          <Plus size={14} strokeWidth={2.5} />
-        </ToolbarButton>
-      </div>
+      <FontSizeControl value={currentFontSize} sizes={commonFontSizes} onPick={onFontSize} />
 
       <Divider />
 
