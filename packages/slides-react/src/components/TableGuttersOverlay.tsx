@@ -1,11 +1,14 @@
 // TableGuttersOverlay — spreadsheet-style header bars just outside a selected
-// table's top and left edges. Clicking a column/row header selects that whole
-// column/row; the top-left corner selects the entire grid. InteractiveSlide
-// owns the pointer handling (it reads data-col-select / data-row-select /
-// data-all-select and can drag to extend across headers). Only shown for an
-// unrotated single-selected table.
+// table's top and left edges, plus a move grip at the top-left corner. Clicking
+// a column/row header selects that whole column/row; dragging the corner grip
+// moves the table (a clear, discoverable handle — the table body selects cells),
+// and a plain click on it selects the whole grid. InteractiveSlide owns the
+// pointer handling (data-col-select / data-row-select / data-table-move). The
+// bars follow the live frame during a move, and only show for an unrotated,
+// single-selected table.
 
 import React, { useEffect, useReducer, useSyncExternalStore } from 'react';
+import { Move } from 'lucide-react';
 import type { TableElement } from '@weavertime/spindle-slides-core';
 import { useDeckContext } from '../context/DeckContext';
 import { useSelection } from '../hooks';
@@ -14,11 +17,13 @@ import { selectionRect } from '../interactions/table-selection-store';
 const BAR = 'rgba(226,232,240,0.95)';
 const BAR_ACTIVE = 'rgba(45,127,249,0.28)';
 const LINE = 'rgba(45,127,249,0.7)';
+const ACCENT = '#2d7ff9';
 
 export function TableGuttersOverlay({ scale }: { scale: number }): React.ReactElement | null {
-  const { deck, tableSel } = useDeckContext();
+  const { deck, tableSel, transient } = useDeckContext();
   const selection = useSelection();
   const sel = useSyncExternalStore(tableSel.subscribe, tableSel.getState);
+  const transientState = useSyncExternalStore(transient.subscribe, transient.get);
   const [, force] = useReducer((n) => n + 1, 0);
 
   useEffect(() => {
@@ -30,6 +35,10 @@ export function TableGuttersOverlay({ scale }: { scale: number }): React.ReactEl
   const el = id ? deck.getElement(id) : null;
   if (!el || el.type !== 'table' || el.rotation !== 0) return null;
   const t = el as TableElement;
+  // Follow the live frame during a move/resize gesture so the bars track the
+  // table instead of snapping into place only after the drop.
+  const live = transientState.liveFrames?.get(t.id);
+  const box = { x: live?.x ?? t.x, y: live?.y ?? t.y, w: live?.w ?? t.w, h: live?.h ?? t.h };
 
   const rect = sel && sel.tableId === t.id ? selectionRect(sel) : null;
   const size = 15 / scale; // constant screen size for the header bars
@@ -38,10 +47,10 @@ export function TableGuttersOverlay({ scale }: { scale: number }): React.ReactEl
   // Cumulative pixel offsets of each column/row start within the table box.
   const colX: number[] = [];
   let ax = 0;
-  for (const f of t.colFractions) { colX.push(ax); ax += f * t.w; }
+  for (const f of t.colFractions) { colX.push(ax); ax += f * box.w; }
   const rowY: number[] = [];
   let ay = 0;
-  for (const f of t.rowFractions) { rowY.push(ay); ay += f * t.h; }
+  for (const f of t.rowFractions) { rowY.push(ay); ay += f * box.h; }
 
   const barBase: React.CSSProperties = {
     position: 'absolute',
@@ -54,7 +63,7 @@ export function TableGuttersOverlay({ scale }: { scale: number }): React.ReactEl
   };
 
   return (
-    <div style={{ position: 'absolute', left: 0, top: 0, transform: `translate(${t.x}px, ${t.y}px)`, width: t.w, height: t.h, pointerEvents: 'none' }}>
+    <div style={{ position: 'absolute', left: 0, top: 0, transform: `translate(${box.x}px, ${box.y}px)`, width: box.w, height: box.h, pointerEvents: 'none' }}>
       {/* Column headers along the top edge. */}
       {t.colFractions.map((f, c) => {
         const active = !!rect && c >= rect.c0 && c <= rect.c1;
@@ -63,7 +72,7 @@ export function TableGuttersOverlay({ scale }: { scale: number }): React.ReactEl
             key={`c${c}`}
             data-col-select={c}
             title="Select column"
-            style={{ ...barBase, left: colX[c], top: -size - g, width: f * t.w, height: size, background: active ? BAR_ACTIVE : BAR, border: `${g}px solid ${LINE}`, cursor: 'pointer' }}
+            style={{ ...barBase, left: colX[c], top: -size - g, width: f * box.w, height: size, background: active ? BAR_ACTIVE : BAR, border: `${g}px solid ${LINE}`, cursor: 'pointer' }}
           />
         );
       })}
@@ -75,16 +84,19 @@ export function TableGuttersOverlay({ scale }: { scale: number }): React.ReactEl
             key={`r${r}`}
             data-row-select={r}
             title="Select row"
-            style={{ ...barBase, top: rowY[r], left: -size - g, height: f * t.h, width: size, background: active ? BAR_ACTIVE : BAR, border: `${g}px solid ${LINE}`, cursor: 'pointer' }}
+            style={{ ...barBase, top: rowY[r], left: -size - g, height: f * box.h, width: size, background: active ? BAR_ACTIVE : BAR, border: `${g}px solid ${LINE}`, cursor: 'pointer' }}
           />
         );
       })}
-      {/* Top-left corner selects everything. */}
+      {/* Top-left corner: drag to move the whole table, click to select all. */}
       <div
+        data-table-move="1"
         data-all-select="1"
-        title="Select all cells"
-        style={{ ...barBase, left: -size - g, top: -size - g, width: size, height: size, border: `${g}px solid ${LINE}`, cursor: 'pointer' }}
-      />
+        title="Drag to move · click to select all cells"
+        style={{ ...barBase, left: -size - g, top: -size - g, width: size, height: size, background: ACCENT, border: `${g}px solid ${ACCENT}`, borderRadius: 3 / scale, cursor: 'move' }}
+      >
+        <Move size={size * 0.7} color="#fff" strokeWidth={2.5} />
+      </div>
     </div>
   );
 }

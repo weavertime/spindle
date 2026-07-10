@@ -401,3 +401,22 @@ describe('table auto-height', () => {
     expect(deck.getElement(t.id)!.h).toBe(260);
   });
 });
+
+describe('table batch row/column removal', () => {
+  it('removes an inclusive row range in one undo', () => {
+    const deck = new DeckImpl();
+    const slide = deck.getActiveSlideId();
+    const t = deck.addElement(slide, { type: 'table', rows: 4, cols: 2 });
+    deck.removeTableRows(t.id, 1, 2); // remove rows 1..2
+    expect((deck.getElement(t.id) as TableElement).rows).toBe(2);
+    deck.undo();
+    expect((deck.getElement(t.id) as TableElement).rows).toBe(4); // single undo restores both
+  });
+  it('never removes the last column', () => {
+    const deck = new DeckImpl();
+    const slide = deck.getActiveSlideId();
+    const t = deck.addElement(slide, { type: 'table', rows: 2, cols: 3 });
+    deck.removeTableColumns(t.id, 0, 2); // would remove all → clamps to 1
+    expect((deck.getElement(t.id) as TableElement).cols).toBe(1);
+  });
+});

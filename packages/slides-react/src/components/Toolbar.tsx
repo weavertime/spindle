@@ -42,12 +42,14 @@ export function Toolbar(): React.ReactElement {
   const editing = editingId != null;
   const single = ids.length === 1 ? deck.getElement(ids[0]) : null;
   const isTextSingle = single?.type === 'text';
+  const isTableSingle = single?.type === 'table';
   // A live cell-range selection turns the toolbar into a cell-formatting bar
   // (text + table controls), so the object-level actions step aside for room.
-  const cellsActive = single?.type === 'table' && !!cellSel && cellSel.tableId === single.id;
+  const cellsActive = isTableSingle && !!cellSel && cellSel.tableId === single!.id;
   const showInsert = !hasSel && !editing;
   const showActions = hasSel && !editing && !cellsActive; // duplicate / delete
-  const showArrange = hasSel && !editing && !isTextSingle && !cellsActive; // z-order / group / align
+  // Arrange hides for text and tables (both bring space-hungry format bars).
+  const showArrange = hasSel && !editing && !isTextSingle && !isTableSingle; // z-order / group / align
 
   const insert = (spec: NewElementSpec, size: { w: number; h: number }) => {
     const slideId = deck.getActiveSlideId();

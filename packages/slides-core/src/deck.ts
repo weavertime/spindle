@@ -641,6 +641,22 @@ export class DeckImpl {
   insertTableColumn(id: string, at: number): void { this.tableOp(id, (t) => insertColumn(t, at)); }
   removeTableRow(id: string, at: number): void { this.tableOp(id, (t) => removeRow(t, at)); }
   removeTableColumn(id: string, at: number): void { this.tableOp(id, (t) => removeColumn(t, at)); }
+
+  /** Remove an inclusive range of rows/columns (a whole selection) in one undo. */
+  removeTableRows(id: string, from: number, to: number): void {
+    this.tableOp(id, (t) => {
+      let cur = t;
+      for (let r = to; r >= from; r--) cur = { ...cur, ...removeRow(cur, r) } as TableElement;
+      return { rows: cur.rows, rowFractions: cur.rowFractions, cells: cur.cells };
+    });
+  }
+  removeTableColumns(id: string, from: number, to: number): void {
+    this.tableOp(id, (t) => {
+      let cur = t;
+      for (let c = to; c >= from; c--) cur = { ...cur, ...removeColumn(cur, c) } as TableElement;
+      return { cols: cur.cols, colFractions: cur.colFractions, cells: cur.cells };
+    });
+  }
   resizeTableColumn(id: string, index: number, delta: number): void { this.tableOp(id, (t) => resizeColumn(t, index, delta)); }
   resizeTableRow(id: string, index: number, delta: number): void { this.tableOp(id, (t) => resizeRow(t, index, delta)); }
 

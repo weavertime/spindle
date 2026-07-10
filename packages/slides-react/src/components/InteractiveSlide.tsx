@@ -127,7 +127,6 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
     const rowResizeEl = target.closest('[data-row-resize]') as HTMLElement | null;
     const colSelEl = target.closest('[data-col-select]') as HTMLElement | null;
     const rowSelEl = target.closest('[data-row-select]') as HTMLElement | null;
-    const allSelEl = target.closest('[data-all-select]') as HTMLElement | null;
     const tableMoveEl = target.closest('[data-table-move]') as HTMLElement | null;
     const rotateEl = target.closest('[data-rotate]');
     const handleEl = target.closest('[data-handle]') as HTMLElement | null;
@@ -165,16 +164,36 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
           else deck.resizeTableRow(tableId, index, last);
         },
       };
-    } else if (colSelEl || rowSelEl || allSelEl) {
-      // Header-bar click/drag → select a whole column, row, or the entire grid.
+    } else if (tableMoveEl) {
+      // Drag the corner grip (or a frame border band) to move the whole table —
+      // its body selects cells, so this is the move handle. A plain click on the
+      // grip (no drag) selects all cells.
+      const ids = deck.getSelection().elementIds;
+      const move = createMoveGesture(ctx, toSlide(e.clientX, e.clientY), ids);
+      const startP = toSlide(e.clientX, e.clientY);
+      const selectAllOnClick = tableMoveEl.hasAttribute('data-all-select');
+      let moved = false;
+      gesture = {
+        onMove(p) {
+          if (Math.hypot(p.x - startP.x, p.y - startP.y) > 3 / scale) moved = true;
+          move.onMove(p);
+        },
+        onEnd() {
+          move.onEnd();
+          if (!moved && selectAllOnClick) {
+            const id = ids[0];
+            const t = id ? deck.getElement(id) : undefined;
+            if (t && t.type === 'table') tableSel.set(id, [0, 0], [t.rows - 1, t.cols - 1]);
+          }
+        },
+      };
+    } else if (colSelEl || rowSelEl) {
+      // Header-bar click/drag → select a whole column or row (drag to extend).
       const tableId = deck.getSelection().elementIds[0];
       const t = tableId ? deck.getElement(tableId) : undefined;
       if (!t || t.type !== 'table') return;
       const tbl = t as TableElement;
-      if (allSelEl) {
-        tableSel.set(tableId, [0, 0], [tbl.rows - 1, tbl.cols - 1]);
-        gesture = { onMove() {}, onEnd() {} };
-      } else if (colSelEl) {
+      if (colSelEl) {
         const c0 = Number(colSelEl.getAttribute('data-col-select'));
         tableSel.set(tableId, [0, c0], [tbl.rows - 1, c0]);
         gesture = { onMove(p) { tableSel.setFocus([tbl.rows - 1, cellAtPoint(tbl, p)[1]]); }, onEnd() {} };
@@ -183,10 +202,6 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
         tableSel.set(tableId, [r0, 0], [r0, tbl.cols - 1]);
         gesture = { onMove(p) { tableSel.setFocus([cellAtPoint(tbl, p)[0], tbl.cols - 1]); }, onEnd() {} };
       }
-    } else if (tableMoveEl) {
-      // Drag a selected table by its frame border (its body is busy selecting
-      // cells, so the border is the move affordance — like PowerPoint).
-      gesture = createMoveGesture(ctx, toSlide(e.clientX, e.clientY), deck.getSelection().elementIds);
     } else if (endpointEl?.dataset.endpoint) {
       // Drag a selected line's tip: resize + rotate at once. The tip snaps to a
       // shape anchor and binds on release, or stays a free point. Previewed live
