@@ -1,6 +1,6 @@
 {
   "name": "@weavertime/spindle-transport-websocket",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "WebSocket-backed CollabProvider for Spindle collaboration",
   "repository": {
     "type": "git",
@@ -42,7 +42,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@weavertime/spindle-shared": "^0.2.0"
+    "@weavertime/spindle-shared": "^0.3.0"
   },
   "devDependencies": {
     "@rollup/plugin-typescript": "^11.1.0",
