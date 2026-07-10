@@ -7,7 +7,7 @@ import { useCallback } from 'react';
 import type React from 'react';
 import { useDeck } from './index';
 import { useDeckContext } from '../context/DeckContext';
-import { copyElements, pasteElements } from './useClipboard';
+import { copyElements } from './useClipboard';
 
 const NUDGE = 1;
 const NUDGE_LARGE = 10;
@@ -133,10 +133,8 @@ export function useKeyboardShortcuts(): { onKeyDown: (e: React.KeyboardEvent) =>
           deck.setSelection({ slideId: deck.getActiveSlideId(), elementIds: [] });
           e.preventDefault();
           break;
-        case 'v':
-          pasteElements(deck);
-          e.preventDefault();
-          break;
+        // Paste (⌘V) is handled by the editor's onPaste — it needs the real
+        // clipboard (for spreadsheet → table), which a keydown can't read.
         case 'g':
           if (e.shiftKey) deck.ungroupElements(selectedIds());
           else deck.groupElements(selectedIds());

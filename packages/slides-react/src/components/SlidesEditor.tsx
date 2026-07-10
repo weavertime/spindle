@@ -5,6 +5,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Play, MessageSquare } from 'lucide-react';
 import { useDeck, useKeyboardShortcuts, useCommentsOpen } from '../hooks';
+import { usePasteImport } from '../hooks/usePasteImport';
 import { useDeckContext } from '../context/DeckContext';
 import { Toolbar } from './Toolbar';
 import { Filmstrip } from './Filmstrip';
@@ -49,6 +50,7 @@ export function SlidesEditor({ style, readOnly = false, headerActions }: SlidesE
   const { ui, tableSel } = useDeckContext();
   const showComments = useCommentsOpen();
   const { onKeyDown } = useKeyboardShortcuts();
+  const { onPaste } = usePasteImport();
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Focus the editor so keyboard shortcuts work without an explicit click.
@@ -61,6 +63,7 @@ export function SlidesEditor({ style, readOnly = false, headerActions }: SlidesE
       ref={rootRef}
       tabIndex={readOnly ? undefined : 0}
       onKeyDown={readOnly ? undefined : onKeyDown}
+      onPaste={readOnly ? undefined : onPaste}
       onContextMenu={(e) => {
         if (readOnly) return;
         const target = e.target as HTMLElement;

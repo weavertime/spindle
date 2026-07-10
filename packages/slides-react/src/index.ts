@@ -41,6 +41,8 @@ export {
 } from './hooks';
 export { useComments } from './hooks/useComments';
 export type { UseComments } from './hooks/useComments';
+export { usePasteImport } from './hooks/usePasteImport';
+export { clipboardToGrid, parseHtmlTable, parseTsv, normalizeGrid } from './interactions/table-paste';
 
 // Components
 export { SlidesEditor } from './components/SlidesEditor';

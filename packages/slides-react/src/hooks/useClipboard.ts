@@ -41,6 +41,11 @@ export function copyElements(deck: DeckImpl): void {
   }
 }
 
+/** Whether the in-memory element buffer holds anything to paste. */
+export function hasClipboardContent(): boolean {
+  return buffer.length > 0;
+}
+
 export function pasteElements(deck: DeckImpl): void {
   if (buffer.length === 0) return;
   const slideId = deck.getActiveSlideId();
