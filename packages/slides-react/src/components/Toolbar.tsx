@@ -11,6 +11,7 @@ import {
   AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter,
 } from 'lucide-react';
 import type { NewElementSpec, AlignMode } from '@weavertime/spindle-slides-core';
+import { ResponsiveToolbar } from '@weavertime/spindle-shared/react';
 import { useDeck, useSelection, useEditingId } from '../hooks';
 import { useDeckContext } from '../context/DeckContext';
 import { DeckControls } from './DeckControls';
@@ -92,8 +93,9 @@ export function Toolbar(): React.ReactElement {
   return (
     <div style={TB.strip}>
       <div style={TB.pill}>
-      <DeckControls />
       <input ref={fileRef} type="file" accept="image/*" onChange={onImageFile} style={{ display: 'none' }} />
+      <ResponsiveToolbar gap={2}>
+      <DeckControls />
 
       {/* Insert — only when nothing is selected. */}
       {showInsert && (
@@ -193,6 +195,7 @@ export function Toolbar(): React.ReactElement {
       {!editing && <ImageFormatBar />}
       {!editing && <TableFormatBar />}
       {!editing && <LineFormatBar />}
+      </ResponsiveToolbar>
       </div>
     </div>
   );
