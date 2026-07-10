@@ -389,3 +389,15 @@ describe('table multi-cell ops', () => {
     expect(docHasMark((deck.getElement(id) as TableElement).cells[0][0].richText, 'bold')).toBe(false);
   });
 });
+
+describe('table auto-height', () => {
+  it('grows to fit content but never shrinks', () => {
+    const deck = new DeckImpl();
+    const slide = deck.getActiveSlideId();
+    const t = deck.addElement(slide, { type: 'table', rows: 2, cols: 2, h: 100 });
+    deck.autoSizeElementHeight(t.id, 260);
+    expect(deck.getElement(t.id)!.h).toBe(260);
+    deck.autoSizeElementHeight(t.id, 180); // shorter → ignored
+    expect(deck.getElement(t.id)!.h).toBe(260);
+  });
+});

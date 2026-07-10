@@ -415,6 +415,23 @@ export class DeckImpl {
     });
   }
 
+  /**
+   * Grow an element's height to fit its rendered content (tables whose wrapped
+   * text is taller than the frame). This is a layout reflow, not a user edit,
+   * so it records NO history entry — otherwise undo would fight the reflow and
+   * selection/gutter overlays (which read the frame) wouldn't cover the table.
+   * Never shrinks below the current height; a no-op if already tall enough.
+   */
+  autoSizeElementHeight(id: string, h: number): void {
+    const el = this.elements.get(id);
+    if (!el || h <= el.h + 0.5) return;
+    this.events.batch(() => {
+      this.applyElementPatch(id, { h } as Partial<SlideElement>);
+      this.emit('elementChange', { slideId: el.containerId, elementId: id, keys: ['h'] });
+      this.reconcileConnectors(new Set([id]));
+    });
+  }
+
   /** Patch several elements as one undo entry and one event batch. */
   updateElements(patches: Array<{ id: string; patch: Partial<SlideElement> }>): void {
     this.recordHistory();

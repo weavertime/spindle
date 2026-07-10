@@ -3,7 +3,7 @@
 // rich text via StaticRichText, or, on the interactive stage, a live editor for
 // the cell being edited. Grid lines use the element's border stroke.
 
-import React, { useSyncExternalStore } from 'react';
+import React, { useEffect, useRef, useSyncExternalStore } from 'react';
 import { resolveColor, resolveFill, type Color, type TableElement, type ThemeData } from '@weavertime/spindle-slides-core';
 import { useDeckContext } from '../../context/DeckContext';
 import { inSelection } from '../../interactions/table-selection-store';
@@ -21,11 +21,27 @@ const CELL_FONT = 16;
 const CELL_PAD = 6;
 
 export function TableView({ el, theme, interactive = false }: { el: TableElement; theme: ThemeData; interactive?: boolean }): React.ReactElement {
-  const { editing, tableSel } = useDeckContext();
+  const { deck, editing, tableSel } = useDeckContext();
   const editState = useSyncExternalStore(editing.subscribe, editing.getState);
   const sel = useSyncExternalStore(tableSel.subscribe, tableSel.getState);
   const editingCell = interactive && editState.id === el.id ? editState.cell : null;
   const cellSel = interactive && sel && sel.tableId === el.id ? sel : null;
+
+  // Cell text wraps, so a table can render taller than its frame height. Grow
+  // the element to fit its content (no undo entry) so the frame — and the
+  // selection box, gutters, and resize handles that read it — cover the whole
+  // table. Only the full-size interactive render drives this (not thumbnails).
+  const tableRef = useRef<HTMLTableElement>(null);
+  useEffect(() => {
+    if (!interactive || typeof ResizeObserver === 'undefined') return;
+    const node = tableRef.current;
+    if (!node) return;
+    const sync = () => deck.autoSizeElementHeight(el.id, node.offsetHeight);
+    const ro = new ResizeObserver(sync);
+    ro.observe(node);
+    sync();
+    return () => ro.disconnect();
+  }, [deck, el.id, interactive]);
 
   const border = el.border
     ? `${Math.max(1, el.border.width)}px solid ${resolveColor(el.border.color, theme)}`
@@ -33,6 +49,7 @@ export function TableView({ el, theme, interactive = false }: { el: TableElement
 
   return (
     <table
+      ref={tableRef}
       data-table-id={el.id}
       style={{ width: '100%', height: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontFamily: 'inherit' }}
     >
