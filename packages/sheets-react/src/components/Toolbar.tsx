@@ -1,5 +1,5 @@
 import React, { memo, useState, useEffect, useRef, useMemo } from 'react';
-import { ResponsiveToolbar } from '@weavertime/spindle-shared/react';
+import { ResponsiveToolbar, useToolbarMenu, MenuRow } from '@weavertime/spindle-shared/react';
 import { HyperlinkModal } from './HyperlinkModal';
 import type { FormatType } from '@weavertime/spindle-sheets-core';
 import {
@@ -332,6 +332,66 @@ const Divider = memo(function Divider() {
   return <div style={styles.divider} />;
 });
 
+const isHex = (c: string) => /^#[0-9a-fA-F]{6}$/.test(c);
+
+// A colour control: inline it's a button + swatch popover; inside the overflow
+// surface it's a menu row that opens the swatches in a modal (useToolbarMenu).
+const ColorControl = memo(function ColorControl({ icon, label, value, colors, onApply }: {
+  icon: React.ReactNode; label: string; value: string; colors: string[]; onApply?: (c: string) => void;
+}) {
+  const menu = useToolbarMenu();
+  const [open, setOpen] = useState(false);
+  const swatches = (done: () => void) => (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 8 }}>
+        {colors.map((c) => (
+          <button key={c} title={c} onClick={() => { onApply?.(c); done(); }} style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: c === value ? '2px solid #2d7ff9' : '1px solid #d5d9e0', background: c, cursor: 'pointer' }} />
+        ))}
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, fontSize: 14, color: '#334155', cursor: 'pointer' }}>
+        <input type="color" value={isHex(value) ? value : '#000000'} onChange={(e) => onApply?.(e.target.value)} style={{ width: 40, height: 32, border: '1px solid #d5d9e0', borderRadius: 6, background: 'none', padding: 2, cursor: 'pointer' }} />
+        Custom color
+      </label>
+    </div>
+  );
+  if (menu.inMenu) {
+    return <MenuRow icon={icon} label={label} hint={<span style={{ width: 16, height: 16, borderRadius: 4, border: '1px solid #d5d9e0', background: value, display: 'inline-block' }} />} onClick={() => menu.openModal(label, swatches(() => menu.closeMenu()))} />;
+  }
+  return (
+    <div style={{ position: 'relative' }}>
+      <ToolbarButton onClick={() => setOpen((o) => !o)} active={open} tooltip={label}>
+        {icon}
+        <span style={{ ...styles.colorBar, backgroundColor: value }} />
+      </ToolbarButton>
+      {open && (
+        <div style={{ ...styles.dropdown, padding: 8, minWidth: 216 }} onMouseLeave={() => setOpen(false)}>
+          {swatches(() => setOpen(false))}
+        </div>
+      )}
+    </div>
+  );
+});
+
+// A dropdown control: inline it's a button + DropdownMenu; inside the overflow
+// surface it's a menu row that opens the same items in a modal.
+const MenuButton = memo(function MenuButton({ icon, label, active, disabled, width, children }: {
+  icon: React.ReactNode; label: string; active?: boolean; disabled?: boolean; width?: number; children: React.ReactNode;
+}) {
+  const menu = useToolbarMenu();
+  const [open, setOpen] = useState(false);
+  if (menu.inMenu) {
+    return <MenuRow icon={icon} label={label} hint="›" onClick={disabled ? undefined : () => menu.openModal(label, <div onClick={() => menu.closeMenu()}>{children}</div>)} />;
+  }
+  return (
+    <div style={{ position: 'relative' }}>
+      <ToolbarButton onClick={() => setOpen((o) => !o)} active={open || active} disabled={disabled} tooltip={label}>{icon}</ToolbarButton>
+      <DropdownMenu isOpen={open} onClose={() => setOpen(false)} width={width} align="right">
+        <div onClick={() => setOpen(false)}>{children}</div>
+      </DropdownMenu>
+    </div>
+  );
+});
+
 interface DropdownMenuProps {
   isOpen: boolean;
   onClose: () => void;
@@ -490,13 +550,8 @@ export const Toolbar = memo(function Toolbar({
 }: ToolbarProps) {
   const [showFontDropdown, setShowFontDropdown] = useState(false);
   const [showFontSizeDropdown, setShowFontSizeDropdown] = useState(false);
-  const [showColorPicker, setShowColorPicker] = useState<'font' | 'background' | null>(null);
-  const [showBorderMenu, setShowBorderMenu] = useState(false);
-  const [showVerticalAlignMenu, setShowVerticalAlignMenu] = useState(false);
   const [showRotationMenu, setShowRotationMenu] = useState(false);
-  const [showSortMenu, setShowSortMenu] = useState(false);
   const [showHyperlinkModal, setShowHyperlinkModal] = useState(false);
-  const [showFreezeMenu, setShowFreezeMenu] = useState(false);
   const [fontSearchQuery, setFontSearchQuery] = useState('');
   const loadedFontsRef = useRef<Set<string>>(new Set());
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -515,11 +570,6 @@ export const Toolbar = memo(function Toolbar({
       if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) {
         setShowFontDropdown(false);
         setShowFontSizeDropdown(false);
-        setShowColorPicker(null);
-        setShowBorderMenu(false);
-        setShowVerticalAlignMenu(false);
-        setShowSortMenu(false);
-        setShowFreezeMenu(false);
         setFontSearchQuery('');
       }
     };
@@ -719,48 +769,6 @@ export const Toolbar = memo(function Toolbar({
     }
   };
 
-  const renderColorPicker = (mode: 'font' | 'background') => {
-    const apply = mode === 'font' ? onFontColor : onBackgroundColor;
-    return (
-      <div
-        style={{ ...styles.dropdown, padding: '4px' }}
-        onMouseLeave={() => setShowColorPicker(null)}
-      >
-        <div style={styles.colorGrid}>
-          {commonColors.map((color) => (
-            <div
-              key={color}
-              className="sheets-color-swatch"
-              onClick={() => {
-                apply?.(color);
-                setShowColorPicker(null);
-              }}
-              style={{ ...styles.colorSwatch, backgroundColor: color }}
-              title={color}
-            />
-          ))}
-        </div>
-        <div style={{ padding: '0 8px 8px' }}>
-          <input
-            type="color"
-            onChange={(e) => {
-              apply?.(e.target.value);
-              setShowColorPicker(null);
-            }}
-            style={{
-              width: '100%',
-              height: '32px',
-              border: '1px solid rgba(0,0,0,0.1)',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              background: 'transparent',
-            }}
-          />
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div ref={toolbarRef} className="sheets-toolbar" style={styles.toolbar}>
       <ResponsiveToolbar gap={2}>
@@ -925,69 +933,19 @@ export const Toolbar = memo(function Toolbar({
       <Divider />
 
       {/* Font Color */}
-      <div style={{ position: 'relative' }}>
-        <ToolbarButton
-          onClick={() => setShowColorPicker(showColorPicker === 'font' ? null : 'font')}
-          active={showColorPicker === 'font'}
-          tooltip="Text color"
-        >
-          <Palette size={18} strokeWidth={2} />
-          <span
-            style={{ ...styles.colorBar, backgroundColor: selectedFormat?.fontColor || '#1e293b' }}
-          />
-        </ToolbarButton>
-        {showColorPicker === 'font' && renderColorPicker('font')}
-      </div>
+      <ColorControl icon={<Palette size={18} strokeWidth={2} />} label="Text color" value={selectedFormat?.fontColor || '#1e293b'} colors={commonColors} onApply={onFontColor} />
 
       {/* Background Color */}
-      <div style={{ position: 'relative' }}>
-        <ToolbarButton
-          onClick={() => setShowColorPicker(showColorPicker === 'background' ? null : 'background')}
-          active={showColorPicker === 'background'}
-          tooltip="Fill color"
-        >
-          <PaintBucket size={18} strokeWidth={2} />
-          <span
-            style={{
-              ...styles.colorBar,
-              backgroundColor: selectedFormat?.backgroundColor || '#cbd5e1',
-            }}
-          />
-        </ToolbarButton>
-        {showColorPicker === 'background' && renderColorPicker('background')}
-      </div>
+      <ColorControl icon={<PaintBucket size={18} strokeWidth={2} />} label="Fill color" value={selectedFormat?.backgroundColor || '#cbd5e1'} colors={commonColors} onApply={onBackgroundColor} />
 
       {/* Borders */}
-      <div style={{ position: 'relative' }}>
-        <ToolbarButton
-          onClick={() => setShowBorderMenu(!showBorderMenu)}
-          active={showBorderMenu}
-          tooltip="Borders"
-        >
-          <Grid2x2 size={18} strokeWidth={2} />
-        </ToolbarButton>
-        <DropdownMenu
-          isOpen={showBorderMenu}
-          onClose={() => setShowBorderMenu(false)}
-          width={150}
-        >
-          {(['all', 'top', 'right', 'bottom', 'left', 'none'] as const).map((border) => (
-            <DropdownItem
-              key={border}
-              onClick={() => {
-                onBorder?.(border);
-                setShowBorderMenu(false);
-              }}
-            >
-              {border === 'all'
-                ? 'All borders'
-                : border === 'none'
-                  ? 'No border'
-                  : `${border.charAt(0).toUpperCase()}${border.slice(1)} border`}
-            </DropdownItem>
-          ))}
-        </DropdownMenu>
-      </div>
+      <MenuButton icon={<Grid2x2 size={18} strokeWidth={2} />} label="Borders" width={150}>
+        {(['all', 'top', 'right', 'bottom', 'left', 'none'] as const).map((border) => (
+          <DropdownItem key={border} onClick={() => onBorder?.(border)}>
+            {border === 'all' ? 'All borders' : border === 'none' ? 'No border' : `${border.charAt(0).toUpperCase()}${border.slice(1)} border`}
+          </DropdownItem>
+        ))}
+      </MenuButton>
 
       <Divider />
 
@@ -1015,33 +973,13 @@ export const Toolbar = memo(function Toolbar({
       </ToolbarButton>
 
       {/* Vertical Alignment */}
-      <div style={{ position: 'relative' }}>
-        <ToolbarButton
-          onClick={() => setShowVerticalAlignMenu(!showVerticalAlignMenu)}
-          active={showVerticalAlignMenu}
-          tooltip="Vertical align"
-        >
-          <AlignVerticalJustifyCenter size={18} strokeWidth={2} />
-        </ToolbarButton>
-        <DropdownMenu
-          isOpen={showVerticalAlignMenu}
-          onClose={() => setShowVerticalAlignMenu(false)}
-          width={130}
-        >
-          {(['top', 'middle', 'bottom'] as const).map((align) => (
-            <DropdownItem
-              key={align}
-              onClick={() => {
-                onVerticalAlign?.(align);
-                setShowVerticalAlignMenu(false);
-              }}
-              active={selectedFormat?.verticalAlign === align}
-            >
-              {align.charAt(0).toUpperCase() + align.slice(1)}
-            </DropdownItem>
-          ))}
-        </DropdownMenu>
-      </div>
+      <MenuButton icon={<AlignVerticalJustifyCenter size={18} strokeWidth={2} />} label="Vertical align" width={130}>
+        {(['top', 'middle', 'bottom'] as const).map((align) => (
+          <DropdownItem key={align} onClick={() => onVerticalAlign?.(align)} active={selectedFormat?.verticalAlign === align}>
+            {align.charAt(0).toUpperCase() + align.slice(1)}
+          </DropdownItem>
+        ))}
+      </MenuButton>
 
       {/* Text Wrap */}
       <ToolbarButton onClick={onTextWrap} active={selectedFormat?.textWrap} tooltip="Wrap text">
@@ -1127,36 +1065,16 @@ export const Toolbar = memo(function Toolbar({
       <Divider />
 
       {/* Sort */}
-      <div style={{ position: 'relative' }}>
-        <ToolbarButton
-          onClick={() => setShowSortMenu(!showSortMenu)}
-          active={showSortMenu}
-          disabled={!hasActiveColumn}
-          tooltip={hasActiveColumn ? 'Sort column' : 'Select a cell to sort'}
-        >
-          <ArrowDownAZ size={18} strokeWidth={2} />
-        </ToolbarButton>
-        <DropdownMenu isOpen={showSortMenu} onClose={() => setShowSortMenu(false)} width={150}>
-          <DropdownItem
-            onClick={() => {
-              if (hasActiveColumn) onSortColumn?.(activeColumn as number, 'asc');
-              setShowSortMenu(false);
-            }}
-          >
-            <ArrowDownAZ size={16} strokeWidth={2} />
-            Sort sheet A → Z
-          </DropdownItem>
-          <DropdownItem
-            onClick={() => {
-              if (hasActiveColumn) onSortColumn?.(activeColumn as number, 'desc');
-              setShowSortMenu(false);
-            }}
-          >
-            <ArrowUpAZ size={16} strokeWidth={2} />
-            Sort sheet Z → A
-          </DropdownItem>
-        </DropdownMenu>
-      </div>
+      <MenuButton icon={<ArrowDownAZ size={18} strokeWidth={2} />} label={hasActiveColumn ? 'Sort column' : 'Select a cell to sort'} disabled={!hasActiveColumn} width={150}>
+        <DropdownItem onClick={() => { if (hasActiveColumn) onSortColumn?.(activeColumn as number, 'asc'); }}>
+          <ArrowDownAZ size={16} strokeWidth={2} />
+          Sort sheet A → Z
+        </DropdownItem>
+        <DropdownItem onClick={() => { if (hasActiveColumn) onSortColumn?.(activeColumn as number, 'desc'); }}>
+          <ArrowUpAZ size={16} strokeWidth={2} />
+          Sort sheet Z → A
+        </DropdownItem>
+      </MenuButton>
 
       {/* Filter */}
       <ToolbarButton
@@ -1172,76 +1090,23 @@ export const Toolbar = memo(function Toolbar({
       <Divider />
 
       {/* Freeze Panes */}
-      <div style={{ position: 'relative' }}>
-        <ToolbarButton
-          onClick={() => setShowFreezeMenu(!showFreezeMenu)}
-          active={showFreezeMenu || hasFrozenPanes}
-          tooltip="Freeze panes"
-        >
-          <Snowflake size={18} strokeWidth={2} />
-        </ToolbarButton>
-        <DropdownMenu
-          isOpen={showFreezeMenu}
-          onClose={() => setShowFreezeMenu(false)}
-          align="right"
-          width={210}
-        >
-          <div style={styles.menuLabel}>Freeze panes</div>
-          <DropdownItem
-            onClick={() => {
-              onFreezeRows?.(1);
-              setShowFreezeMenu(false);
-            }}
-            active={frozenRows === 1 && frozenCols === 0}
-          >
-            Freeze top row
-          </DropdownItem>
-          <DropdownItem
-            onClick={() => {
-              onFreezeCols?.(1);
-              setShowFreezeMenu(false);
-            }}
-            active={frozenCols === 1 && frozenRows === 0}
-          >
-            Freeze first column
-          </DropdownItem>
-          <DropdownItem
-            onClick={() => {
-              onFreezeRows?.(1);
-              onFreezeCols?.(1);
-              setShowFreezeMenu(false);
-            }}
-            active={frozenRows === 1 && frozenCols === 1}
-          >
-            Freeze first row & column
-          </DropdownItem>
-          {hasFrozenPanes && (
-            <>
-              <div style={{ ...styles.divider, width: 'auto', height: 1, margin: '4px 6px' }} />
-              <DropdownItem
-                onClick={() => {
-                  onUnfreeze?.();
-                  setShowFreezeMenu(false);
-                }}
-                style={{ color: '#ef4444' }}
-              >
-                Unfreeze panes
-              </DropdownItem>
-              <div
-                style={{
-                  padding: '4px 12px 6px',
-                  color: '#94a3b8',
-                  fontSize: '11px',
-                }}
-              >
-                Current: {frozenRows > 0 ? `${frozenRows} row${frozenRows > 1 ? 's' : ''}` : ''}
-                {frozenRows > 0 && frozenCols > 0 ? ', ' : ''}
-                {frozenCols > 0 ? `${frozenCols} col${frozenCols > 1 ? 's' : ''}` : ''}
-              </div>
-            </>
-          )}
-        </DropdownMenu>
-      </div>
+      <MenuButton icon={<Snowflake size={18} strokeWidth={2} />} label="Freeze panes" active={hasFrozenPanes} width={210}>
+        <div style={styles.menuLabel}>Freeze panes</div>
+        <DropdownItem onClick={() => onFreezeRows?.(1)} active={frozenRows === 1 && frozenCols === 0}>Freeze top row</DropdownItem>
+        <DropdownItem onClick={() => onFreezeCols?.(1)} active={frozenCols === 1 && frozenRows === 0}>Freeze first column</DropdownItem>
+        <DropdownItem onClick={() => { onFreezeRows?.(1); onFreezeCols?.(1); }} active={frozenRows === 1 && frozenCols === 1}>Freeze first row &amp; column</DropdownItem>
+        {hasFrozenPanes && (
+          <>
+            <div style={{ ...styles.divider, width: 'auto', height: 1, margin: '4px 6px' }} />
+            <DropdownItem onClick={() => onUnfreeze?.()} style={{ color: '#ef4444' }}>Unfreeze panes</DropdownItem>
+            <div style={{ padding: '4px 12px 6px', color: '#94a3b8', fontSize: '11px' }}>
+              Current: {frozenRows > 0 ? `${frozenRows} row${frozenRows > 1 ? 's' : ''}` : ''}
+              {frozenRows > 0 && frozenCols > 0 ? ', ' : ''}
+              {frozenCols > 0 ? `${frozenCols} col${frozenCols > 1 ? 's' : ''}` : ''}
+            </div>
+          </>
+        )}
+      </MenuButton>
 
       <Divider />
 
