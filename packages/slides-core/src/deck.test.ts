@@ -1,6 +1,7 @@
 import { DeckImpl } from './deck';
 import type { DeckData, DeckEventType, ElementChangePayload } from './types';
-import { richTextFromPlainText } from './text/model';
+import type { TableElement } from './scene/types';
+import { richTextFromPlainText, docHasMark } from './text/model';
 
 function capture(deck: DeckImpl, event: DeckEventType): unknown[] {
   const seen: unknown[] = [];
@@ -348,5 +349,43 @@ describe('connectors (bound lines track their shapes)', () => {
     deck.undo();
     expect(deck.getElement(conn.id)!.x).toBe(before); // connector restored too
     expect(deck.getElement(a.id)!.x).toBe(0);
+  });
+});
+
+describe('table multi-cell ops', () => {
+  function withTable() {
+    const deck = new DeckImpl();
+    const slide = deck.getActiveSlideId();
+    const t = deck.addElement(slide, { type: 'table', rows: 3, cols: 3 });
+    return { deck, id: t.id };
+  }
+  const fillOf = (deck: DeckImpl, id: string, r: number, c: number) =>
+    (deck.getElement(id) as TableElement).cells[r][c].fill;
+
+  it('fills a whole row in one undo, leaving other rows untouched', () => {
+    const { deck, id } = withTable();
+    const row0: Array<[number, number]> = [[0, 0], [0, 1], [0, 2]];
+    deck.updateTableCells(id, row0, { fill: { kind: 'solid', color: { kind: 'rgb', hex: '#112233' } } });
+    for (let c = 0; c < 3; c++) expect(fillOf(deck, id, 0, c)).toBeDefined();
+    expect(fillOf(deck, id, 1, 0)).toBeUndefined();
+    deck.undo();
+    expect(fillOf(deck, id, 0, 0)).toBeUndefined(); // single undo reverts the whole row
+  });
+
+  it('ignores cells outside the grid', () => {
+    const { deck, id } = withTable();
+    deck.updateTableCells(id, [[0, 0], [9, 9], [-1, 0]], { fill: { kind: 'solid', color: { kind: 'rgb', hex: '#abcdef' } } });
+    expect(fillOf(deck, id, 0, 0)).toBeDefined();
+  });
+
+  it('bolds a header row across cells as one undo', () => {
+    const { deck, id } = withTable();
+    for (let c = 0; c < 3; c++) deck.setTableCellRichText(id, 0, c, richTextFromPlainText(`H${c}`));
+    deck.applyTableCellsFormat(id, [[0, 0], [0, 1], [0, 2]], { toggleMark: 'bold' });
+    const cells = (deck.getElement(id) as TableElement).cells;
+    for (let c = 0; c < 3; c++) expect(docHasMark(cells[0][c].richText, 'bold')).toBe(true);
+    expect(docHasMark(cells[1][0].richText, 'bold')).toBe(false);
+    deck.undo();
+    expect(docHasMark((deck.getElement(id) as TableElement).cells[0][0].richText, 'bold')).toBe(false);
   });
 });

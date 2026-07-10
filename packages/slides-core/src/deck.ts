@@ -634,10 +634,32 @@ export class DeckImpl {
 
   /** Merge a patch into one cell (rich text, fill, body style). */
   updateTableCell(id: string, row: number, col: number, patch: Partial<TableCell>): void {
+    this.updateTableCells(id, [[row, col]], patch);
+  }
+
+  /** Merge a patch into many cells at once as a single undo (e.g. fill a whole
+   *  row/column/range). Cells outside the grid are ignored. */
+  updateTableCells(id: string, cells: ReadonlyArray<readonly [number, number]>, patch: Partial<TableCell>): void {
     this.tableOp(id, (t) => {
-      if (row < 0 || row >= t.rows || col < 0 || col >= t.cols) return {};
-      const cells = t.cells.map((r, ri) => (ri === row ? r.map((c, ci) => (ci === col ? { ...c, ...patch } : c)) : r));
-      return { cells };
+      const set = new Set<number>();
+      for (const [r, c] of cells) if (r >= 0 && r < t.rows && c >= 0 && c < t.cols) set.add(r * t.cols + c);
+      if (!set.size) return {};
+      const grid = t.cells.map((r, ri) => r.map((c, ci) => (set.has(ri * t.cols + ci) ? { ...c, ...patch } : c)));
+      return { cells: grid };
+    });
+  }
+
+  /** Apply a text format across many cells' rich text as a single undo (e.g.
+   *  bold an entire header row). */
+  applyTableCellsFormat(id: string, cells: ReadonlyArray<readonly [number, number]>, spec: TextFormatSpec): void {
+    this.tableOp(id, (t) => {
+      const set = new Set<number>();
+      for (const [r, c] of cells) if (r >= 0 && r < t.rows && c >= 0 && c < t.cols) set.add(r * t.cols + c);
+      if (!set.size) return {};
+      const grid = t.cells.map((r, ri) =>
+        r.map((c, ci) => (set.has(ri * t.cols + ci) ? { ...c, richText: applyTextFormat(c.richText, spec) } : c))
+      );
+      return { cells: grid };
     });
   }
 
