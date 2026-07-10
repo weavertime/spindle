@@ -133,36 +133,46 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
     const elEl = target.closest('[data-element-id]') as HTMLElement | null;
 
     let gesture: Gesture;
-    if (colResizeEl || rowResizeEl) {
-      // Drag a table column/row boundary. Preview straight to the DOM (like the
-      // move gesture) and commit the fraction change once at pointerup.
+    if (colResizeEl) {
+      // Drag a column boundary: borrow width from the right neighbor. Preview
+      // straight to the <col> widths and commit the fraction change at pointerup.
       const tableId = deck.getSelection().elementIds[0];
       const t = tableId ? deck.getElement(tableId) : undefined;
       if (!t || t.type !== 'table') return;
-      const isCol = !!colResizeEl;
-      const index = Number((isCol ? colResizeEl! : rowResizeEl!).getAttribute(isCol ? 'data-col-resize' : 'data-row-resize'));
-      const startFr = (isCol ? t.colFractions : t.rowFractions).slice();
-      const span = isCol ? t.w : t.h;
+      const index = Number(colResizeEl.getAttribute('data-col-resize'));
+      const startFr = t.colFractions.slice();
       const startP = toSlide(e.clientX, e.clientY);
-      const nodes = surface.querySelectorAll(`table[data-table-id="${tableId}"] ${isCol ? 'col' : 'tr'}`);
+      const cols = surface.querySelectorAll(`table[data-table-id="${tableId}"] col`);
       const MIN = 0.04;
       let last = 0;
       gesture = {
         onMove(p) {
           const a = startFr[index], b = startFr[index + 1];
-          last = Math.max(MIN - a, Math.min(b - MIN, (isCol ? p.x - startP.x : p.y - startP.y) / span));
-          const n0 = nodes[index] as HTMLElement | undefined;
-          const n1 = nodes[index + 1] as HTMLElement | undefined;
-          if (n0 && n1) {
-            const prop = isCol ? 'width' : 'height';
-            n0.style[prop] = `${(a + last) * 100}%`;
-            n1.style[prop] = `${(b - last) * 100}%`;
-          }
+          last = Math.max(MIN - a, Math.min(b - MIN, (p.x - startP.x) / t.w));
+          const n0 = cols[index] as HTMLElement | undefined;
+          const n1 = cols[index + 1] as HTMLElement | undefined;
+          if (n0 && n1) { n0.style.width = `${(a + last) * 100}%`; n1.style.width = `${(b - last) * 100}%`; }
         },
-        onEnd() {
-          if (isCol) deck.resizeTableColumn(tableId, index, last);
-          else deck.resizeTableRow(tableId, index, last);
+        onEnd() { deck.resizeTableColumn(tableId, index, last); },
+      };
+    } else if (rowResizeEl) {
+      // Drag a row boundary: set the row above it a minimum height (content can
+      // still grow it taller). Preview by setting the <tr> height directly.
+      const tableId = deck.getSelection().elementIds[0];
+      const t = tableId ? deck.getElement(tableId) : undefined;
+      if (!t || t.type !== 'table') return;
+      const index = Number(rowResizeEl.getAttribute('data-row-resize'));
+      const startP = toSlide(e.clientX, e.clientY);
+      const tr = surface.querySelectorAll(`table[data-table-id="${tableId}"] tbody tr`)[index] as HTMLElement | undefined;
+      const startH = tr ? tr.offsetHeight : 0;
+      const MIN = 8;
+      let height = startH;
+      gesture = {
+        onMove(p) {
+          height = Math.max(MIN, startH + (p.y - startP.y));
+          if (tr) tr.style.height = `${height}px`;
         },
+        onEnd() { deck.setTableRowHeight(tableId, index, height); },
       };
     } else if (tableMoveEl) {
       // Drag the corner grip (or a frame border band) to move the whole table —

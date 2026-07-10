@@ -75,7 +75,8 @@ export function TableView({ el, theme, interactive = false }: { el: TableElement
       </colgroup>
       <tbody>
         {el.cells.map((row, r) => (
-          <tr key={r}>
+          // A row's manual minimum height (px); content can still push it taller.
+          <tr key={r} style={{ height: el.rowHeights?.[r] ? el.rowHeights[r] : undefined }}>
             {row.map((cell, c) => {
               const bg = cell.fill ? resolveFill(cell.fill, theme) : null;
               const isEditing = !!editingCell && editingCell[0] === r && editingCell[1] === c;

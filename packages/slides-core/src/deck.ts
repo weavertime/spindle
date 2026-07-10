@@ -28,7 +28,7 @@ import {
   type LineElementInput,
   type TableElementInput,
 } from './scene/elements';
-import { insertRow, insertColumn, removeRow, removeColumn, resizeColumn, resizeRow } from './scene/table';
+import { insertRow, insertColumn, removeRow, removeColumn, resizeColumn, setRowHeight } from './scene/table';
 import {
   bringToFront as zBringToFront,
   sendToBack as zSendToBack,
@@ -658,7 +658,8 @@ export class DeckImpl {
     });
   }
   resizeTableColumn(id: string, index: number, delta: number): void { this.tableOp(id, (t) => resizeColumn(t, index, delta)); }
-  resizeTableRow(id: string, index: number, delta: number): void { this.tableOp(id, (t) => resizeRow(t, index, delta)); }
+  /** Set row `index`'s minimum height in px (content can grow it further). */
+  setTableRowHeight(id: string, index: number, height: number): void { this.tableOp(id, (t) => setRowHeight(t, index, height)); }
 
   /** Replace one cell's rich text (cell editing commits through here). */
   setTableCellRichText(id: string, row: number, col: number, doc: RichTextDoc): void {

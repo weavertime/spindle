@@ -1,4 +1,4 @@
-import { evenFractions, makeGrid, insertRow, insertColumn, removeRow, removeColumn, resizeColumn } from './table';
+import { evenFractions, makeGrid, insertRow, insertColumn, removeRow, removeColumn, resizeColumn, setRowHeight } from './table';
 import type { TableElement } from './types';
 
 function table(rows: number, cols: number): TableElement {
@@ -73,5 +73,24 @@ describe('resizeColumn', () => {
   });
   it('no-op on the last boundary', () => {
     expect(resizeColumn(table(1, 3), 2, 0.1)).toEqual({});
+  });
+});
+
+describe('setRowHeight (manual row minimum)', () => {
+  it('sets a per-row minimum, initializing the array to the row count', () => {
+    const p = setRowHeight(table(3, 2), 1, 80);
+    expect(p.rowHeights).toEqual([0, 80, 0]);
+  });
+  it('clamps negatives to 0 (auto) and rounds', () => {
+    expect(setRowHeight(table(2, 2), 0, -5).rowHeights).toEqual([0, 0]);
+    expect(setRowHeight(table(2, 2), 0, 42.6).rowHeights).toEqual([43, 0]);
+  });
+  it('ignores an out-of-range index', () => {
+    expect(setRowHeight(table(2, 2), 5, 80)).toEqual({});
+  });
+  it('keeps rowHeights aligned when rows are inserted/removed', () => {
+    const t = { ...table(3, 2), rowHeights: [0, 80, 0] } as TableElement;
+    expect(insertRow(t, 1).rowHeights).toEqual([0, 0, 80, 0]); // new row auto
+    expect(removeRow(t, 1).rowHeights).toEqual([0, 0]); // dropped the 80
   });
 });

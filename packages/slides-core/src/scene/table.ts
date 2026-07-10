@@ -30,11 +30,14 @@ export function makeGrid(rows: number, cols: number): TableCell[][] {
 /** Insert a row at `at` (0..rows); existing rows shrink proportionally. */
 export function insertRow(t: TableElement, at: number): Partial<TableElement> {
   const rows = t.rows + 1;
+  const idx = clamp(at, 0, t.rows);
   const scaled = t.rowFractions.map((f) => (f * t.rows) / rows);
-  scaled.splice(clamp(at, 0, t.rows), 0, 1 / rows);
+  scaled.splice(idx, 0, 1 / rows);
   const cells = t.cells.map((r) => r.slice());
-  cells.splice(clamp(at, 0, t.rows), 0, Array.from({ length: t.cols }, emptyCell));
-  return { rows, rowFractions: normalize(scaled), cells };
+  cells.splice(idx, 0, Array.from({ length: t.cols }, emptyCell));
+  const patch: Partial<TableElement> = { rows, rowFractions: normalize(scaled), cells };
+  if (t.rowHeights) { const rh = t.rowHeights.slice(); rh.splice(idx, 0, 0); patch.rowHeights = rh; } // new row auto-sizes
+  return patch;
 }
 
 /** Insert a column at `at` (0..cols); existing columns shrink proportionally. */
@@ -59,7 +62,9 @@ export function removeRow(t: TableElement, at: number): Partial<TableElement> {
   fr.splice(idx, 1);
   const cells = t.cells.slice();
   cells.splice(idx, 1);
-  return { rows: t.rows - 1, rowFractions: normalize(fr), cells };
+  const patch: Partial<TableElement> = { rows: t.rows - 1, rowFractions: normalize(fr), cells };
+  if (t.rowHeights) { const rh = t.rowHeights.slice(); rh.splice(idx, 1); patch.rowHeights = rh; }
+  return patch;
 }
 
 /** Remove column `at` (no-op if only one column remains). */
@@ -83,14 +88,15 @@ export function resizeColumn(t: TableElement, index: number, delta: number): Par
   return { colFractions: fr };
 }
 
-/** Resize the boundary between row `index` and `index+1` by `delta`. */
-export function resizeRow(t: TableElement, index: number, delta: number): Partial<TableElement> {
-  if (index < 0 || index >= t.rows - 1) return {};
-  const fr = t.rowFractions.slice();
-  const d = clampDelta(fr[index], fr[index + 1], delta);
-  fr[index] += d;
-  fr[index + 1] -= d;
-  return { rowFractions: fr };
+/** Set row `index`'s minimum height in px (content can still push it taller).
+ *  0 restores auto (content-driven) sizing. */
+export function setRowHeight(t: TableElement, index: number, height: number): Partial<TableElement> {
+  if (index < 0 || index >= t.rows) return {};
+  const rh = (t.rowHeights ?? Array.from({ length: t.rows }, () => 0)).slice();
+  rh.length = t.rows; // guard against a stale-length array
+  for (let i = 0; i < t.rows; i++) rh[i] = rh[i] ?? 0;
+  rh[index] = Math.max(0, Math.round(height));
+  return { rowHeights: rh };
 }
 
 function clamp(n: number, lo: number, hi: number): number {
