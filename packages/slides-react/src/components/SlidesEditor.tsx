@@ -46,7 +46,7 @@ export function SlidesEditor({ style, readOnly = false, headerActions }: SlidesE
     | null
   >(null);
   const [presenting, setPresenting] = useState(false);
-  const { ui } = useDeckContext();
+  const { ui, tableSel } = useDeckContext();
   const showComments = useCommentsOpen();
   const { onKeyDown } = useKeyboardShortcuts();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -73,14 +73,30 @@ export function SlidesEditor({ style, readOnly = false, headerActions }: SlidesE
         }
         if (target.closest('[data-slide-stage]')) {
           e.preventDefault();
-          // A table cell → cell menu (insert/delete rows·cols, fill). Otherwise
-          // the generic element menu. Elsewhere (toolbar/header/notes) → native.
+          // A table cell, or a row/column header gutter, → the table menu
+          // (insert/delete rows·cols, fill). Otherwise the generic element menu.
+          // Elsewhere (toolbar/header/notes) → native.
           const cellEl = target.closest('[data-cell]');
           const elEl = target.closest('[data-element-id]');
-          const tableId = elEl?.getAttribute('data-element-id');
-          if (cellEl && tableId && deck.getElement(tableId)?.type === 'table') {
+          const cellTableId = elEl?.getAttribute('data-element-id');
+          const rowSelEl = target.closest('[data-row-select]');
+          const colSelEl = target.closest('[data-col-select]');
+          const gripEl = target.closest('[data-table-move]');
+          // Gutters live in an overlay (no data-cell ancestor); they only show
+          // for the single selected table, so read it from the selection.
+          const gutterTableId = deck.getSelection().elementIds[0];
+          const gutterTable = gutterTableId ? deck.getElement(gutterTableId) : undefined;
+
+          if (cellEl && cellTableId && deck.getElement(cellTableId)?.type === 'table') {
             const [r, c] = cellEl.getAttribute('data-cell')!.split(',').map(Number);
-            setMenu({ x: e.clientX, y: e.clientY, kind: 'tableCell', tableId, row: r, col: c });
+            setMenu({ x: e.clientX, y: e.clientY, kind: 'tableCell', tableId: cellTableId, row: r, col: c });
+          } else if ((rowSelEl || colSelEl || gripEl) && gutterTable?.type === 'table') {
+            // Select the whole row/column first so the menu's fill/delete target
+            // it; the corner grip targets the top-left cell.
+            let r = 0, c = 0;
+            if (rowSelEl) { r = Number(rowSelEl.getAttribute('data-row-select')); tableSel.set(gutterTableId!, [r, 0], [r, gutterTable.cols - 1]); }
+            else if (colSelEl) { c = Number(colSelEl.getAttribute('data-col-select')); tableSel.set(gutterTableId!, [0, c], [gutterTable.rows - 1, c]); }
+            setMenu({ x: e.clientX, y: e.clientY, kind: 'tableCell', tableId: gutterTableId!, row: r, col: c });
           } else {
             setMenu({ x: e.clientX, y: e.clientY, kind: 'element' });
           }

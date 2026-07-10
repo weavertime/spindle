@@ -211,8 +211,12 @@ export interface TableElement extends ElementBase {
   cols: number;
   /** Column widths as fractions of the table width (sum ≈ 1). */
   colFractions: number[];
-  /** Row heights as fractions of the table height (sum ≈ 1). */
+  /** Row heights as fractions of the table height (sum ≈ 1). Legacy sizing; rows
+   *  are now content-driven with an optional per-row minimum (rowHeights). */
   rowFractions: number[];
+  /** Optional per-row minimum height in px (0/absent = auto). A row grows to fit
+   *  its content and can be dragged taller than the content via this minimum. */
+  rowHeights?: number[];
   /** Row-major grid: cells[row][col]. */
   cells: TableCell[][];
   /** Grid line style (applied to every cell edge). */

@@ -28,7 +28,7 @@ import {
   type LineElementInput,
   type TableElementInput,
 } from './scene/elements';
-import { insertRow, insertColumn, removeRow, removeColumn, resizeColumn, resizeRow } from './scene/table';
+import { insertRow, insertColumn, removeRow, removeColumn, resizeColumn, setRowHeight } from './scene/table';
 import {
   bringToFront as zBringToFront,
   sendToBack as zSendToBack,
@@ -415,6 +415,23 @@ export class DeckImpl {
     });
   }
 
+  /**
+   * Set an element's height to match its rendered content (a table whose rows
+   * are content-driven). This is a layout reflow, not a user edit, so it records
+   * NO history entry — otherwise undo would fight the reflow and the selection/
+   * gutter overlays (which read the frame) wouldn't line up with the table.
+   * A no-op if the height already matches (within a pixel).
+   */
+  syncElementHeight(id: string, h: number): void {
+    const el = this.elements.get(id);
+    if (!el || Math.abs(el.h - h) < 0.5) return;
+    this.events.batch(() => {
+      this.applyElementPatch(id, { h } as Partial<SlideElement>);
+      this.emit('elementChange', { slideId: el.containerId, elementId: id, keys: ['h'] });
+      this.reconcileConnectors(new Set([id]));
+    });
+  }
+
   /** Patch several elements as one undo entry and one event batch. */
   updateElements(patches: Array<{ id: string; patch: Partial<SlideElement> }>): void {
     this.recordHistory();
@@ -624,8 +641,25 @@ export class DeckImpl {
   insertTableColumn(id: string, at: number): void { this.tableOp(id, (t) => insertColumn(t, at)); }
   removeTableRow(id: string, at: number): void { this.tableOp(id, (t) => removeRow(t, at)); }
   removeTableColumn(id: string, at: number): void { this.tableOp(id, (t) => removeColumn(t, at)); }
+
+  /** Remove an inclusive range of rows/columns (a whole selection) in one undo. */
+  removeTableRows(id: string, from: number, to: number): void {
+    this.tableOp(id, (t) => {
+      let cur = t;
+      for (let r = to; r >= from; r--) cur = { ...cur, ...removeRow(cur, r) } as TableElement;
+      return { rows: cur.rows, rowFractions: cur.rowFractions, cells: cur.cells };
+    });
+  }
+  removeTableColumns(id: string, from: number, to: number): void {
+    this.tableOp(id, (t) => {
+      let cur = t;
+      for (let c = to; c >= from; c--) cur = { ...cur, ...removeColumn(cur, c) } as TableElement;
+      return { cols: cur.cols, colFractions: cur.colFractions, cells: cur.cells };
+    });
+  }
   resizeTableColumn(id: string, index: number, delta: number): void { this.tableOp(id, (t) => resizeColumn(t, index, delta)); }
-  resizeTableRow(id: string, index: number, delta: number): void { this.tableOp(id, (t) => resizeRow(t, index, delta)); }
+  /** Set row `index`'s minimum height in px (content can grow it further). */
+  setTableRowHeight(id: string, index: number, height: number): void { this.tableOp(id, (t) => setRowHeight(t, index, height)); }
 
   /** Replace one cell's rich text (cell editing commits through here). */
   setTableCellRichText(id: string, row: number, col: number, doc: RichTextDoc): void {
@@ -634,10 +668,32 @@ export class DeckImpl {
 
   /** Merge a patch into one cell (rich text, fill, body style). */
   updateTableCell(id: string, row: number, col: number, patch: Partial<TableCell>): void {
+    this.updateTableCells(id, [[row, col]], patch);
+  }
+
+  /** Merge a patch into many cells at once as a single undo (e.g. fill a whole
+   *  row/column/range). Cells outside the grid are ignored. */
+  updateTableCells(id: string, cells: ReadonlyArray<readonly [number, number]>, patch: Partial<TableCell>): void {
     this.tableOp(id, (t) => {
-      if (row < 0 || row >= t.rows || col < 0 || col >= t.cols) return {};
-      const cells = t.cells.map((r, ri) => (ri === row ? r.map((c, ci) => (ci === col ? { ...c, ...patch } : c)) : r));
-      return { cells };
+      const set = new Set<number>();
+      for (const [r, c] of cells) if (r >= 0 && r < t.rows && c >= 0 && c < t.cols) set.add(r * t.cols + c);
+      if (!set.size) return {};
+      const grid = t.cells.map((r, ri) => r.map((c, ci) => (set.has(ri * t.cols + ci) ? { ...c, ...patch } : c)));
+      return { cells: grid };
+    });
+  }
+
+  /** Apply a text format across many cells' rich text as a single undo (e.g.
+   *  bold an entire header row). */
+  applyTableCellsFormat(id: string, cells: ReadonlyArray<readonly [number, number]>, spec: TextFormatSpec): void {
+    this.tableOp(id, (t) => {
+      const set = new Set<number>();
+      for (const [r, c] of cells) if (r >= 0 && r < t.rows && c >= 0 && c < t.cols) set.add(r * t.cols + c);
+      if (!set.size) return {};
+      const grid = t.cells.map((r, ri) =>
+        r.map((c, ci) => (set.has(ri * t.cols + ci) ? { ...c, richText: applyTextFormat(c.richText, spec) } : c))
+      );
+      return { cells: grid };
     });
   }
 

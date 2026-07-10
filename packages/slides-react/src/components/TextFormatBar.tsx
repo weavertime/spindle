@@ -5,12 +5,13 @@
 // JSON (idle, whole-body) otherwise. Renders nothing unless a single text/shape
 // element is selected or being edited.
 
-import React from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { Bold, Italic, Underline, Strikethrough, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, Link, Highlighter } from 'lucide-react';
 import type { TextFormatSpec, TextAlign, ListType } from '@weavertime/spindle-slides-core';
 import { useDeck, useSelection, useEditingId } from '../hooks';
 import { useDeckContext } from '../context/DeckContext';
 import { applyFormat } from '../interactions/formatting';
+import { cellsInSelection } from '../interactions/table-selection-store';
 import { ToolbarButton, ToolbarDivider } from './toolbarUI';
 
 const FONT_SIZES = [12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 54, 66, 80];
@@ -43,15 +44,20 @@ function idleTextTarget(deck: ReturnType<typeof useDeck>, ids: string[]): string
 
 export function TextFormatBar(): React.ReactElement | null {
   const deck = useDeck();
-  const { editing } = useDeckContext();
+  const { editing, tableSel } = useDeckContext();
   const selection = useSelection();
   const editingId = useEditingId();
+  const sel = useSyncExternalStore(tableSel.subscribe, tableSel.getState);
 
+  // A cell-range selection (not editing) formats every cell at once — e.g. bold
+  // + color a whole header row in one action.
+  const cellRange = !editingId && sel ? sel : null;
   const elementId = editingId ?? idleTextTarget(deck, selection.elementIds);
-  if (!elementId) return null;
+  if (!elementId && !cellRange) return null;
 
+  const tableCells = cellRange ? { tableId: cellRange.tableId, cells: cellsInSelection(cellRange) } : null;
   const fmt = (spec: TextFormatSpec) => {
-    applyFormat({ editingView: editing.getView(), deck, elementId }, spec);
+    applyFormat({ editingView: editing.getView(), deck, elementId, tableCells }, spec);
   };
 
   return (

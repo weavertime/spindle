@@ -1,6 +1,7 @@
 import { DeckImpl } from './deck';
 import type { DeckData, DeckEventType, ElementChangePayload } from './types';
-import { richTextFromPlainText } from './text/model';
+import type { TableElement } from './scene/types';
+import { richTextFromPlainText, docHasMark } from './text/model';
 
 function capture(deck: DeckImpl, event: DeckEventType): unknown[] {
   const seen: unknown[] = [];
@@ -348,5 +349,84 @@ describe('connectors (bound lines track their shapes)', () => {
     deck.undo();
     expect(deck.getElement(conn.id)!.x).toBe(before); // connector restored too
     expect(deck.getElement(a.id)!.x).toBe(0);
+  });
+});
+
+describe('table multi-cell ops', () => {
+  function withTable() {
+    const deck = new DeckImpl();
+    const slide = deck.getActiveSlideId();
+    const t = deck.addElement(slide, { type: 'table', rows: 3, cols: 3 });
+    return { deck, id: t.id };
+  }
+  const fillOf = (deck: DeckImpl, id: string, r: number, c: number) =>
+    (deck.getElement(id) as TableElement).cells[r][c].fill;
+
+  it('fills a whole row in one undo, leaving other rows untouched', () => {
+    const { deck, id } = withTable();
+    const row0: Array<[number, number]> = [[0, 0], [0, 1], [0, 2]];
+    deck.updateTableCells(id, row0, { fill: { kind: 'solid', color: { kind: 'rgb', hex: '#112233' } } });
+    for (let c = 0; c < 3; c++) expect(fillOf(deck, id, 0, c)).toBeDefined();
+    expect(fillOf(deck, id, 1, 0)).toBeUndefined();
+    deck.undo();
+    expect(fillOf(deck, id, 0, 0)).toBeUndefined(); // single undo reverts the whole row
+  });
+
+  it('ignores cells outside the grid', () => {
+    const { deck, id } = withTable();
+    deck.updateTableCells(id, [[0, 0], [9, 9], [-1, 0]], { fill: { kind: 'solid', color: { kind: 'rgb', hex: '#abcdef' } } });
+    expect(fillOf(deck, id, 0, 0)).toBeDefined();
+  });
+
+  it('bolds a header row across cells as one undo', () => {
+    const { deck, id } = withTable();
+    for (let c = 0; c < 3; c++) deck.setTableCellRichText(id, 0, c, richTextFromPlainText(`H${c}`));
+    deck.applyTableCellsFormat(id, [[0, 0], [0, 1], [0, 2]], { toggleMark: 'bold' });
+    const cells = (deck.getElement(id) as TableElement).cells;
+    for (let c = 0; c < 3; c++) expect(docHasMark(cells[0][c].richText, 'bold')).toBe(true);
+    expect(docHasMark(cells[1][0].richText, 'bold')).toBe(false);
+    deck.undo();
+    expect(docHasMark((deck.getElement(id) as TableElement).cells[0][0].richText, 'bold')).toBe(false);
+  });
+});
+
+describe('table height sync', () => {
+  it('sets the frame height to the measured content height (up or down)', () => {
+    const deck = new DeckImpl();
+    const slide = deck.getActiveSlideId();
+    const t = deck.addElement(slide, { type: 'table', rows: 2, cols: 2, h: 100 });
+    deck.syncElementHeight(t.id, 260);
+    expect(deck.getElement(t.id)!.h).toBe(260);
+    deck.syncElementHeight(t.id, 180); // content shrank (row deleted) → follows down
+    expect(deck.getElement(t.id)!.h).toBe(180);
+  });
+
+  it('records no undo entry (a reflow is not a user edit)', () => {
+    const deck = new DeckImpl();
+    const slide = deck.getActiveSlideId();
+    const t = deck.addElement(slide, { type: 'table', rows: 2, cols: 2, h: 100, x: 10 });
+    deck.updateElement(t.id, { x: 50 }); // a real edit (records history)
+    deck.syncElementHeight(t.id, 300);
+    deck.undo(); // undoes the x move; the height sync left no separate entry
+    expect(deck.getElement(t.id)!.x).toBe(10);
+  });
+});
+
+describe('table batch row/column removal', () => {
+  it('removes an inclusive row range in one undo', () => {
+    const deck = new DeckImpl();
+    const slide = deck.getActiveSlideId();
+    const t = deck.addElement(slide, { type: 'table', rows: 4, cols: 2 });
+    deck.removeTableRows(t.id, 1, 2); // remove rows 1..2
+    expect((deck.getElement(t.id) as TableElement).rows).toBe(2);
+    deck.undo();
+    expect((deck.getElement(t.id) as TableElement).rows).toBe(4); // single undo restores both
+  });
+  it('never removes the last column', () => {
+    const deck = new DeckImpl();
+    const slide = deck.getActiveSlideId();
+    const t = deck.addElement(slide, { type: 'table', rows: 2, cols: 3 });
+    deck.removeTableColumns(t.id, 0, 2); // would remove all → clamps to 1
+    expect((deck.getElement(t.id) as TableElement).cols).toBe(1);
   });
 });

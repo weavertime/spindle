@@ -47,9 +47,13 @@ export interface FormatTarget {
   deck: DeckImpl;
   /** Selected element (idle path) when not editing. */
   elementId: string | null;
+  /** A table cell-range to format (idle path) — takes priority over elementId
+   *  when no cell is being edited, so a whole header row formats at once. */
+  tableCells?: { tableId: string; cells: Array<[number, number]> } | null;
 }
 
 export function applyFormat(target: FormatTarget, spec: TextFormatSpec): void {
   if (target.editingView) applyToView(target.editingView, spec);
+  else if (target.tableCells && target.tableCells.cells.length) target.deck.applyTableCellsFormat(target.tableCells.tableId, target.tableCells.cells, spec);
   else if (target.elementId) target.deck.applyTextFormat(target.elementId, spec);
 }

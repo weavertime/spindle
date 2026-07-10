@@ -75,6 +75,20 @@ function RotateHandle({ cx, top, hs }: { cx: number; top: number; hs: number }):
   );
 }
 
+/** Thin grab strips along a selected table's four edges. Its body is busy
+ *  selecting cells, so dragging the border is how you move the whole table. */
+function TableMoveBands({ w, h, bt }: { w: number; h: number; bt: number }): React.ReactElement {
+  const band: React.CSSProperties = { position: 'absolute', background: 'transparent', cursor: 'move', pointerEvents: 'auto' };
+  return (
+    <>
+      <div data-table-move="1" style={{ ...band, left: 0, top: -bt / 2, width: w, height: bt }} />
+      <div data-table-move="1" style={{ ...band, left: 0, top: h - bt / 2, width: w, height: bt }} />
+      <div data-table-move="1" style={{ ...band, left: -bt / 2, top: 0, width: bt, height: h }} />
+      <div data-table-move="1" style={{ ...band, left: w - bt / 2, top: 0, width: bt, height: h }} />
+    </>
+  );
+}
+
 /** A round handle at a line tip; drag it to resize+rotate the line at once. */
 function EndpointHandle({ end, x, y, hs }: { end: 'start' | 'end'; x: number; y: number; hs: number }): React.ReactElement {
   return (
@@ -161,6 +175,7 @@ export function SelectionOverlay({ scale }: { scale: number }): React.ReactEleme
           }}
         >
           <div style={{ position: 'absolute', inset: 0, border: `${border}px solid ${ACCENT}`, boxSizing: 'border-box' }} />
+          {only.type === 'table' && <TableMoveBands w={f.w} h={f.h} bt={hs} />}
           <RotateHandle cx={f.w / 2} top={0} hs={hs} />
           {(['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const).map((name) => {
             const px = name.includes('w') ? 0 : name.includes('e') ? f.w : f.w / 2;
