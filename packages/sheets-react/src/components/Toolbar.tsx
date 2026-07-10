@@ -1,4 +1,5 @@
 import React, { memo, useState, useEffect, useRef, useMemo } from 'react';
+import { ResponsiveToolbar } from '@weavertime/spindle-shared/react';
 import { HyperlinkModal } from './HyperlinkModal';
 import type { FormatType } from '@weavertime/spindle-sheets-core';
 import {
@@ -57,9 +58,9 @@ const styles = {
     fontFamily: '"Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
     position: 'relative' as const,
     zIndex: 100,
-    margin: '8px auto',
-    maxWidth: 'fit-content',
-    flexWrap: 'wrap' as const,
+    margin: '8px 0',
+    width: '100%',
+    boxSizing: 'border-box' as const,
   } as React.CSSProperties,
 
   // Button base style
@@ -762,6 +763,7 @@ export const Toolbar = memo(function Toolbar({
 
   return (
     <div ref={toolbarRef} className="sheets-toolbar" style={styles.toolbar}>
+      <ResponsiveToolbar gap={2}>
       {/* Undo / Redo */}
       <ToolbarButton onClick={onUndo} tooltip="Undo (Ctrl+Z)">
         <Undo2 size={18} strokeWidth={2} />
@@ -1247,6 +1249,7 @@ export const Toolbar = memo(function Toolbar({
       <ToolbarButton onClick={onToggleComments} active={commentsActive} tooltip="Comments">
         <MessageSquare size={18} strokeWidth={2} />
       </ToolbarButton>
+      </ResponsiveToolbar>
 
       {/* Hyperlink Modal */}
       <HyperlinkModal
