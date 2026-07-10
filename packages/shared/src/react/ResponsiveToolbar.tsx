@@ -1,20 +1,15 @@
-// ResponsiveToolbar — lays its children out in a single full-width row and, when
-// they don't all fit, collapses the trailing ones into an overflow menu. Shared
-// by the docs, sheets, and slides toolbars so they behave identically at any
-// width: wide → everything inline; narrow → some inline + overflow; the menu
-// holds nearly everything at the smallest sizes (a menu-style toolbar).
+// ResponsiveToolbar — lays its children out in a single full-width row. When
+// they don't all fit, the trailing ones collapse into an overflow surface that
+// is PORTALED to <body> (so it can't be clipped or covered by the editor's own
+// stacking contexts). On desktop that surface is a dropdown under the "⋯"; on
+// mobile (≤640px) the whole toolbar collapses to a "Tools" button that opens a
+// bottom sheet holding ALL the tools.
 //
-// The overflow surface is PORTALED to <body> so it can't be clipped or covered
-// by the editor's own stacking contexts / overflow — a plain absolutely-
-// positioned popover inside the toolbar gets trapped by those. On desktop it's a
-// dropdown anchored under the "⋯"; on mobile (≤640px) it's a bottom sheet. Both
-// show the same structured icon + label list, with real separators where the
-// toolbar had dividers.
-//
-// Widths are measured from the real rendered items (no hidden double-render) and
-// cached by index; on resize we recompute how many fit. The inline row never
-// overflows — items that don't fit move into the menu — so tooltips/dropdowns
-// that rely on `overflow: visible` keep working.
+// The overflow surface is a structured vertical list: each control on its own
+// row with its label (from the child's title/tooltip). The whole row is
+// clickable — a tap on the label forwards to the control — so labels aren't
+// dead. The surface measures its own rows, so controls that render nothing
+// (an inactive contextual format bar) collapse away and reappear live.
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -31,17 +26,21 @@ export interface ResponsiveToolbarProps {
   className?: string;
 }
 
-// Below this measured width an item is treated as a divider (toolbar dividers
-// are ~1px wide + margins ≈ 13px; the smallest real control is ~28px).
-const DIVIDER_MAX_W = 18;
+// Rows narrower than this (a divider ≈13px, or an empty/inactive control = 0)
+// are hidden in the overflow surface.
+const MIN_ROW_W = 18;
 const MOBILE_MAX_W = 640;
 const Z = 2147483000; // above any editor overlay
 
+function isMobileNow(): boolean {
+  return typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(`(max-width: ${MOBILE_MAX_W}px)`).matches;
+}
+
 const moreButtonStyle: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  width: 32, height: 32, flex: '0 0 auto', border: 'none', borderRadius: 8,
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+  height: 32, padding: '0 8px', flex: '0 0 auto', border: 'none', borderRadius: 8,
   background: 'transparent', color: '#64748b', cursor: 'pointer', fontSize: 18,
-  lineHeight: 1, fontFamily: 'inherit',
+  lineHeight: 1, fontFamily: 'inherit', fontWeight: 500,
 };
 
 const panelBase: React.CSSProperties = {
@@ -50,8 +49,6 @@ const panelBase: React.CSSProperties = {
   overflowY: 'auto', overflowX: 'hidden',
 };
 
-// Flatten fragments so a grouped `<>…</>` of controls becomes individual items
-// (each measurable, each its own labelled row) instead of one opaque cluster.
 function flattenChildren(children: React.ReactNode): React.ReactNode[] {
   const out: React.ReactNode[] = [];
   React.Children.forEach(children, (child) => {
@@ -96,15 +93,18 @@ export function ResponsiveToolbar({
   const moreRef = useRef<HTMLButtonElement>(null);
   const widths = useRef<number[]>([]);
   const moreW = useRef(40);
+  const rowRefs = useRef<Record<number, HTMLElement | null>>({});
+  const rowW = useRef<Record<number, number>>({});
 
-  const [visible, setVisible] = useState(n);
+  const initMobile = isMobileNow();
+  const [isMobile, setIsMobile] = useState(initMobile);
+  const [visible, setVisible] = useState(initMobile ? 0 : n);
   const [open, setOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
   const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null);
+  const [, bump] = useState(0);
 
   useEffect(ensureStyles, []);
 
-  // Track the mobile breakpoint.
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return;
     const mq = window.matchMedia(`(max-width: ${MOBILE_MAX_W}px)`);
@@ -114,19 +114,20 @@ export function ResponsiveToolbar({
     return () => mq.removeEventListener('change', on);
   }, []);
 
+  // Desktop: measure inline items and compute how many fit. Mobile: everything
+  // lives in the sheet, so nothing stays inline.
   const measure = useCallback(() => {
     const container = containerRef.current;
     if (!container) return;
+    if (isMobile) { setVisible((v) => (v === 0 ? v : 0)); return; }
     for (let i = 0; i < itemRefs.current.length; i++) {
       const el = itemRefs.current[i];
       if (el) widths.current[i] = el.offsetWidth;
     }
     if (moreRef.current) moreW.current = moreRef.current.offsetWidth;
-
     const avail = container.clientWidth;
     let total = 0;
     for (let i = 0; i < n; i++) total += (widths.current[i] || 0) + (i > 0 ? gap : 0);
-
     let count: number;
     if (total <= avail + 0.5) {
       count = n;
@@ -140,7 +141,7 @@ export function ResponsiveToolbar({
       }
     }
     setVisible((prev) => (prev === count ? prev : count));
-  }, [n, gap]);
+  }, [n, gap, isMobile]);
 
   useLayoutEffect(() => { measure(); });
 
@@ -152,7 +153,30 @@ export function ResponsiveToolbar({
     return () => ro.disconnect();
   }, [measure]);
 
-  // Keep the desktop dropdown anchored to the "⋯" button (follows scroll/resize).
+  // On mobile everything overflows; on desktop only what didn't fit.
+  const overflow = isMobile ? n > 0 : visible < n;
+  const firstOverflow = isMobile ? 0 : visible;
+
+  // Measure the surface's own rows while open, so empty (inactive) controls and
+  // dividers collapse — and reappear when they become active.
+  useLayoutEffect(() => {
+    if (!open) return;
+    let changed = false;
+    for (let i = firstOverflow; i < n; i++) {
+      const el = rowRefs.current[i];
+      if (!el) continue;
+      // Measure the natural content, not the (possibly flex-grown) wrapper: an
+      // empty control has no child, a divider has one thin child.
+      const w = el.childElementCount === 0 ? 0 : (el.firstElementChild as HTMLElement).offsetWidth;
+      if (rowW.current[i] !== w) { rowW.current[i] = w; changed = true; }
+    }
+    if (changed) bump((x) => x + 1);
+    // Runs every render so live content changes (a format bar becoming active
+    // while the surface is open) re-measure; the `changed` guard stops the loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+
+  // Anchor the desktop dropdown to the "⋯" (follows scroll/resize).
   useLayoutEffect(() => {
     if (!open || isMobile) return;
     const update = () => {
@@ -167,7 +191,6 @@ export function ResponsiveToolbar({
     return () => { window.removeEventListener('resize', update); window.removeEventListener('scroll', update, true); };
   }, [open, isMobile]);
 
-  // Close on Escape.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
@@ -175,59 +198,56 @@ export function ResponsiveToolbar({
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
-  const overflow = visible < n;
-
-  // Build the menu rows: a labelled row per control, a thin rule where the
-  // toolbar had a divider (skipping leading/duplicate/trailing dividers).
-  const rows: React.ReactNode[] = [];
-  if (overflow) {
-    let lastDivider = true;
-    for (let i = visible; i < n; i++) {
-      const item = items[i];
-      const w = widths.current[i];
-      // Skip controls that render nothing (e.g. a contextual format bar that's
-      // inactive) — they measured to 0 width and would leave blank rows.
-      if (w === 0) continue;
-      if (w != null && w > 0 && w < DIVIDER_MAX_W) {
-        if (!lastDivider) { rows.push(<div key={`d${i}`} style={{ height: 1, margin: '4px 10px', background: 'rgba(15,23,42,0.08)', flex: '0 0 auto' }} />); lastDivider = true; }
-        continue;
-      }
-      const label = getLabel(item);
-      rows.push(
-        <div
-          key={`i${i}`}
-          role="menuitem"
-          className={label ? 'sp-rt-menuitem' : undefined}
-          onClick={label ? () => setOpen(false) : undefined}
-          style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 34, padding: '2px 12px 2px 6px', borderRadius: 8, cursor: label ? 'pointer' : 'default' }}
-        >
-          {/* Labelled single controls: icon then label. Unlabelled clusters
-              (e.g. a whole format bar): let the controls wrap to fill the row. */}
-          <span style={label
-            ? { display: 'inline-flex', alignItems: 'center', flex: '0 0 auto' }
-            : { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, flex: '1 1 auto', minWidth: 0 }}>{item}</span>
-          {label && <span style={{ fontSize: 14, color: '#334155', whiteSpace: 'nowrap', fontFamily: 'inherit' }}>{label}</span>}
-        </div>
-      );
-      lastDivider = false;
+  // A whole row is one click target: a tap anywhere forwards to the control
+  // inside (so the label isn't dead), then closes the surface.
+  const onRowClick = (e: React.MouseEvent) => {
+    const control = (e.currentTarget as HTMLElement).querySelector('[data-rt-control]');
+    const target = e.target as Node;
+    if (control && !control.contains(target)) {
+      const el = control.querySelector('button, [role="button"], a, input, select') as HTMLElement | null;
+      if (el) { el.click(); }
     }
-    while (rows.length && (rows[rows.length - 1] as React.ReactElement).key?.toString().startsWith('d')) rows.pop();
-  }
+    setOpen(false);
+  };
 
-  const backdrop = (dim: boolean): React.CSSProperties => ({
-    position: 'fixed', inset: 0, zIndex: Z,
-    background: dim ? 'rgba(15,23,42,0.35)' : 'transparent',
-    animation: dim ? 'sp-rt-fade .15s ease' : undefined,
-  });
+  const rows: React.ReactNode[] = [];
+  for (let i = firstOverflow; i < n; i++) {
+    const item = items[i];
+    const w = rowW.current[i];
+    const hidden = w !== undefined && w < MIN_ROW_W; // empty control or divider
+    const label = getLabel(item);
+    rows.push(
+      <div
+        key={i}
+        role="menuitem"
+        className={hidden ? undefined : 'sp-rt-menuitem'}
+        onClick={hidden ? undefined : onRowClick}
+        style={hidden
+          ? { height: 0, minHeight: 0, padding: 0, margin: 0, overflow: 'hidden' }
+          : { display: 'flex', alignItems: 'center', gap: 12, minHeight: 40, padding: '3px 12px 3px 8px', borderRadius: 8, cursor: 'pointer' }}
+      >
+        <span
+          data-rt-control
+          ref={(el) => { rowRefs.current[i] = el; }}
+          style={label
+            ? { display: 'inline-flex', alignItems: 'center', flex: '0 0 auto' }
+            : { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, flex: '1 1 auto', minWidth: 0 }}
+        >
+          {item}
+        </span>
+        {!hidden && label && <span style={{ fontSize: 14, color: '#334155', whiteSpace: 'nowrap', fontFamily: 'inherit' }}>{label}</span>}
+      </div>
+    );
+  }
 
   const dropdown = anchor && (
     <>
-      <div onClick={() => setOpen(false)} style={backdrop(false)} />
+      <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: Z }} />
       <div
         role="menu"
         style={{
           ...panelBase, position: 'fixed', top: anchor.top, right: anchor.right, zIndex: Z + 1,
-          minWidth: 216, maxWidth: 340, maxHeight: '70vh', padding: 6, borderRadius: 12,
+          minWidth: 220, maxWidth: 340, maxHeight: '70vh', padding: 6, borderRadius: 12,
           border: '1px solid rgba(15,23,42,0.08)',
           boxShadow: '0 16px 40px -12px rgba(0,0,0,0.38), 0 2px 8px rgba(0,0,0,0.08)',
           animation: 'sp-rt-pop .12s ease',
@@ -240,21 +260,21 @@ export function ResponsiveToolbar({
 
   const sheet = (
     <>
-      <div onClick={() => setOpen(false)} style={backdrop(true)} />
+      <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: Z, background: 'rgba(15,23,42,0.35)', animation: 'sp-rt-fade .15s ease' }} />
       <div
         role="menu"
         style={{
           ...panelBase, position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: Z + 1,
-          maxHeight: '78vh', padding: '6px 8px calc(16px + env(safe-area-inset-bottom))',
+          maxHeight: '80vh', padding: '6px 8px calc(16px + env(safe-area-inset-bottom))',
           borderTopLeftRadius: 18, borderTopRightRadius: 18,
           boxShadow: '0 -12px 40px -8px rgba(0,0,0,0.35)',
           animation: 'sp-rt-sheet .22s cubic-bezier(0.32,0.72,0,1)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', padding: '6px 6px 8px', position: 'sticky', top: 0, background: '#fff' }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '10px 6px 8px', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
           <div style={{ position: 'absolute', top: 4, left: '50%', transform: 'translateX(-50%)', width: 36, height: 4, borderRadius: 2, background: 'rgba(15,23,42,0.18)' }} />
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#64748b', letterSpacing: 0.2 }}>{moreLabel}</span>
-          <button type="button" aria-label="Close" onClick={() => setOpen(false)} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', color: '#64748b', fontSize: 20, lineHeight: 1, cursor: 'pointer', padding: 4 }}>×</button>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#64748b', letterSpacing: 0.2 }}>Tools</span>
+          <button type="button" aria-label="Close" onClick={() => setOpen(false)} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', color: '#64748b', fontSize: 22, lineHeight: 1, cursor: 'pointer', padding: 4 }}>×</button>
         </div>
         {rows}
       </div>
@@ -267,14 +287,14 @@ export function ResponsiveToolbar({
       className={className}
       style={{ display: 'flex', alignItems: 'center', gap, width: '100%', minWidth: 0, ...style }}
     >
-      {items.slice(0, visible).map((item, i) => (
+      {!isMobile && items.slice(0, visible).map((item, i) => (
         <div key={i} ref={(el) => { itemRefs.current[i] = el; }} style={{ display: 'inline-flex', alignItems: 'center', flex: '0 0 auto' }}>
           {item}
         </div>
       ))}
 
       {overflow && (
-        <div style={{ marginLeft: 'auto', flex: '0 0 auto', display: 'inline-flex' }}>
+        <div style={{ marginLeft: isMobile ? undefined : 'auto', flex: '0 0 auto', display: 'inline-flex' }}>
           <button
             ref={moreRef}
             type="button"
@@ -286,7 +306,9 @@ export function ResponsiveToolbar({
             onClick={() => setOpen((o) => !o)}
             style={moreButtonStyle}
           >
-            {moreIcon ?? '⋯'}
+            {isMobile
+              ? <><span aria-hidden style={{ fontSize: 16, lineHeight: 1 }}>☰</span><span style={{ fontSize: 14 }}>Tools</span></>
+              : (moreIcon ?? '⋯')}
           </button>
         </div>
       )}
