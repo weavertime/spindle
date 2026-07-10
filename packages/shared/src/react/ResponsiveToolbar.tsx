@@ -13,6 +13,7 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { ToolbarMenuContext, type ToolbarMenuApi } from './toolbar-menu';
 
 export interface ResponsiveToolbarProps {
   /** Toolbar items, in priority order (earliest stay inline the longest). */
@@ -101,7 +102,15 @@ export function ResponsiveToolbar({
   const [visible, setVisible] = useState(initMobile ? 0 : n);
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null);
+  const [modal, setModal] = useState<{ title: string; content: React.ReactNode } | null>(null);
   const [, bump] = useState(0);
+
+  const menuApi: ToolbarMenuApi = {
+    inMenu: true,
+    openModal: (title, content) => setModal({ title, content }),
+    closeModal: () => setModal(null),
+    closeMenu: () => { setModal(null); setOpen(false); },
+  };
 
   useEffect(ensureStyles, []);
 
@@ -224,19 +233,23 @@ export function ResponsiveToolbar({
     rows.push(
       <div
         key={i}
-        role="menuitem"
+        role={clickable ? 'menuitem' : undefined}
         className={clickable ? 'sp-rt-menuitem' : undefined}
         onClick={clickable ? onRowClick : undefined}
         style={hidden
           ? { height: 0, minHeight: 0, padding: 0, margin: 0, overflow: 'hidden' }
-          : { display: 'flex', alignItems: 'center', gap: 12, minHeight: 40, padding: '3px 12px 3px 8px', borderRadius: 8, cursor: clickable ? 'pointer' : 'default' }}
+          : label
+            ? { display: 'flex', alignItems: 'center', gap: 12, minHeight: 40, padding: '3px 12px 3px 8px', borderRadius: 8, cursor: 'pointer' }
+            : { width: '100%' }}
       >
         <span
           data-rt-control
           ref={(el) => { rowRefs.current[i] = el; }}
           style={label
             ? { display: 'inline-flex', alignItems: 'center', flex: '0 0 auto' }
-            : { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, flex: '1 1 auto', minWidth: 0 }}
+            // Menu-mode / cluster controls own their layout (they render their
+            // own MenuRows via useToolbarMenu, or wrap their buttons).
+            : { display: 'block', width: '100%' }}
         >
           {item}
         </span>
@@ -258,7 +271,7 @@ export function ResponsiveToolbar({
           animation: 'sp-rt-pop .12s ease',
         }}
       >
-        {rows}
+        <ToolbarMenuContext.Provider value={menuApi}>{rows}</ToolbarMenuContext.Provider>
       </div>
     </>
   );
@@ -281,7 +294,33 @@ export function ResponsiveToolbar({
           <span style={{ fontSize: 13, fontWeight: 600, color: '#64748b', letterSpacing: 0.2 }}>Tools</span>
           <button type="button" aria-label="Close" onClick={() => setOpen(false)} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', color: '#64748b', fontSize: 22, lineHeight: 1, cursor: 'pointer', padding: 4 }}>×</button>
         </div>
-        {rows}
+        <ToolbarMenuContext.Provider value={menuApi}>{rows}</ToolbarMenuContext.Provider>
+      </div>
+    </>
+  );
+
+  // A control's options open here — portaled above the surface, so a shape grid
+  // / colour swatches / theme list render cleanly regardless of the editor.
+  const modalEl = modal && (
+    <>
+      <div onClick={() => setModal(null)} style={{ position: 'fixed', inset: 0, zIndex: Z + 2, background: 'rgba(15,23,42,0.45)', animation: 'sp-rt-fade .15s ease' }} />
+      <div
+        role="dialog"
+        aria-label={modal.title}
+        style={{
+          position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', zIndex: Z + 3,
+          width: 'min(94vw, 440px)', maxHeight: '82vh', overflowY: 'auto', boxSizing: 'border-box',
+          background: '#fff', borderRadius: 16, padding: 16, fontFamily: 'inherit',
+          boxShadow: '0 24px 60px -16px rgba(0,0,0,0.45), 0 0 0 1px rgba(0,0,0,0.06)',
+          animation: 'sp-rt-pop .14s ease',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <button type="button" aria-label="Back" onClick={() => setModal(null)} style={{ border: 'none', background: 'transparent', color: '#64748b', fontSize: 22, lineHeight: 1, cursor: 'pointer', padding: '0 4px' }}>‹</button>
+          <span style={{ fontSize: 15, fontWeight: 600, color: '#1f2937' }}>{modal.title}</span>
+          <button type="button" aria-label="Close" onClick={() => { setModal(null); setOpen(false); }} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', color: '#64748b', fontSize: 22, lineHeight: 1, cursor: 'pointer', padding: 4 }}>×</button>
+        </div>
+        {modal.content}
       </div>
     </>
   );
@@ -319,6 +358,7 @@ export function ResponsiveToolbar({
       )}
 
       {open && overflow && typeof document !== 'undefined' && createPortal(isMobile ? sheet : dropdown, document.body)}
+      {modalEl && typeof document !== 'undefined' && createPortal(modalEl, document.body)}
     </div>
   );
 }

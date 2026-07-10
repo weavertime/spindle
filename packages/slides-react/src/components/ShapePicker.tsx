@@ -6,6 +6,7 @@
 import React, { useRef, useState } from 'react';
 import { Shapes as ShapesIcon, ChevronDown } from 'lucide-react';
 import type { ShapePreset, NewElementSpec } from '@weavertime/spindle-slides-core';
+import { useToolbarMenu, MenuRow } from '@weavertime/spindle-shared/react';
 import { shapeGeom } from './elements/shapes';
 import { useDeck } from '../hooks';
 import { Popover } from './Popover';
@@ -34,6 +35,7 @@ function ShapeIcon({ preset }: { preset: ShapePreset }): React.ReactElement {
 
 export function ShapePicker(): React.ReactElement {
   const deck = useDeck();
+  const menu = useToolbarMenu();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const { w, h } = deck.getSlideSize();
@@ -51,6 +53,34 @@ export function ShapePicker(): React.ReactElement {
     setOpen(false);
   };
 
+  const grid = (cell: number, onPick: (p: ShapePreset) => void) => (
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, ${cell}px)`, gap: 6, justifyContent: 'center' }}>
+      {PRESETS.map((p) => (
+        <button
+          key={p}
+          title={p}
+          onClick={() => onPick(p)}
+          style={{ width: cell, height: cell, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid transparent', borderRadius: 6, background: '#fff', cursor: 'pointer' }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = '#f1f4f8')}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = '#fff')}
+        >
+          <ShapeIcon preset={p} />
+        </button>
+      ))}
+    </div>
+  );
+
+  // Overflow-menu mode: a row that opens the shape grid in a modal.
+  if (menu.inMenu) {
+    return (
+      <MenuRow
+        icon={<ShapesIcon size={17} />}
+        label="Shape"
+        onClick={() => menu.openModal('Insert shape', grid(44, (p) => { insert(p); menu.closeMenu(); }))}
+      />
+    );
+  }
+
   return (
     <>
       <button ref={anchorRef} title="Shapes" style={btn} onClick={() => setOpen((o) => !o)}>
@@ -59,20 +89,7 @@ export function ShapePicker(): React.ReactElement {
       </button>
       {open && (
         <Popover anchor={anchorRef.current} onClose={() => setOpen(false)}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 32px)', gap: 4 }}>
-            {PRESETS.map((p) => (
-              <button
-                key={p}
-                title={p}
-                onClick={() => insert(p)}
-                style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid transparent', borderRadius: 5, background: '#fff', cursor: 'pointer' }}
-                onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = '#f1f4f8')}
-                onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = '#fff')}
-              >
-                <ShapeIcon preset={p} />
-              </button>
-            ))}
-          </div>
+          {grid(32, insert)}
         </Popover>
       )}
     </>
