@@ -12,6 +12,7 @@ import { SlideStage } from './SlideStage';
 import { NotesPanel } from './NotesPanel';
 import { ContextMenu } from './ContextMenu';
 import { SlideContextMenu } from './SlideContextMenu';
+import { TableCellMenu } from './TableCellMenu';
 import { PresentMode } from './PresentMode';
 import { CommentsPanel } from './CommentsPanel';
 
@@ -41,6 +42,7 @@ export function SlidesEditor({ style, readOnly = false, headerActions }: SlidesE
   const [menu, setMenu] = useState<
     | { x: number; y: number; kind: 'element' }
     | { x: number; y: number; kind: 'slide'; slideId: string }
+    | { x: number; y: number; kind: 'tableCell'; tableId: string; row: number; col: number }
     | null
   >(null);
   const [presenting, setPresenting] = useState(false);
@@ -69,11 +71,19 @@ export function SlidesEditor({ style, readOnly = false, headerActions }: SlidesE
           setMenu({ x: e.clientX, y: e.clientY, kind: 'slide', slideId: thumb.getAttribute('data-slide-thumb')! });
           return;
         }
-        // Anywhere on the editing stage → element menu. Elsewhere (toolbar,
-        // header, notes) → leave the native menu, no custom popup.
         if (target.closest('[data-slide-stage]')) {
           e.preventDefault();
-          setMenu({ x: e.clientX, y: e.clientY, kind: 'element' });
+          // A table cell → cell menu (insert/delete rows·cols, fill). Otherwise
+          // the generic element menu. Elsewhere (toolbar/header/notes) → native.
+          const cellEl = target.closest('[data-cell]');
+          const elEl = target.closest('[data-element-id]');
+          const tableId = elEl?.getAttribute('data-element-id');
+          if (cellEl && tableId && deck.getElement(tableId)?.type === 'table') {
+            const [r, c] = cellEl.getAttribute('data-cell')!.split(',').map(Number);
+            setMenu({ x: e.clientX, y: e.clientY, kind: 'tableCell', tableId, row: r, col: c });
+          } else {
+            setMenu({ x: e.clientX, y: e.clientY, kind: 'element' });
+          }
         }
       }}
       style={{
@@ -137,6 +147,7 @@ export function SlidesEditor({ style, readOnly = false, headerActions }: SlidesE
       </div>
       {menu?.kind === 'element' && <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
       {menu?.kind === 'slide' && <SlideContextMenu slideId={menu.slideId} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
+      {menu?.kind === 'tableCell' && <TableCellMenu tableId={menu.tableId} row={menu.row} col={menu.col} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
       {presenting && <PresentMode onExit={() => setPresenting(false)} />}
     </div>
   );

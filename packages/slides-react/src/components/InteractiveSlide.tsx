@@ -14,6 +14,7 @@ import { SelectionOverlay } from './SelectionOverlay';
 import { RemotePresenceOverlay } from './RemotePresenceOverlay';
 import { CommentBadgesOverlay } from './CommentBadgesOverlay';
 import { ConnectionPointsOverlay } from './ConnectionPointsOverlay';
+import { TableResizeOverlay } from './TableResizeOverlay';
 import { elementUnderPoint, nearestAnchor } from '../interactions/connector-hit';
 import { screenToSlide } from '../interactions/coords';
 import {
@@ -100,12 +101,45 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
     // they never linger over a shape's resize handles once it's selected.
     if (!connectEl) connectors.setHover(null);
     const endpointEl = target.closest('[data-endpoint]') as HTMLElement | null;
+    const colResizeEl = target.closest('[data-col-resize]') as HTMLElement | null;
+    const rowResizeEl = target.closest('[data-row-resize]') as HTMLElement | null;
     const rotateEl = target.closest('[data-rotate]');
     const handleEl = target.closest('[data-handle]') as HTMLElement | null;
     const elEl = target.closest('[data-element-id]') as HTMLElement | null;
 
     let gesture: Gesture;
-    if (endpointEl?.dataset.endpoint) {
+    if (colResizeEl || rowResizeEl) {
+      // Drag a table column/row boundary. Preview straight to the DOM (like the
+      // move gesture) and commit the fraction change once at pointerup.
+      const tableId = deck.getSelection().elementIds[0];
+      const t = tableId ? deck.getElement(tableId) : undefined;
+      if (!t || t.type !== 'table') return;
+      const isCol = !!colResizeEl;
+      const index = Number((isCol ? colResizeEl! : rowResizeEl!).getAttribute(isCol ? 'data-col-resize' : 'data-row-resize'));
+      const startFr = (isCol ? t.colFractions : t.rowFractions).slice();
+      const span = isCol ? t.w : t.h;
+      const startP = toSlide(e.clientX, e.clientY);
+      const nodes = surface.querySelectorAll(`table[data-table-id="${tableId}"] ${isCol ? 'col' : 'tr'}`);
+      const MIN = 0.04;
+      let last = 0;
+      gesture = {
+        onMove(p) {
+          const a = startFr[index], b = startFr[index + 1];
+          last = Math.max(MIN - a, Math.min(b - MIN, (isCol ? p.x - startP.x : p.y - startP.y) / span));
+          const n0 = nodes[index] as HTMLElement | undefined;
+          const n1 = nodes[index + 1] as HTMLElement | undefined;
+          if (n0 && n1) {
+            const prop = isCol ? 'width' : 'height';
+            n0.style[prop] = `${(a + last) * 100}%`;
+            n1.style[prop] = `${(b - last) * 100}%`;
+          }
+        },
+        onEnd() {
+          if (isCol) deck.resizeTableColumn(tableId, index, last);
+          else deck.resizeTableRow(tableId, index, last);
+        },
+      };
+    } else if (endpointEl?.dataset.endpoint) {
       // Drag a selected line's tip: resize + rotate at once. The tip snaps to a
       // shape anchor and binds on release, or stays a free point. Previewed live
       // via the connector store's edit state (committed once at pointerup).
@@ -190,7 +224,10 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
       lastDown.current = { id, t: now };
       const ids = selectOnDown(deck, slideId, id, e.shiftKey);
       const move = createMoveGesture(ctx, toSlide(e.clientX, e.clientY), ids);
-      const canEdit = isDouble && !!el && (el.type === 'text' || el.type === 'shape');
+      // For a table, a double-click edits the specific cell under the pointer.
+      const cellAttr = (e.target as HTMLElement).closest('[data-cell]')?.getAttribute('data-cell');
+      const cell = el?.type === 'table' && cellAttr ? (cellAttr.split(',').map(Number) as [number, number]) : null;
+      const canEdit = isDouble && !!el && (el.type === 'text' || el.type === 'shape' || (el.type === 'table' && !!cell));
       const startP = toSlide(e.clientX, e.clientY);
       let moved = false;
       gesture = {
@@ -202,7 +239,7 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
           move.onEnd();
           if (canEdit && !moved) {
             deck.setSelection({ slideId, elementIds: [id] });
-            editing.setEditingId(id);
+            editing.setEditingId(id, cell);
           }
         },
       };
@@ -236,6 +273,7 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
         <GuidesOverlay scale={scale} />
         <RemotePresenceOverlay scale={scale} />
         <SelectionOverlay scale={scale} />
+        <TableResizeOverlay scale={scale} />
         <ConnectionPointsOverlay scale={scale} />
         {/* Badges last so they stay clickable on top of the selection handles. */}
         <CommentBadgesOverlay slideId={slideId} scale={scale} />

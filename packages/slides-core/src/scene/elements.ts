@@ -15,12 +15,15 @@ import type {
   ShapeElement,
   ImageElement,
   LineElement,
+  TableElement,
+  TableCell,
   ShapePreset,
   ArrowHead,
   EndpointBind,
   PlaceholderMeta,
   ElementType,
 } from './types';
+import { evenFractions, makeGrid } from './table';
 
 /** Fields every element needs beyond its type-specific payload. */
 export interface BaseElementInput extends Partial<Frame> {
@@ -38,6 +41,7 @@ const DEFAULT_FRAME: Record<ElementType, Frame> = {
   shape: { x: 100, y: 100, w: 240, h: 200, rotation: 0 },
   image: { x: 100, y: 100, w: 320, h: 240, rotation: 0 },
   line: { x: 100, y: 100, w: 300, h: 0, rotation: 0 },
+  table: { x: 120, y: 160, w: 720, h: 300, rotation: 0 },
 };
 
 const DEFAULT_BODY_STYLE: BodyStyle = { vAlign: 'top', padding: 8, wrap: true };
@@ -156,6 +160,30 @@ export function createLineElement(input: LineElementInput): LineElement {
   if (input.startPoint) el.startPoint = input.startPoint;
   if (input.endPoint) el.endPoint = input.endPoint;
   return el;
+}
+
+export interface TableElementInput extends BaseElementInput {
+  rows: number;
+  cols: number;
+  colFractions?: number[];
+  rowFractions?: number[];
+  cells?: TableCell[][];
+  border?: Stroke;
+}
+
+export function createTableElement(input: TableElementInput): TableElement {
+  const rows = Math.max(1, input.rows);
+  const cols = Math.max(1, input.cols);
+  return {
+    ...base(input, 'table'),
+    type: 'table',
+    rows,
+    cols,
+    colFractions: input.colFractions ?? evenFractions(cols),
+    rowFractions: input.rowFractions ?? evenFractions(rows),
+    cells: input.cells ?? makeGrid(rows, cols),
+    border: input.border ?? { color: { kind: 'theme', slot: 'dk2' }, width: 1 },
+  };
 }
 
 /** The default frame for a freshly-inserted element of a given type. */

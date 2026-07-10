@@ -1,0 +1,42 @@
+// TableResizeOverlay — thin grip strips over a selected table's internal column
+// and row boundaries. Dragging one resizes that boundary (InteractiveSlide owns
+// the gesture; it reads data-col-resize / data-row-resize). Only shown for an
+// unrotated single-selected table.
+
+import React, { useEffect, useReducer } from 'react';
+import type { TableElement } from '@weavertime/spindle-slides-core';
+import { useDeckContext } from '../context/DeckContext';
+import { useSelection } from '../hooks';
+
+export function TableResizeOverlay({ scale }: { scale: number }): React.ReactElement | null {
+  const { deck } = useDeckContext();
+  const selection = useSelection();
+  const [, force] = useReducer((n) => n + 1, 0);
+
+  useEffect(() => {
+    const offs = [deck.on('elementChange', force as () => void), deck.on('deckChange', force as () => void)];
+    return () => offs.forEach((o) => o());
+  }, [deck]);
+
+  const id = selection.elementIds.length === 1 ? selection.elementIds[0] : null;
+  const el = id ? deck.getElement(id) : null;
+  if (!el || el.type !== 'table' || el.rotation !== 0) return null;
+  const t = el as TableElement;
+
+  const grip = 8 / scale;
+  let ax = 0;
+  const colBounds = t.colFractions.slice(0, -1).map((f, i) => ((ax += f), { i, x: ax * t.w }));
+  let ay = 0;
+  const rowBounds = t.rowFractions.slice(0, -1).map((f, i) => ((ay += f), { i, y: ay * t.h }));
+
+  return (
+    <div style={{ position: 'absolute', left: 0, top: 0, transform: `translate(${t.x}px, ${t.y}px)`, width: t.w, height: t.h, pointerEvents: 'none' }}>
+      {colBounds.map((b) => (
+        <div key={`c${b.i}`} data-col-resize={b.i} style={{ position: 'absolute', left: b.x - grip / 2, top: 0, width: grip, height: t.h, cursor: 'col-resize', pointerEvents: 'auto' }} />
+      ))}
+      {rowBounds.map((b) => (
+        <div key={`r${b.i}`} data-row-resize={b.i} style={{ position: 'absolute', top: b.y - grip / 2, left: 0, height: grip, width: t.w, cursor: 'row-resize', pointerEvents: 'auto' }} />
+      ))}
+    </div>
+  );
+}

@@ -51,11 +51,15 @@ export function RichTextEditor({
   theme,
   bodyStyle,
   centered = false,
+  cell,
 }: {
   elementId: string;
   theme: ThemeData;
   bodyStyle?: BodyStyle;
   centered?: boolean;
+  /** When set, edit this [row, col] cell of a table element instead of the
+   *  element's own rich text. Table cells commit via snapshot (no collab v1). */
+  cell?: readonly [number, number];
 }): React.ReactElement {
   const deck = useDeck();
   const { editing } = useDeckContext();
@@ -66,27 +70,33 @@ export function RichTextEditor({
     const mount = mountRef.current;
     const el = deck.getElement(elementId);
     // text and shape elements can hold rich text; a shape may not have any yet,
-    // so fall back to an empty body rather than bailing.
-    if (!mount || !el || (el.type !== 'text' && el.type !== 'shape')) return;
+    // so fall back to an empty body rather than bailing. A table cell edits its
+    // own rich text via the `cell` prop.
+    if (!mount || !el) return;
+    if (cell ? el.type !== 'table' : el.type !== 'text' && el.type !== 'shape') return;
     // Shapes default to centered text; a fresh (empty) shape body starts with a
     // centre-aligned paragraph so typing lands centre-centre, not top-left.
     const emptyDoc: RichTextDoc = centered
       ? { type: 'doc', content: [{ type: 'paragraph', attrs: { align: 'center' } }] }
       : emptyRichText();
-    const initialDoc = (el as { richText?: RichTextDoc }).richText ?? emptyDoc;
+    const cellDoc = cell && el.type === 'table' ? el.cells[cell[0]]?.[cell[1]]?.richText : undefined;
+    const initialDoc = cellDoc ?? (el as { richText?: RichTextDoc }).richText ?? emptyDoc;
 
     const bold = slidesSchema.marks.bold;
     const italic = slidesSchema.marks.italic;
     const underline = slidesSchema.marks.underline;
 
     const handle = deck.getCollabHandle();
-    const fragment = handle?.getElementFragment(elementId);
+    // Table cells have no per-element CRDT fragment yet — commit via snapshot.
+    const fragment = cell ? undefined : handle?.getElementFragment(elementId);
     const collab = !!(handle && fragment);
 
     let view: EditorView;
 
     const commit = () => {
-      if (!collab) deck.setElementRichText(elementId, view.state.doc.toJSON() as RichTextDoc);
+      const doc = view.state.doc.toJSON() as RichTextDoc;
+      if (cell) deck.setTableCellRichText(elementId, cell[0], cell[1], doc);
+      else if (!collab) deck.setElementRichText(elementId, doc);
     };
     const exit = () => {
       commit();
@@ -166,13 +176,15 @@ export function RichTextEditor({
         handle!.awareness.setLocalStateField('editing', null);
       } else if (editing.getView() === view) {
         // Commit any uncommitted edits (e.g. slide switch) before tearing down.
-        deck.setElementRichText(elementId, view.state.doc.toJSON() as RichTextDoc);
+        const doc = view.state.doc.toJSON() as RichTextDoc;
+        if (cell) deck.setTableCellRichText(elementId, cell[0], cell[1], doc);
+        else deck.setElementRichText(elementId, doc);
       }
       if (editing.getView() === view) editing.setView(null);
       view.destroy();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [elementId]);
+  }, [elementId, cell?.[0], cell?.[1]]);
 
   // Bind the current theme's color slots + fonts to CSS variables the schema's
   // toDOM references, so theme-slot text colors and major/minor fonts render in

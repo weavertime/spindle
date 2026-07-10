@@ -32,11 +32,13 @@ const field: React.CSSProperties = {
   fontSize: 13, fontFamily: '"Inter", sans-serif', cursor: 'pointer',
 };
 
-/** The single text/shape element eligible for idle formatting, if any. */
+/** The single text element eligible for idle (whole-body) formatting, if any.
+ *  A shape's text bar appears when its text is actually being edited, so a
+ *  merely-selected shape shows its own fill/border bar instead of the text one. */
 function idleTextTarget(deck: ReturnType<typeof useDeck>, ids: string[]): string | null {
   if (ids.length !== 1) return null;
   const el = deck.getElement(ids[0]);
-  return el && (el.type === 'text' || el.type === 'shape') ? ids[0] : null;
+  return el && el.type === 'text' ? ids[0] : null;
 }
 
 export function TextFormatBar(): React.ReactElement | null {

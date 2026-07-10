@@ -21,11 +21,14 @@ import {
   createShapeElement,
   createImageElement,
   createLineElement,
+  createTableElement,
   type TextElementInput,
   type ShapeElementInput,
   type ImageElementInput,
   type LineElementInput,
+  type TableElementInput,
 } from './scene/elements';
+import { insertRow, insertColumn, removeRow, removeColumn, resizeColumn, resizeRow } from './scene/table';
 import {
   bringToFront as zBringToFront,
   sendToBack as zSendToBack,
@@ -37,7 +40,7 @@ import {
 import { alignFrames, distributeFrames, type AlignMode, type FrameItem } from './scene/align';
 import type { Rect } from './scene/geometry';
 import { resolveConnectorFrame, resolveEndpoints } from './scene/connector';
-import type { Frame, Fill, SlideElement, LineElement, EndpointBind } from './scene/types';
+import type { Frame, Fill, SlideElement, LineElement, EndpointBind, TableElement, TableCell } from './scene/types';
 import { applyTextFormat, type RichTextDoc, type TextFormatSpec } from './text/model';
 import type { ThemeData, LayoutData } from './theme/types';
 import { getBuiltinTheme, BUILTIN_LAYOUTS, DEFAULT_SLIDE_SIZE } from './theme/builtin';
@@ -58,7 +61,8 @@ export type NewElementSpec =
   | ({ type: 'text' } & Omit<TextElementInput, 'containerId' | 'index'>)
   | ({ type: 'shape' } & Omit<ShapeElementInput, 'containerId' | 'index'>)
   | ({ type: 'image' } & Omit<ImageElementInput, 'containerId' | 'index'>)
-  | ({ type: 'line' } & Omit<LineElementInput, 'containerId' | 'index'>);
+  | ({ type: 'line' } & Omit<LineElementInput, 'containerId' | 'index'>)
+  | ({ type: 'table' } & Omit<TableElementInput, 'containerId' | 'index'>);
 
 const FRAME_KEYS = ['x', 'y', 'w', 'h', 'rotation'] as const;
 /** Whether a patch changes any geometry a bound connector must track. */
@@ -385,6 +389,9 @@ export class DeckImpl {
       case 'line':
         el = createLineElement({ ...spec, ...common });
         break;
+      case 'table':
+        el = createTableElement({ ...spec, ...common });
+        break;
     }
     this.recordHistory();
     this.elements.set(el.id, el);
@@ -602,6 +609,36 @@ export class DeckImpl {
     const box = resolveConnectorFrame({ ...line, ...patch } as LineElement, getFrame);
     Object.assign(patch, box);
     this.updateElement(id, patch as Partial<SlideElement>);
+  }
+
+  // ── Tables (thin wrappers over scene/table pure fns) ─────────────────────────
+
+  private tableOp(id: string, op: (t: TableElement) => Partial<TableElement>): void {
+    const el = this.elements.get(id);
+    if (!el || el.type !== 'table') return;
+    const patch = op(el as TableElement);
+    if (Object.keys(patch).length) this.updateElement(id, patch as Partial<SlideElement>);
+  }
+
+  insertTableRow(id: string, at: number): void { this.tableOp(id, (t) => insertRow(t, at)); }
+  insertTableColumn(id: string, at: number): void { this.tableOp(id, (t) => insertColumn(t, at)); }
+  removeTableRow(id: string, at: number): void { this.tableOp(id, (t) => removeRow(t, at)); }
+  removeTableColumn(id: string, at: number): void { this.tableOp(id, (t) => removeColumn(t, at)); }
+  resizeTableColumn(id: string, index: number, delta: number): void { this.tableOp(id, (t) => resizeColumn(t, index, delta)); }
+  resizeTableRow(id: string, index: number, delta: number): void { this.tableOp(id, (t) => resizeRow(t, index, delta)); }
+
+  /** Replace one cell's rich text (cell editing commits through here). */
+  setTableCellRichText(id: string, row: number, col: number, doc: RichTextDoc): void {
+    this.updateTableCell(id, row, col, { richText: doc });
+  }
+
+  /** Merge a patch into one cell (rich text, fill, body style). */
+  updateTableCell(id: string, row: number, col: number, patch: Partial<TableCell>): void {
+    this.tableOp(id, (t) => {
+      if (row < 0 || row >= t.rows || col < 0 || col >= t.cols) return {};
+      const cells = t.cells.map((r, ri) => (ri === row ? r.map((c, ci) => (ci === col ? { ...c, ...patch } : c)) : r));
+      return { cells };
+    });
   }
 
   // ── Z-order / align / group (thin wrappers over scene/* pure fns) ────────────

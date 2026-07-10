@@ -10,7 +10,7 @@ export interface MenuItem {
   disabled?: boolean;
 }
 
-export function Menu({ x, y, items, onClose }: { x: number; y: number; items: Array<MenuItem | 'sep'>; onClose: () => void }): React.ReactElement {
+export function Menu({ x, y, items, onClose, footer }: { x: number; y: number; items: Array<MenuItem | 'sep'>; onClose: () => void; footer?: React.ReactNode }): React.ReactElement {
   useEffect(() => {
     const close = () => onClose();
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -59,6 +59,12 @@ export function Menu({ x, y, items, onClose }: { x: number; y: number; items: Ar
             {it.label}
           </div>
         )
+      )}
+      {footer !== undefined && (
+        <div onPointerDown={(e) => e.stopPropagation()}>
+          <div style={{ height: 1, background: '#eceef1', margin: '4px 0' }} />
+          {footer}
+        </div>
       )}
     </div>
   );
