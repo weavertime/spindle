@@ -14,6 +14,12 @@ import { RichTextEditor } from '../RichTextEditor';
 // the text) via a huge inset shadow the cell's overflow:hidden clips flat.
 const SELECT_TINT = 'inset 0 0 0 9999px rgba(45,127,249,0.20)';
 
+// Cell text metrics. StaticRichText inherits font-size from the <td>, so we set
+// it explicitly to the SAME values the live editor uses — otherwise text would
+// resize/shift the moment you double-click into a cell.
+const CELL_FONT = 16;
+const CELL_PAD = 6;
+
 export function TableView({ el, theme, interactive = false }: { el: TableElement; theme: ThemeData; interactive?: boolean }): React.ReactElement {
   const { editing, tableSel } = useDeckContext();
   const editState = useSyncExternalStore(editing.subscribe, editing.getState);
@@ -42,22 +48,31 @@ export function TableView({ el, theme, interactive = false }: { el: TableElement
               const bg = cell.fill ? resolveFill(cell.fill, theme) : null;
               const isEditing = !!editingCell && editingCell[0] === r && editingCell[1] === c;
               const isSelected = !!cellSel && !isEditing && inSelection(cellSel, r, c);
+              // Fill in cell defaults so the static <td> and the live editor
+              // agree on padding, size, and vertical alignment (no jump on edit).
+              const cellStyle = {
+                padding: cell.bodyStyle?.padding ?? CELL_PAD,
+                fontSize: cell.bodyStyle?.fontSize ?? CELL_FONT,
+                vAlign: cell.bodyStyle?.vAlign ?? 'top',
+                ...cell.bodyStyle,
+              };
               return (
                 <td
                   key={c}
                   data-cell={`${r},${c}`}
                   style={{
                     border,
-                    verticalAlign: cell.bodyStyle?.vAlign ?? 'top',
+                    verticalAlign: cellStyle.vAlign,
+                    fontSize: cellStyle.fontSize,
                     background: bg ?? undefined,
                     boxShadow: isSelected ? SELECT_TINT : undefined,
-                    padding: isEditing ? 0 : cell.bodyStyle?.padding ?? 6,
+                    padding: isEditing ? 0 : cellStyle.padding,
                     overflow: 'hidden',
                     boxSizing: 'border-box',
                   }}
                 >
                   {isEditing ? (
-                    <RichTextEditor elementId={el.id} theme={theme} cell={[r, c]} bodyStyle={cell.bodyStyle} />
+                    <RichTextEditor elementId={el.id} theme={theme} cell={[r, c]} bodyStyle={cellStyle} />
                   ) : (
                     <StaticRichText doc={cell.richText} theme={theme} />
                   )}
