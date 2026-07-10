@@ -416,15 +416,15 @@ export class DeckImpl {
   }
 
   /**
-   * Grow an element's height to fit its rendered content (tables whose wrapped
-   * text is taller than the frame). This is a layout reflow, not a user edit,
-   * so it records NO history entry — otherwise undo would fight the reflow and
-   * selection/gutter overlays (which read the frame) wouldn't cover the table.
-   * Never shrinks below the current height; a no-op if already tall enough.
+   * Set an element's height to match its rendered content (a table whose rows
+   * are content-driven). This is a layout reflow, not a user edit, so it records
+   * NO history entry — otherwise undo would fight the reflow and the selection/
+   * gutter overlays (which read the frame) wouldn't line up with the table.
+   * A no-op if the height already matches (within a pixel).
    */
-  autoSizeElementHeight(id: string, h: number): void {
+  syncElementHeight(id: string, h: number): void {
     const el = this.elements.get(id);
-    if (!el || h <= el.h + 0.5) return;
+    if (!el || Math.abs(el.h - h) < 0.5) return;
     this.events.batch(() => {
       this.applyElementPatch(id, { h } as Partial<SlideElement>);
       this.emit('elementChange', { slideId: el.containerId, elementId: id, keys: ['h'] });

@@ -390,15 +390,25 @@ describe('table multi-cell ops', () => {
   });
 });
 
-describe('table auto-height', () => {
-  it('grows to fit content but never shrinks', () => {
+describe('table height sync', () => {
+  it('sets the frame height to the measured content height (up or down)', () => {
     const deck = new DeckImpl();
     const slide = deck.getActiveSlideId();
     const t = deck.addElement(slide, { type: 'table', rows: 2, cols: 2, h: 100 });
-    deck.autoSizeElementHeight(t.id, 260);
+    deck.syncElementHeight(t.id, 260);
     expect(deck.getElement(t.id)!.h).toBe(260);
-    deck.autoSizeElementHeight(t.id, 180); // shorter → ignored
-    expect(deck.getElement(t.id)!.h).toBe(260);
+    deck.syncElementHeight(t.id, 180); // content shrank (row deleted) → follows down
+    expect(deck.getElement(t.id)!.h).toBe(180);
+  });
+
+  it('records no undo entry (a reflow is not a user edit)', () => {
+    const deck = new DeckImpl();
+    const slide = deck.getActiveSlideId();
+    const t = deck.addElement(slide, { type: 'table', rows: 2, cols: 2, h: 100, x: 10 });
+    deck.updateElement(t.id, { x: 50 }); // a real edit (records history)
+    deck.syncElementHeight(t.id, 300);
+    deck.undo(); // undoes the x move; the height sync left no separate entry
+    expect(deck.getElement(t.id)!.x).toBe(10);
   });
 });
 

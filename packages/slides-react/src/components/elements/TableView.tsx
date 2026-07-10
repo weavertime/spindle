@@ -1,9 +1,11 @@
 // TableView — renders a table element as a fixed-layout HTML <table>. Column
-// widths and row heights come from the element's fractions; each cell shows its
-// rich text via StaticRichText, or, on the interactive stage, a live editor for
-// the cell being edited. Grid lines use the element's border stroke.
+// widths come from the element's fractions; row heights are content-driven (a
+// row grows to fit its text), so the element's height auto-syncs to the table
+// and the overlays read the measured row positions (see TableMetricsStore).
+// Each cell shows its rich text via StaticRichText, or a live editor for the
+// cell being edited. Grid lines use the element's border stroke.
 
-import React, { useEffect, useRef, useSyncExternalStore } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { resolveColor, resolveFill, type Color, type TableElement, type ThemeData } from '@weavertime/spindle-slides-core';
 import { useDeckContext } from '../../context/DeckContext';
 import { inSelection } from '../../interactions/table-selection-store';
@@ -21,27 +23,40 @@ const CELL_FONT = 16;
 const CELL_PAD = 6;
 
 export function TableView({ el, theme, interactive = false }: { el: TableElement; theme: ThemeData; interactive?: boolean }): React.ReactElement {
-  const { deck, editing, tableSel } = useDeckContext();
+  const { deck, editing, tableSel, tableMetrics, transient } = useDeckContext();
   const editState = useSyncExternalStore(editing.subscribe, editing.getState);
   const sel = useSyncExternalStore(tableSel.subscribe, tableSel.getState);
   const editingCell = interactive && editState.id === el.id ? editState.cell : null;
   const cellSel = interactive && sel && sel.tableId === el.id ? sel : null;
 
-  // Cell text wraps, so a table can render taller than its frame height. Grow
-  // the element to fit its content (no undo entry) so the frame — and the
-  // selection box, gutters, and resize handles that read it — cover the whole
-  // table. Only the full-size interactive render drives this (not thumbnails).
+  // Rows size to their content, so the element's height follows the rendered
+  // table and the overlays get the *real* row positions (fractions of the table
+  // height) instead of guessing from the record. Only the full-size interactive
+  // render drives this — thumbnails would measure a scaled/clipped box.
   const tableRef = useRef<HTMLTableElement>(null);
+  const syncRef = useRef<() => void>(() => {});
+  syncRef.current = () => {
+    const node = tableRef.current;
+    if (!interactive || !node) return;
+    const rect = node.getBoundingClientRect();
+    const rows = node.tBodies[0] ? Array.from(node.tBodies[0].rows) : [];
+    const tops = rect.height > 0 ? rows.map((tr) => (tr.getBoundingClientRect().top - rect.top) / rect.height) : [];
+    tops.push(1);
+    tableMetrics.set(el.id, tops);
+    // Don't fight a live gesture (resize/move owns the frame until it commits).
+    if (!transient.get().liveFrames?.has(el.id)) deck.syncElementHeight(el.id, node.offsetHeight);
+  };
+  // Re-measure on content reflow (ResizeObserver) and after every render — the
+  // latter re-syncs the height when the frame itself changed (e.g. a resize).
   useEffect(() => {
     if (!interactive || typeof ResizeObserver === 'undefined') return;
     const node = tableRef.current;
     if (!node) return;
-    const sync = () => deck.autoSizeElementHeight(el.id, node.offsetHeight);
-    const ro = new ResizeObserver(sync);
+    const ro = new ResizeObserver(() => syncRef.current());
     ro.observe(node);
-    sync();
-    return () => ro.disconnect();
-  }, [deck, el.id, interactive]);
+    return () => { ro.disconnect(); tableMetrics.clear(el.id); };
+  }, [tableMetrics, el.id, interactive]);
+  useLayoutEffect(() => { syncRef.current(); });
 
   const border = el.border
     ? `${Math.max(1, el.border.width)}px solid ${resolveColor(el.border.color, theme)}`
@@ -51,7 +66,7 @@ export function TableView({ el, theme, interactive = false }: { el: TableElement
     <table
       ref={tableRef}
       data-table-id={el.id}
-      style={{ width: '100%', height: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontFamily: 'inherit' }}
+      style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontFamily: 'inherit' }}
     >
       <colgroup>
         {el.colFractions.map((f, i) => (
@@ -60,7 +75,7 @@ export function TableView({ el, theme, interactive = false }: { el: TableElement
       </colgroup>
       <tbody>
         {el.cells.map((row, r) => (
-          <tr key={r} style={{ height: `${(el.rowFractions[r] ?? 1 / el.rows) * 100}%` }}>
+          <tr key={r}>
             {row.map((cell, c) => {
               const bg = cell.fill ? resolveFill(cell.fill, theme) : null;
               const isEditing = !!editingCell && editingCell[0] === r && editingCell[1] === c;

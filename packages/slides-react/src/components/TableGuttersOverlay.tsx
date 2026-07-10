@@ -20,16 +20,20 @@ const LINE = 'rgba(45,127,249,0.7)';
 const ACCENT = '#2d7ff9';
 
 export function TableGuttersOverlay({ scale }: { scale: number }): React.ReactElement | null {
-  const { deck, tableSel, transient } = useDeckContext();
+  const { deck, tableSel, tableMetrics, transient } = useDeckContext();
   const selection = useSelection();
   const sel = useSyncExternalStore(tableSel.subscribe, tableSel.getState);
   const transientState = useSyncExternalStore(transient.subscribe, transient.get);
   const [, force] = useReducer((n) => n + 1, 0);
 
   useEffect(() => {
-    const offs = [deck.on('elementChange', force as () => void), deck.on('deckChange', force as () => void)];
+    const offs = [
+      deck.on('elementChange', force as () => void),
+      deck.on('deckChange', force as () => void),
+      tableMetrics.subscribe(force as () => void),
+    ];
     return () => offs.forEach((o) => o());
-  }, [deck]);
+  }, [deck, tableMetrics]);
 
   const id = selection.elementIds.length === 1 ? selection.elementIds[0] : null;
   const el = id ? deck.getElement(id) : null;
@@ -44,13 +48,16 @@ export function TableGuttersOverlay({ scale }: { scale: number }): React.ReactEl
   const size = 15 / scale; // constant screen size for the header bars
   const g = 1 / scale;
 
-  // Cumulative pixel offsets of each column/row start within the table box.
+  // Column x-edges come from the fractions (fixed layout makes them exact).
   const colX: number[] = [];
   let ax = 0;
   for (const f of t.colFractions) { colX.push(ax); ax += f * box.w; }
-  const rowY: number[] = [];
-  let ay = 0;
-  for (const f of t.rowFractions) { rowY.push(ay); ay += f * box.h; }
+  // Row y-edges (rows+1 values) come from the *measured* content-driven rows;
+  // fall back to even rows before the first measurement lands.
+  const measured = tableMetrics.get(t.id);
+  const rowEdges: number[] = measured && measured.length === t.rows + 1
+    ? measured.map((frac) => frac * box.h)
+    : Array.from({ length: t.rows + 1 }, (_, r) => (r / t.rows) * box.h);
 
   const barBase: React.CSSProperties = {
     position: 'absolute',
@@ -76,15 +83,15 @@ export function TableGuttersOverlay({ scale }: { scale: number }): React.ReactEl
           />
         );
       })}
-      {/* Row headers along the left edge. */}
-      {t.rowFractions.map((f, r) => {
+      {/* Row headers along the left edge, sized to the real rendered rows. */}
+      {Array.from({ length: t.rows }, (_, r) => {
         const active = !!rect && r >= rect.r0 && r <= rect.r1;
         return (
           <div
             key={`r${r}`}
             data-row-select={r}
             title="Select row"
-            style={{ ...barBase, top: rowY[r], left: -size - g, height: f * box.h, width: size, background: active ? BAR_ACTIVE : BAR, border: `${g}px solid ${LINE}`, cursor: 'pointer' }}
+            style={{ ...barBase, top: rowEdges[r], left: -size - g, height: rowEdges[r + 1] - rowEdges[r], width: size, background: active ? BAR_ACTIVE : BAR, border: `${g}px solid ${LINE}`, cursor: 'pointer' }}
           />
         );
       })}

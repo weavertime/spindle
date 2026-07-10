@@ -1,7 +1,8 @@
 // TableResizeOverlay — thin grip strips over a selected table's internal column
-// and row boundaries. Dragging one resizes that boundary (InteractiveSlide owns
-// the gesture; it reads data-col-resize / data-row-resize). Only shown for an
-// unrotated single-selected table.
+// boundaries. Dragging one resizes that column pair (InteractiveSlide owns the
+// gesture; it reads data-col-resize). Rows are content-driven (they grow to fit
+// text), so there are no row-height grips. Only shown for an unrotated,
+// single-selected table.
 
 import React, { useEffect, useReducer, useSyncExternalStore } from 'react';
 import type { TableElement } from '@weavertime/spindle-slides-core';
@@ -30,16 +31,11 @@ export function TableResizeOverlay({ scale }: { scale: number }): React.ReactEle
   const grip = 8 / scale;
   let ax = 0;
   const colBounds = t.colFractions.slice(0, -1).map((f, i) => ((ax += f), { i, x: ax * box.w }));
-  let ay = 0;
-  const rowBounds = t.rowFractions.slice(0, -1).map((f, i) => ((ay += f), { i, y: ay * box.h }));
 
   return (
     <div style={{ position: 'absolute', left: 0, top: 0, transform: `translate(${box.x}px, ${box.y}px)`, width: box.w, height: box.h, pointerEvents: 'none' }}>
       {colBounds.map((b) => (
         <div key={`c${b.i}`} data-col-resize={b.i} style={{ position: 'absolute', left: b.x - grip / 2, top: 0, width: grip, height: box.h, cursor: 'col-resize', pointerEvents: 'auto' }} />
-      ))}
-      {rowBounds.map((b) => (
-        <div key={`r${b.i}`} data-row-resize={b.i} style={{ position: 'absolute', top: b.y - grip / 2, left: 0, height: grip, width: box.w, cursor: 'row-resize', pointerEvents: 'auto' }} />
       ))}
     </div>
   );
