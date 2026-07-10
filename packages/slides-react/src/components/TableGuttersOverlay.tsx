@@ -1,0 +1,90 @@
+// TableGuttersOverlay — spreadsheet-style header bars just outside a selected
+// table's top and left edges. Clicking a column/row header selects that whole
+// column/row; the top-left corner selects the entire grid. InteractiveSlide
+// owns the pointer handling (it reads data-col-select / data-row-select /
+// data-all-select and can drag to extend across headers). Only shown for an
+// unrotated single-selected table.
+
+import React, { useEffect, useReducer, useSyncExternalStore } from 'react';
+import type { TableElement } from '@weavertime/spindle-slides-core';
+import { useDeckContext } from '../context/DeckContext';
+import { useSelection } from '../hooks';
+import { selectionRect } from '../interactions/table-selection-store';
+
+const BAR = 'rgba(226,232,240,0.95)';
+const BAR_ACTIVE = 'rgba(45,127,249,0.28)';
+const LINE = 'rgba(45,127,249,0.7)';
+
+export function TableGuttersOverlay({ scale }: { scale: number }): React.ReactElement | null {
+  const { deck, tableSel } = useDeckContext();
+  const selection = useSelection();
+  const sel = useSyncExternalStore(tableSel.subscribe, tableSel.getState);
+  const [, force] = useReducer((n) => n + 1, 0);
+
+  useEffect(() => {
+    const offs = [deck.on('elementChange', force as () => void), deck.on('deckChange', force as () => void)];
+    return () => offs.forEach((o) => o());
+  }, [deck]);
+
+  const id = selection.elementIds.length === 1 ? selection.elementIds[0] : null;
+  const el = id ? deck.getElement(id) : null;
+  if (!el || el.type !== 'table' || el.rotation !== 0) return null;
+  const t = el as TableElement;
+
+  const rect = sel && sel.tableId === t.id ? selectionRect(sel) : null;
+  const size = 15 / scale; // constant screen size for the header bars
+  const g = 1 / scale;
+
+  // Cumulative pixel offsets of each column/row start within the table box.
+  const colX: number[] = [];
+  let ax = 0;
+  for (const f of t.colFractions) { colX.push(ax); ax += f * t.w; }
+  const rowY: number[] = [];
+  let ay = 0;
+  for (const f of t.rowFractions) { rowY.push(ay); ay += f * t.h; }
+
+  const barBase: React.CSSProperties = {
+    position: 'absolute',
+    background: BAR,
+    boxSizing: 'border-box',
+    pointerEvents: 'auto',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
+  return (
+    <div style={{ position: 'absolute', left: 0, top: 0, transform: `translate(${t.x}px, ${t.y}px)`, width: t.w, height: t.h, pointerEvents: 'none' }}>
+      {/* Column headers along the top edge. */}
+      {t.colFractions.map((f, c) => {
+        const active = !!rect && c >= rect.c0 && c <= rect.c1;
+        return (
+          <div
+            key={`c${c}`}
+            data-col-select={c}
+            title="Select column"
+            style={{ ...barBase, left: colX[c], top: -size - g, width: f * t.w, height: size, background: active ? BAR_ACTIVE : BAR, border: `${g}px solid ${LINE}`, cursor: 'pointer' }}
+          />
+        );
+      })}
+      {/* Row headers along the left edge. */}
+      {t.rowFractions.map((f, r) => {
+        const active = !!rect && r >= rect.r0 && r <= rect.r1;
+        return (
+          <div
+            key={`r${r}`}
+            data-row-select={r}
+            title="Select row"
+            style={{ ...barBase, top: rowY[r], left: -size - g, height: f * t.h, width: size, background: active ? BAR_ACTIVE : BAR, border: `${g}px solid ${LINE}`, cursor: 'pointer' }}
+          />
+        );
+      })}
+      {/* Top-left corner selects everything. */}
+      <div
+        data-all-select="1"
+        title="Select all cells"
+        style={{ ...barBase, left: -size - g, top: -size - g, width: size, height: size, border: `${g}px solid ${LINE}`, cursor: 'pointer' }}
+      />
+    </div>
+  );
+}

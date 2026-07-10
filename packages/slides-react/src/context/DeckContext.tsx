@@ -9,6 +9,7 @@ import { ElementStore } from './element-store';
 import { NodeRegistry } from '../interactions/node-registry';
 import { TransientStore } from '../interactions/transient-store';
 import { EditingStore } from '../interactions/editing-store';
+import { TableSelectionStore } from '../interactions/table-selection-store';
 import { UIStore } from '../interactions/ui-store';
 import { ConnectorStore } from '../interactions/connector-store';
 
@@ -21,6 +22,8 @@ export interface DeckContextValue {
   transient: TransientStore;
   /** Which element hosts the single live ProseMirror editor. */
   editing: EditingStore;
+  /** The current cell-range selection inside a table (local, never in CRDT). */
+  tableSel: TableSelectionStore;
   /** Editor-chrome UI state (e.g. comments sidebar open). */
   ui: UIStore;
   /** Connector hover/draft state for the drawing UI. */
@@ -47,6 +50,7 @@ export function DeckProvider({ deck, children, currentUser, mentionableUsers, on
   const nodes = useMemo(() => new NodeRegistry(), [deck]);
   const transient = useMemo(() => new TransientStore(), [deck]);
   const editing = useMemo(() => new EditingStore(), [deck]);
+  const tableSel = useMemo(() => new TableSelectionStore(), [deck]);
   const ui = useMemo(() => new UIStore(), [deck]);
   const connectors = useMemo(() => new ConnectorStore(), [deck]);
   // Subscribe in the effect (not the store constructor) so it survives React
@@ -62,8 +66,8 @@ export function DeckProvider({ deck, children, currentUser, mentionableUsers, on
   }, [deck, onCommentEvent]);
 
   const value = useMemo<DeckContextValue>(
-    () => ({ deck, store, nodes, transient, editing, ui, connectors, currentUser, mentionableUsers: mentionableUsers ?? [] }),
-    [deck, store, nodes, transient, editing, ui, connectors, currentUser, mentionableUsers]
+    () => ({ deck, store, nodes, transient, editing, tableSel, ui, connectors, currentUser, mentionableUsers: mentionableUsers ?? [] }),
+    [deck, store, nodes, transient, editing, tableSel, ui, connectors, currentUser, mentionableUsers]
   );
   return <DeckContext.Provider value={value}>{children}</DeckContext.Provider>;
 }

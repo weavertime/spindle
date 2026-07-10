@@ -4,8 +4,8 @@
 // All per-move work happens in the gesture controller (direct-to-DOM); React
 // only re-renders on the commit at pointerup.
 
-import React, { useRef } from 'react';
-import { anchorPoint, connectorBox, resolveEndpoints, type AnchorId, type DeckImpl, type Frame, type NewElementSpec, type ResizeHandle } from '@weavertime/spindle-slides-core';
+import React, { useEffect, useRef } from 'react';
+import { anchorPoint, connectorBox, resolveEndpoints, type AnchorId, type DeckImpl, type Frame, type NewElementSpec, type ResizeHandle, type TableElement, type Point } from '@weavertime/spindle-slides-core';
 import { useDeck } from '../hooks';
 import { useDeckContext } from '../context/DeckContext';
 import { SlideView } from './SlideView';
@@ -15,6 +15,7 @@ import { RemotePresenceOverlay } from './RemotePresenceOverlay';
 import { CommentBadgesOverlay } from './CommentBadgesOverlay';
 import { ConnectionPointsOverlay } from './ConnectionPointsOverlay';
 import { TableResizeOverlay } from './TableResizeOverlay';
+import { TableGuttersOverlay } from './TableGuttersOverlay';
 import { elementUnderPoint, nearestAnchor } from '../interactions/connector-hit';
 import { screenToSlide } from '../interactions/coords';
 import {
@@ -46,16 +47,37 @@ function selectOnDown(deck: DeckImpl, slideId: string, id: string, shift: boolea
 
 const ANCHOR_GRAB = 16; // slide px: snap radius + hover margin for connection dots
 
+/** Map a slide-space point to the [row, col] of the table cell under it,
+ *  clamped to the grid (points left/above/right/below snap to the edge cells). */
+function cellAtPoint(t: TableElement, p: Point): [number, number] {
+  let c = t.cols - 1, ax = t.x;
+  for (let i = 0; i < t.cols; i++) { const cw = t.colFractions[i] * t.w; if (p.x < ax + cw) { c = i; break; } ax += cw; }
+  let r = t.rows - 1, ay = t.y;
+  for (let i = 0; i < t.rows; i++) { const rh = t.rowFractions[i] * t.h; if (p.y < ay + rh) { r = i; break; } ay += rh; }
+  return [r, c];
+}
+
 function frameOf(el: { x: number; y: number; w: number; h: number; rotation: number }): Frame {
   return { x: el.x, y: el.y, w: el.w, h: el.h, rotation: el.rotation };
 }
 
 export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: number }): React.ReactElement {
   const deck = useDeck();
-  const { nodes, transient, editing, connectors } = useDeckContext();
+  const { nodes, transient, editing, connectors, tableSel } = useDeckContext();
   const { w, h } = deck.getSlideSize();
   const surfaceRef = useRef<HTMLDivElement>(null);
   const lastDown = useRef<{ id: string; t: number }>({ id: '', t: 0 });
+
+  // Drop the cell selection whenever its table stops being the sole selection
+  // (deselect, Escape, or picking another element), so no stale tint lingers.
+  useEffect(() => {
+    return deck.on('selectionChange', () => {
+      const sel = tableSel.getState();
+      if (!sel) return;
+      const ids = deck.getSelection().elementIds;
+      if (ids.length !== 1 || ids[0] !== sel.tableId) tableSel.clear();
+    });
+  }, [deck, tableSel]);
 
   // Hover (no button pressed) → show the shape's connection dots, unless it is
   // the selected element (its resize handles own the corners then).
@@ -103,6 +125,10 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
     const endpointEl = target.closest('[data-endpoint]') as HTMLElement | null;
     const colResizeEl = target.closest('[data-col-resize]') as HTMLElement | null;
     const rowResizeEl = target.closest('[data-row-resize]') as HTMLElement | null;
+    const colSelEl = target.closest('[data-col-select]') as HTMLElement | null;
+    const rowSelEl = target.closest('[data-row-select]') as HTMLElement | null;
+    const allSelEl = target.closest('[data-all-select]') as HTMLElement | null;
+    const tableMoveEl = target.closest('[data-table-move]') as HTMLElement | null;
     const rotateEl = target.closest('[data-rotate]');
     const handleEl = target.closest('[data-handle]') as HTMLElement | null;
     const elEl = target.closest('[data-element-id]') as HTMLElement | null;
@@ -139,6 +165,28 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
           else deck.resizeTableRow(tableId, index, last);
         },
       };
+    } else if (colSelEl || rowSelEl || allSelEl) {
+      // Header-bar click/drag → select a whole column, row, or the entire grid.
+      const tableId = deck.getSelection().elementIds[0];
+      const t = tableId ? deck.getElement(tableId) : undefined;
+      if (!t || t.type !== 'table') return;
+      const tbl = t as TableElement;
+      if (allSelEl) {
+        tableSel.set(tableId, [0, 0], [tbl.rows - 1, tbl.cols - 1]);
+        gesture = { onMove() {}, onEnd() {} };
+      } else if (colSelEl) {
+        const c0 = Number(colSelEl.getAttribute('data-col-select'));
+        tableSel.set(tableId, [0, c0], [tbl.rows - 1, c0]);
+        gesture = { onMove(p) { tableSel.setFocus([tbl.rows - 1, cellAtPoint(tbl, p)[1]]); }, onEnd() {} };
+      } else {
+        const r0 = Number(rowSelEl!.getAttribute('data-row-select'));
+        tableSel.set(tableId, [r0, 0], [r0, tbl.cols - 1]);
+        gesture = { onMove(p) { tableSel.setFocus([cellAtPoint(tbl, p)[0], tbl.cols - 1]); }, onEnd() {} };
+      }
+    } else if (tableMoveEl) {
+      // Drag a selected table by its frame border (its body is busy selecting
+      // cells, so the border is the move affordance — like PowerPoint).
+      gesture = createMoveGesture(ctx, toSlide(e.clientX, e.clientY), deck.getSelection().elementIds);
     } else if (endpointEl?.dataset.endpoint) {
       // Drag a selected line's tip: resize + rotate at once. The tip snaps to a
       // shape anchor and binds on release, or stays a free point. Previewed live
@@ -216,35 +264,58 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
       const id = elEl.dataset.elementId;
       const el = deck.getElement(id);
       // A second pointerdown on the same element within 400ms is a double-click.
-      // But only enter text edit if it does NOT turn into a drag — otherwise a
-      // quick select-then-drag would wrongly open the editor. So we always start
-      // a move gesture and, at pointerup, enter edit only when nothing moved.
       const now = Date.now();
       const isDouble = lastDown.current.id === id && now - lastDown.current.t < 400;
       lastDown.current = { id, t: now };
-      const ids = selectOnDown(deck, slideId, id, e.shiftKey);
-      const move = createMoveGesture(ctx, toSlide(e.clientX, e.clientY), ids);
-      // For a table, a double-click edits the specific cell under the pointer.
+      const startP = toSlide(e.clientX, e.clientY);
+
+      const cur = deck.getSelection().elementIds;
       const cellAttr = (e.target as HTMLElement).closest('[data-cell]')?.getAttribute('data-cell');
       const cell = el?.type === 'table' && cellAttr ? (cellAttr.split(',').map(Number) as [number, number]) : null;
-      const canEdit = isDouble && !!el && (el.type === 'text' || el.type === 'shape' || (el.type === 'table' && !!cell));
-      const startP = toSlide(e.clientX, e.clientY);
-      let moved = false;
-      gesture = {
-        onMove(p) {
-          if (Math.hypot(p.x - startP.x, p.y - startP.y) > 3 / scale) moved = true;
-          move.onMove(p);
-        },
-        onEnd() {
-          move.onEnd();
-          if (canEdit && !moved) {
-            deck.setSelection({ slideId, elementIds: [id] });
-            editing.setEditingId(id, cell);
-          }
-        },
-      };
+      // Once a table is the sole selection, dragging inside it selects cells
+      // (not the object); a double-click on a cell edits its text.
+      const tableActive = el?.type === 'table' && cur.length === 1 && cur[0] === id && !!cell;
+
+      if (tableActive && el) {
+        const tbl = el as TableElement;
+        const existing = tableSel.getState();
+        if (e.shiftKey && existing && existing.tableId === id) tableSel.setFocus(cell!);
+        else tableSel.set(id, cell!);
+        let moved = false;
+        gesture = {
+          onMove(p) {
+            if (Math.hypot(p.x - startP.x, p.y - startP.y) > 3 / scale) moved = true;
+            tableSel.setFocus(cellAtPoint(tbl, p));
+          },
+          onEnd() {
+            if (isDouble && !moved) editing.setEditingId(id, cell!);
+          },
+        };
+      } else {
+        // Normal element (or the first click on a table): select + move. Only
+        // enter text edit if the gesture does NOT turn into a drag.
+        tableSel.clear();
+        const ids = selectOnDown(deck, slideId, id, e.shiftKey);
+        const move = createMoveGesture(ctx, startP, ids);
+        const canEdit = isDouble && !!el && (el.type === 'text' || el.type === 'shape');
+        let moved = false;
+        gesture = {
+          onMove(p) {
+            if (Math.hypot(p.x - startP.x, p.y - startP.y) > 3 / scale) moved = true;
+            move.onMove(p);
+          },
+          onEnd() {
+            move.onEnd();
+            if (canEdit && !moved) {
+              deck.setSelection({ slideId, elementIds: [id] });
+              editing.setEditingId(id, null);
+            }
+          },
+        };
+      }
     } else {
       if (!e.shiftKey) deck.setSelection({ slideId, elementIds: [] });
+      tableSel.clear();
       gesture = createMarqueeGesture(ctx, toSlide(e.clientX, e.clientY), e.shiftKey, deck.getSelection().elementIds);
     }
 
@@ -274,6 +345,7 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
         <RemotePresenceOverlay scale={scale} />
         <SelectionOverlay scale={scale} />
         <TableResizeOverlay scale={scale} />
+        <TableGuttersOverlay scale={scale} />
         <ConnectionPointsOverlay scale={scale} />
         {/* Badges last so they stay clickable on top of the selection handles. */}
         <CommentBadgesOverlay slideId={slideId} scale={scale} />

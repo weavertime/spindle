@@ -2,7 +2,7 @@
 // the current selection. Insertions drop near the slide centre and select the
 // new element.
 
-import React, { useRef } from 'react';
+import React, { useRef, useSyncExternalStore } from 'react';
 import {
   Type, Minus, MoveUpRight, Image as ImageIcon, Link2, Table,
   Trash2, Copy, Undo2, Redo2, Group, Ungroup,
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { NewElementSpec, AlignMode } from '@weavertime/spindle-slides-core';
 import { useDeck, useSelection, useEditingId } from '../hooks';
+import { useDeckContext } from '../context/DeckContext';
 import { DeckControls } from './DeckControls';
 import { TextFormatBar } from './TextFormatBar';
 import { LineFormatBar } from './LineFormatBar';
@@ -24,6 +25,8 @@ import { TB, ToolbarButton as IconButton, ToolbarDivider } from './toolbarUI';
 export function Toolbar(): React.ReactElement {
   const deck = useDeck();
   const selection = useSelection();
+  const { tableSel } = useDeckContext();
+  const cellSel = useSyncExternalStore(tableSel.subscribe, tableSel.getState);
   const fileRef = useRef<HTMLInputElement>(null);
   const editingId = useEditingId();
   const ids = selection.elementIds;
@@ -39,9 +42,12 @@ export function Toolbar(): React.ReactElement {
   const editing = editingId != null;
   const single = ids.length === 1 ? deck.getElement(ids[0]) : null;
   const isTextSingle = single?.type === 'text';
+  // A live cell-range selection turns the toolbar into a cell-formatting bar
+  // (text + table controls), so the object-level actions step aside for room.
+  const cellsActive = single?.type === 'table' && !!cellSel && cellSel.tableId === single.id;
   const showInsert = !hasSel && !editing;
-  const showActions = hasSel && !editing; // duplicate / delete
-  const showArrange = hasSel && !editing && !isTextSingle; // z-order / group / align
+  const showActions = hasSel && !editing && !cellsActive; // duplicate / delete
+  const showArrange = hasSel && !editing && !isTextSingle && !cellsActive; // z-order / group / align
 
   const insert = (spec: NewElementSpec, size: { w: number; h: number }) => {
     const slideId = deck.getActiveSlideId();
