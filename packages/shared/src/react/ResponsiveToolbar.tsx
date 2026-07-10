@@ -216,22 +216,27 @@ export function ResponsiveToolbar({
     const w = rowW.current[i];
     const hidden = w !== undefined && w < MIN_ROW_W; // empty control or divider
     const label = getLabel(item);
+    // Only a labelled single-action control is clickable as a whole row (tap the
+    // label → run it → close). Unlabelled clusters (DeckControls) and dropdown-
+    // openers (ShapePicker) keep their own controls live and leave the surface
+    // open so their sub-menus can appear.
+    const clickable = !hidden && !!label;
     rows.push(
       <div
         key={i}
         role="menuitem"
-        className={hidden ? undefined : 'sp-rt-menuitem'}
-        onClick={hidden ? undefined : onRowClick}
+        className={clickable ? 'sp-rt-menuitem' : undefined}
+        onClick={clickable ? onRowClick : undefined}
         style={hidden
           ? { height: 0, minHeight: 0, padding: 0, margin: 0, overflow: 'hidden' }
-          : { display: 'flex', alignItems: 'center', gap: 12, minHeight: 40, padding: '3px 12px 3px 8px', borderRadius: 8, cursor: 'pointer' }}
+          : { display: 'flex', alignItems: 'center', gap: 12, minHeight: 40, padding: '3px 12px 3px 8px', borderRadius: 8, cursor: clickable ? 'pointer' : 'default' }}
       >
         <span
           data-rt-control
           ref={(el) => { rowRefs.current[i] = el; }}
           style={label
             ? { display: 'inline-flex', alignItems: 'center', flex: '0 0 auto' }
-            : { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, flex: '1 1 auto', minWidth: 0 }}
+            : { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, flex: '1 1 auto', minWidth: 0 }}
         >
           {item}
         </span>
