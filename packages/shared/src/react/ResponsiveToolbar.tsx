@@ -79,7 +79,8 @@ function ensureStyles(): void {
     '.sp-rt-more:hover{background:rgba(99,102,241,0.08);color:#6366f1}' +
     '@keyframes sp-rt-pop{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}' +
     '@keyframes sp-rt-sheet{from{transform:translateY(100%)}to{transform:translateY(0)}}' +
-    '@keyframes sp-rt-fade{from{opacity:0}to{opacity:1}}';
+    '@keyframes sp-rt-fade{from{opacity:0}to{opacity:1}}' +
+    '@keyframes sp-rt-fadeout{from{opacity:1}to{opacity:0}}';
   document.head.appendChild(s);
 }
 
@@ -103,13 +104,20 @@ export function ResponsiveToolbar({
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null);
   const [modal, setModal] = useState<{ title: string; content: React.ReactNode } | null>(null);
+  const [modalClosing, setModalClosing] = useState(false);
   const [, bump] = useState(0);
+
+  // Fade the modal out, then unmount it (keeps the surface open).
+  const dismissModal = useCallback(() => {
+    setModalClosing(true);
+    window.setTimeout(() => { setModal(null); setModalClosing(false); }, 140);
+  }, []);
 
   const menuApi: ToolbarMenuApi = {
     inMenu: true,
-    openModal: (title, content) => setModal({ title, content }),
-    closeModal: () => setModal(null),
-    closeMenu: () => { setModal(null); setOpen(false); },
+    openModal: (title, content) => { setModalClosing(false); setModal({ title, content }); },
+    closeModal: dismissModal,
+    closeMenu: () => { setModal(null); setModalClosing(false); setOpen(false); },
   };
 
   useEffect(ensureStyles, []);
@@ -303,7 +311,7 @@ export function ResponsiveToolbar({
   // / colour swatches / theme list render cleanly regardless of the editor.
   const modalEl = modal && (
     <>
-      <div onClick={() => setModal(null)} style={{ position: 'fixed', inset: 0, zIndex: Z + 2, background: 'rgba(15,23,42,0.45)', animation: 'sp-rt-fade .15s ease' }} />
+      <div onClick={dismissModal} style={{ position: 'fixed', inset: 0, zIndex: Z + 2, background: 'rgba(15,23,42,0.45)', animation: `${modalClosing ? 'sp-rt-fadeout' : 'sp-rt-fade'} .15s ease forwards` }} />
       <div
         role="dialog"
         aria-label={modal.title}
@@ -312,13 +320,15 @@ export function ResponsiveToolbar({
           width: 'min(94vw, 440px)', maxHeight: '82vh', overflowY: 'auto', boxSizing: 'border-box',
           background: '#fff', borderRadius: 16, padding: 16, fontFamily: 'inherit',
           boxShadow: '0 24px 60px -16px rgba(0,0,0,0.45), 0 0 0 1px rgba(0,0,0,0.06)',
-          animation: 'sp-rt-pop .14s ease',
+          // Opacity-only fade — a transform animation would fight the centering
+          // translate(-50%,-50%) and make the modal flash off-centre first.
+          animation: `${modalClosing ? 'sp-rt-fadeout' : 'sp-rt-fade'} .15s ease forwards`,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <button type="button" aria-label="Back" onClick={() => setModal(null)} style={{ border: 'none', background: 'transparent', color: '#64748b', fontSize: 22, lineHeight: 1, cursor: 'pointer', padding: '0 4px' }}>‹</button>
           <span style={{ fontSize: 15, fontWeight: 600, color: '#1f2937' }}>{modal.title}</span>
-          <button type="button" aria-label="Close" onClick={() => { setModal(null); setOpen(false); }} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', color: '#64748b', fontSize: 22, lineHeight: 1, cursor: 'pointer', padding: 4 }}>×</button>
+          {/* Closes only the modal — back to the surface, which stays open. */}
+          <button type="button" aria-label="Close" onClick={dismissModal} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', color: '#64748b', fontSize: 22, lineHeight: 1, cursor: 'pointer', padding: 4 }}>×</button>
         </div>
         {modal.content}
       </div>
