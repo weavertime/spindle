@@ -1,0 +1,79 @@
+name: Publish Packages
+
+# Publishes all @weavertime/spindle-* packages to npm when a GitHub Release is
+# published. Cutting the Release is the single action that both generates the
+# changelog (auto-notes — see .github/release.yml) and ships the packages.
+#
+# Versions come from each package.json — bump them (in lockstep) and commit
+# before you tag/release. A package whose version is already on npm is skipped,
+# so re-runs and partial bumps are safe. Requires an npm automation token in the
+# NPM_TOKEN secret (publish scope for @weavertime).
+on:
+  release:
+    types: [published]
+  # Manual fallback (e.g. to retry a failed publish, or publish without a Release).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # required for npm provenance
+
+# Never cancel an in-flight publish.
+concurrency:
+  group: publish-packages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build & publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm ci
+      # npm ci/install omit Rollup's platform-native optional dep in a workspace
+      # root (npm/cli#4828), so `rollup -c` fails to load
+      # @rollup/rollup-linux-x64-gnu. Install it explicitly at Rollup's exact
+      # version; the runner is always linux-x64. --no-save leaves the lockfile
+      # untouched.
+      - name: Install Rollup native binary (npm workspace bug workaround)
+        run: |
+          ROLLUP_VERSION="$(node -p "require('rollup/package.json').version")"
+          npm install --no-save --no-audit --no-fund "@rollup/rollup-linux-x64-gnu@${ROLLUP_VERSION}"
+
+      # Gate before publishing: build (also produces the dist that ships),
+      # type-check, and test. Publishing is irreversible, so verify the exact
+      # tagged commit is green even though CI already ran on master.
+      - run: npm run build
+      - run: npm run type-check
+      - run: npm test
+
+      - name: Publish changed packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          published=0
+          for dir in packages/*/; do
+            pkg="${dir}package.json"
+            [ -f "$pkg" ] || continue
+            if [ "$(node -p "require('./$pkg').private === true")" = "true" ]; then
+              echo "· skip ${dir} (private)"
+              continue
+            fi
+            name="$(node -p "require('./$pkg').name")"
+            version="$(node -p "require('./$pkg').version")"
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "= $name@$version already on npm — skipping"
+            else
+              echo "+ publishing $name@$version"
+              npm publish -w "$name" --provenance
+              published=$((published + 1))
+            fi
+          done
+          echo "Published $published package(s)."
