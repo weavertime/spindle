@@ -112,12 +112,16 @@ function injectStyles(): void {
 
 export function ToolbarButton({
   title,
+  label,
   onClick,
   active,
   disabled,
   children,
 }: {
   title: string;
+  /** Optional visible text next to the icon; widens the button to a pill and
+   *  drops the hover tooltip (which the label makes redundant). */
+  label?: string;
   onClick: () => void;
   active?: boolean;
   disabled?: boolean;
@@ -135,14 +139,15 @@ export function ToolbarButton({
       onMouseLeave={() => setHover(false)}
       onMouseDown={(e) => e.preventDefault()}
       style={{
-        ...TB.button,
+        ...(label ? TB.dropdownButton : TB.button),
         ...(hover && !active && !disabled ? TB.buttonHover : {}),
         ...(active ? TB.buttonActive : {}),
         ...(disabled ? TB.buttonDisabled : {}),
       }}
     >
       {children}
-      <span className="sp-tb-tip" style={TB.tooltip}>{title}</span>
+      {label && <span>{label}</span>}
+      {!label && <span className="sp-tb-tip" style={TB.tooltip}>{title}</span>}
     </button>
   );
 }
