@@ -211,7 +211,7 @@ function Packages() {
   return (
     <section className="sec" id="packages"><div className="wrap">
       <SecLabel n="04 · EVERY THREAD" />
-      <h2 style={{ marginBottom: 30 }}>Six packages, one scope.</h2>
+      <h2 style={{ marginBottom: 30 }}>Eight packages, one scope.</h2>
       <div className="tblwrap"><table className="tbl">
         <thead><tr><th>Package</th><th>Role</th><th style={{ textAlign: 'right' }}>Version</th></tr></thead>
         <tbody>
@@ -219,7 +219,7 @@ function Packages() {
             <tr key={name}>
               <td className="p">@weavertime/<b>{name}</b></td>
               <td className="d">{role}</td>
-              <td className="v">0.2.0</td>
+              <td className="v">0.3.0</td>
             </tr>
           ))}
         </tbody>

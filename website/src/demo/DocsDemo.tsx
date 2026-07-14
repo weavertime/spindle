@@ -168,8 +168,8 @@ const sampleDocument: DocumentData = {
               id: 'r4',
               cells: [
                 { id: 'c41', content: [{ type: 'text', text: 'Slides' }] },
-                { id: 'c42', content: [{ type: 'text', text: 'spindle-docs-core', styleId: 'code' }] },
-                { id: 'c43', content: [{ type: 'text', text: '⏳ Coming soon' }] },
+                { id: 'c42', content: [{ type: 'text', text: 'spindle-slides-react', styleId: 'code' }] },
+                { id: 'c43', content: [{ type: 'text', text: '✅ Shipping' }] },
               ],
             },
           ],
