@@ -31,6 +31,10 @@ jobs:
   publish:
     name: Build & publish to npm
     runs-on: ubuntu-latest
+    # Protected environment: publishing waits for a required reviewer's manual
+    # approval. Set this same name ("release") as the Environment on each
+    # package's npm trusted publisher so npm binds the OIDC token to it.
+    environment: release
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
