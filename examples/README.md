@@ -1,25 +1,23 @@
 # Examples
 
-This directory contains example implementations using Spindle Sheets.
+Standalone demos for the Spindle libraries — each runs without a backend or
+authentication.
 
-## Demo
+| Demo | Directory | Showcases |
+|------|-----------|-----------|
+| Docs | [`docs-demo/`](docs-demo/) | The document editor (`@weavertime/spindle-docs-react`) |
+| Sheets | [`sheets-demo/`](sheets-demo/) | The spreadsheet (`@weavertime/spindle-sheets-react`) |
+| Slides | [`slides-demo/`](slides-demo/) | The presentation editor (`@weavertime/spindle-slides-react`) |
+| Collab server | [`collab-server/`](collab-server/) | A local WebSocket relay for trying real-time collaboration across the three editors |
 
-A standalone demo website that showcases Spindle Sheets functionality without requiring any backend or authentication.
+## Run a demo
 
-**Location**: `demo/`
-
-**Run**:
 ```bash
-cd demo
+cd examples/sheets-demo   # or docs-demo / slides-demo
 npm install
 npm run dev
 ```
 
-**Features**:
-- Standalone (no backend required)
-- Pre-loaded sample data
-- All core features demonstrated
-- Perfect for testing and development
-
-See [demo/README.md](demo/README.md) for more details.
-
+Each demo is pre-loaded with sample content and exercises the library's core
+features — handy for testing and development. The collaboration demos can point
+at the local relay in `collab-server/`.

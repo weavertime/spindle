@@ -1,15 +1,15 @@
 # Comments
 
-Both the spreadsheet and the document editor support **comment threads** —
-select content, attach a thread, reply, resolve, and @-mention teammates.
-Comments sync between users over the same collaboration layer as the rest
-of the document.
+The spreadsheet, the document editor, and the slides editor all support
+**comment threads** — select content, attach a thread, reply, resolve, and
+@-mention teammates. Comments sync between users over the same collaboration
+layer as the rest of the document.
 
 ## Design in one paragraph
 
 A **thread** is anchored to a piece of content and holds an ordered list of
 **comments** (`comments[0]` is the root; the rest are replies). The thread
-*content* model is identical for both editors — only the **anchor** differs.
+*content* model is identical across editors — only the **anchor** differs.
 Thread content lives in a top-level `threads` map inside the Y.Doc, so it
 syncs like everything else; it is deliberately kept out of undo/redo.
 

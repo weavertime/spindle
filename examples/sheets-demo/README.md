@@ -1,4 +1,4 @@
-# Pagent Sheets Demo
+# Spindle Sheets Demo
 
 Standalone demo website for testing Spindle Sheets library functionality.
 
@@ -14,7 +14,7 @@ This demo showcases:
 ## Setup
 
 ```bash
-cd examples/demo
+cd examples/sheets-demo
 npm install
 npm run dev
 ```

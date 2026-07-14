@@ -11,12 +11,13 @@ The document model is a single flowing sequence of blocks; a slide is a bag of a
 
 ## What's in the box
 
-- Text, shape (~18 SVG presets), image, and line elements
+- Text, shape (~18 SVG presets), image, line/connector, and **table** elements
+- Tables: per-cell rich text, cell/row/column/range selection, and pasting a spreadsheet range as a table
 - Multi-select with move / resize / rotate handles, smart guides + snapping
 - Align & distribute, group / ungroup, z-order, filmstrip with drag reorder
 - Themes (12 symbolic color slots + major/minor fonts) and a layout gallery with placeholder materialization
 - Rich text per element via ProseMirror (a single live editor mounts on the element being edited)
-- Present mode (fullscreen, letterboxed, cross-fade) and PDF export (print pipeline)
+- Present mode (fullscreen, letterboxed, cross-fade) with presenter view (timer, notes, next-slide preview); PDF export is wired up by the host app
 - Real-time collaboration over Yjs with element-anchored comments
 - A pure-JSON data model — `getData()` / `setData()` — that's easy to author by hand or generate
 

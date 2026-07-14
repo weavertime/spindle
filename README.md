@@ -144,7 +144,7 @@ const initialDocumentData: DocumentData = {
           id: 'block_1',
           type: 'heading',
           level: 1,
-          content: [{ type: 'text', text: 'Welcome to Pagent Docs' }],
+          content: [{ type: 'text', text: 'Welcome to Spindle Docs' }],
         },
         {
           id: 'block_2',
@@ -223,8 +223,15 @@ export default MyDocumentEditor;
 - ✅ Images (block and inline)
 - ✅ Undo/redo history
 
+**Slides:**
+- ✅ Element model: text, shapes, images, lines/connectors, and tables
+- ✅ Drag/resize/rotate at 60fps with smart-guide snapping
+- ✅ Themes & layouts with placeholder materialization
+- ✅ Present mode with keyboard nav and presenter view
+- ✅ Element-anchored comments
+
 **Collaboration:**
-- ✅ Real-time multi-user editing for both docs and sheets (Yjs CRDT)
+- ✅ Real-time multi-user editing for docs, sheets, and slides (Yjs CRDT)
 - ✅ Live remote cursors, selections, and presence
 - ✅ Pluggable transport — ships an in-memory and a WebSocket provider
 - ✅ Offline persistence (IndexedDB) — edits survive refresh/offline

@@ -63,6 +63,12 @@ const docModel = proseMirrorToDocument(pmNode, existingDoc);
 
 ## Limitations
 
-- No collaborative editing support
-- Single-section documents (multi-section support is in the data model but not implemented in the UI)
-- No comments or suggestions
+- Single-section editing: multi-section documents live in the data model, but
+  the editor UI renders only the first section (and collaboration is
+  single-section for now)
+- No export/import (PDF, DOCX) and no find & replace
+
+Real-time collaboration (Yjs, via `attachCollab` / the `/collab` subpath) and
+comment threads **are** supported. See
+[`documentation/docs/TODO.md`](../../documentation/docs/TODO.md) for the full
+remaining-work list.
