@@ -1,0 +1,63 @@
+name: Deploy Website
+
+# Builds the marketing site (spindle.weavertime.com) and deploys it to
+# Cloudflare Pages on every push to master that touches the website. The site
+# consumes the spindle packages via file: deps, so all package dist is built
+# first (same as the CI website job).
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'website/**'
+      - '.github/workflows/deploy-website.yml'
+  # Allow a manual redeploy from the Actions tab (e.g. after a package change).
+  workflow_dispatch:
+
+# One deploy at a time; a newer push supersedes an in-flight one.
+concurrency:
+  group: deploy-website
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build & deploy to Cloudflare Pages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      # npm ci/install omit Rollup's platform-native optional dep in a
+      # workspace root (npm/cli#4828), so `rollup -c` fails to load
+      # @rollup/rollup-linux-x64-gnu. Install it explicitly at Rollup's exact
+      # version; the runner is always linux-x64. --no-save leaves the lockfile
+      # untouched.
+      - name: Install Rollup native binary (npm workspace bug workaround)
+        run: |
+          ROLLUP_VERSION="$(node -p "require('rollup/package.json').version")"
+          npm install --no-save --no-audit --no-fund "@rollup/rollup-linux-x64-gnu@${ROLLUP_VERSION}"
+
+      # Build every package's dist so the website can resolve its file: deps.
+      - run: npm run build
+
+      - run: npm ci
+        working-directory: website
+      - run: npm run typecheck
+        working-directory: website
+      - run: npm run build
+        working-directory: website
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_PAGES_API_KEY }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Direct upload of the built SPA. --branch=master makes this the
+          # production deploy (the Pages project's production branch is master).
+          command: pages deploy website/dist --project-name=spindle --branch=master
