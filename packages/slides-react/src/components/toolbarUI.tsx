@@ -21,9 +21,9 @@ export const TB = {
   pill: {
     display: 'flex',
     alignItems: 'center',
-    flexWrap: 'wrap' as const,
     gap: 2,
     flex: '1 1 auto',
+    minWidth: 0,
     padding: '6px 10px',
     background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(248,250,252,0.95) 100%)',
     backdropFilter: 'blur(20px) saturate(180%)',
@@ -112,12 +112,16 @@ function injectStyles(): void {
 
 export function ToolbarButton({
   title,
+  label,
   onClick,
   active,
   disabled,
   children,
 }: {
   title: string;
+  /** Optional visible text next to the icon; widens the button to a pill and
+   *  drops the hover tooltip (which the label makes redundant). */
+  label?: string;
   onClick: () => void;
   active?: boolean;
   disabled?: boolean;
@@ -135,14 +139,15 @@ export function ToolbarButton({
       onMouseLeave={() => setHover(false)}
       onMouseDown={(e) => e.preventDefault()}
       style={{
-        ...TB.button,
+        ...(label ? TB.dropdownButton : TB.button),
         ...(hover && !active && !disabled ? TB.buttonHover : {}),
         ...(active ? TB.buttonActive : {}),
         ...(disabled ? TB.buttonDisabled : {}),
       }}
     >
       {children}
-      <span className="sp-tb-tip" style={TB.tooltip}>{title}</span>
+      {label && <span>{label}</span>}
+      {!label && <span className="sp-tb-tip" style={TB.tooltip}>{title}</span>}
     </button>
   );
 }

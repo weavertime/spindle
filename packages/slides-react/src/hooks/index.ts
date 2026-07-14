@@ -77,3 +77,8 @@ export function useCommentsOpen(): boolean {
   const { ui } = useDeckContext();
   return useSyncExternalStore(ui.subscribe, ui.getCommentsOpen);
 }
+
+export function useFilmstripOpen(): boolean {
+  const { ui } = useDeckContext();
+  return useSyncExternalStore(ui.subscribe, ui.getFilmstripOpen);
+}

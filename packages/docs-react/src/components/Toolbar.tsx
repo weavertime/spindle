@@ -11,10 +11,10 @@ import {
 import type { HeadingLevel } from '@weavertime/spindle-docs-core';
 import type { ActiveMarks } from './ProseMirrorEditor';
 import type { CellSelection } from '../core';
+import { ResponsiveToolbar, useToolbarMenu, MenuRow } from '@weavertime/spindle-shared/react';
 import { LinkDialog } from './LinkDialog';
 import { ImageDialog } from './ImageDialog';
 import { TableSizePicker } from './TableSizePicker';
-import { ColorPicker } from './ColorPicker';
 
 // Lucide Icons
 import {
@@ -46,6 +46,7 @@ import {
   FileDown,
   MessageSquarePlus,
   Type,
+  ALargeSmall,
   Settings2,
 } from 'lucide-react';
 
@@ -74,8 +75,9 @@ const styles = {
     fontFamily: '"Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
     position: 'relative' as const,
     zIndex: 100,
-    margin: '8px auto',
-    maxWidth: 'fit-content',
+    margin: '8px 0',
+    width: '100%',
+    boxSizing: 'border-box' as const,
   } as React.CSSProperties,
   
   // Button base style
@@ -312,6 +314,134 @@ const Divider = memo(function Divider() {
   return <div style={styles.divider} />;
 });
 
+const docHex = (c: string) => /^#[0-9a-fA-F]{6}$/.test(c);
+const DOC_COLORS = [
+  '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff',
+  '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#9900ff',
+  '#e6b8af', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#d9d2e9', '#ead1dc',
+  '#cc4125', '#e69138', '#f1c232', '#6aa84f', '#45818e', '#3c78d8', '#674ea7', '#a64d79',
+];
+
+// A dropdown control that works inline (button + popover) and inside the
+// overflow surface (menu row + modal). `triggerLabel` set → text trigger.
+const OverflowDropdown = memo(function OverflowDropdown({ triggerIcon, triggerLabel, menuLabel, hint, width, align, minWidth, children }: {
+  triggerIcon?: React.ReactNode; triggerLabel?: React.ReactNode; menuLabel: string; hint?: React.ReactNode;
+  width?: number; align?: 'left' | 'right'; minWidth?: number; children: React.ReactNode;
+}) {
+  const menu = useToolbarMenu();
+  const [open, setOpen] = useState(false);
+  if (menu.inMenu) {
+    return <MenuRow icon={triggerIcon} label={menuLabel} hint={hint} onClick={() => menu.openModal(menuLabel, <div onClick={() => menu.closeMenu()}>{children}</div>)} />;
+  }
+  return (
+    <div style={{ position: 'relative' }}>
+      {triggerLabel !== undefined ? (
+        <button onClick={() => setOpen((o) => !o)} style={{ ...styles.dropdownButton, ...(minWidth ? { minWidth } : {}), ...(open ? styles.buttonActive : {}) }}>
+          {triggerIcon}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 70 }}>{triggerLabel}</span>
+          <ChevronDown size={14} />
+        </button>
+      ) : (
+        <ToolbarButton onClick={() => setOpen((o) => !o)} active={open} tooltip={menuLabel}>{triggerIcon}</ToolbarButton>
+      )}
+      {open && (
+        <div style={{ ...styles.dropdown, ...(width ? { minWidth: width } : {}), ...(align === 'right' ? { left: 'auto', right: 0 } : {}) }} onMouseLeave={() => setOpen(false)}>
+          <div onClick={() => setOpen(false)}>{children}</div>
+        </div>
+      )}
+    </div>
+  );
+});
+
+const DocColorControl = memo(function DocColorControl({ icon, label, value, onApply }: {
+  icon: React.ReactNode; label: string; value?: string; onApply: (c: string) => void;
+}) {
+  const menu = useToolbarMenu();
+  const [open, setOpen] = useState(false);
+  const swatches = (done: () => void) => (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 8 }}>
+        {DOC_COLORS.map((c) => (
+          <button key={c} title={c} onClick={() => { onApply(c); done(); }} style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: c === value ? '2px solid #2d7ff9' : '1px solid #d5d9e0', background: c, cursor: 'pointer' }} />
+        ))}
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, fontSize: 14, color: '#334155', cursor: 'pointer' }}>
+        <input type="color" value={value && docHex(value) ? value : '#000000'} onChange={(e) => onApply(e.target.value)} style={{ width: 40, height: 32, border: '1px solid #d5d9e0', borderRadius: 6, background: 'none', padding: 2, cursor: 'pointer' }} />
+        Custom color
+      </label>
+    </div>
+  );
+  if (menu.inMenu) {
+    return <MenuRow icon={icon} label={label} hint={<span style={{ width: 16, height: 16, borderRadius: 4, border: '1px solid #d5d9e0', background: value || '#000', display: 'inline-block' }} />} onClick={() => menu.openModal(label, swatches(() => menu.closeMenu()))} />;
+  }
+  return (
+    <div style={{ position: 'relative' }}>
+      <ToolbarButton onClick={() => setOpen((o) => !o)} active={open} tooltip={label}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+          {icon}
+          <div style={{ width: 14, height: 3, borderRadius: 1, backgroundColor: value || '#000' }} />
+        </div>
+      </ToolbarButton>
+      {open && (
+        <div style={{ ...styles.dropdown, padding: 8, minWidth: 216 }} onMouseLeave={() => setOpen(false)}>
+          {swatches(() => setOpen(false))}
+        </div>
+      )}
+    </div>
+  );
+});
+
+const DocFontSizeControl = memo(function DocFontSizeControl({ value, sizes, onPick }: {
+  value: number; sizes: number[]; onPick: (s: number) => void;
+}) {
+  const menu = useToolbarMenu();
+  const [open, setOpen] = useState(false);
+  const step = (dir: 'down' | 'up') => {
+    const idx = sizes.indexOf(value);
+    if (dir === 'down') { if (idx > 0) onPick(sizes[idx - 1]); else if (idx === -1) { const s = [...sizes].reverse().find((x) => x < value); if (s) onPick(s); } }
+    else { if (idx !== -1 && idx < sizes.length - 1) onPick(sizes[idx + 1]); else if (idx === -1) { const s = sizes.find((x) => x > value); if (s) onPick(s); } }
+  };
+  const grid = (done: () => void) => (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 48px)', gap: 6, justifyContent: 'center' }}>
+      {sizes.map((s) => (
+        <button key={s} onClick={() => { onPick(s); done(); }} style={{ height: 40, borderRadius: 8, border: s === value ? '2px solid #2d7ff9' : '1px solid #d5d9e0', background: '#fff', cursor: 'pointer', fontSize: 14, color: '#334155' }}>{s}</button>
+      ))}
+    </div>
+  );
+  if (menu.inMenu) {
+    return <MenuRow icon={<ALargeSmall size={17} />} label="Font size" hint={value} onClick={() => menu.openModal('Font size', grid(() => menu.closeMenu()))} />;
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+      <ToolbarButton onClick={() => step('down')} tooltip="Decrease size"><Minus size={14} strokeWidth={2.5} /></ToolbarButton>
+      <div style={{ position: 'relative' }}>
+        <input type="text" value={value} readOnly onClick={() => setOpen((o) => !o)} style={styles.fontSizeInput} />
+        {open && (
+          <div style={{ ...styles.dropdown, left: '50%', transform: 'translateX(-50%)', minWidth: 60, maxHeight: 240, overflowY: 'auto' }} onMouseLeave={() => setOpen(false)}>
+            {sizes.map((s) => (
+              <DropdownItemStandalone key={s} onClick={() => { onPick(s); setOpen(false); }} active={value === s}>{s}</DropdownItemStandalone>
+            ))}
+          </div>
+        )}
+      </div>
+      <ToolbarButton onClick={() => step('up')} tooltip="Increase size"><Plus size={14} strokeWidth={2.5} /></ToolbarButton>
+    </div>
+  );
+});
+
+// Minimal standalone item (module-level; the in-component DropdownItem is a closure).
+const DropdownItemStandalone = memo(function DropdownItemStandalone({ onClick, active, children, style }: {
+  onClick: () => void; active?: boolean; children: React.ReactNode; style?: React.CSSProperties;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{ ...styles.dropdownItem, ...(hover ? styles.dropdownItemHover : {}), ...(active ? styles.dropdownItemActive : {}), justifyContent: 'center', ...style }}>
+      {children}
+    </div>
+  );
+});
+
 /**
  * Document editor toolbar - Modern floating design
  */
@@ -325,37 +455,17 @@ export const Toolbar = memo(function Toolbar({
   const { zoom, setZoom } = useDocument();
   const { canUndo, canRedo, undo, redo } = useHistory();
   
-  const [showFontDropdown, setShowFontDropdown] = useState(false);
-  const [showFontSizeDropdown, setShowFontSizeDropdown] = useState(false);
-  const [showColorPicker, setShowColorPicker] = useState<'font' | 'highlight' | null>(null);
-  const [showHeadingDropdown, setShowHeadingDropdown] = useState(false);
-  const [showZoomDropdown, setShowZoomDropdown] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [showImageDialog, setShowImageDialog] = useState(false);
   const [showTablePicker, setShowTablePicker] = useState(false);
-  
+
   const toolbarRef = useRef<HTMLDivElement>(null);
-  
+
   // Inject animation styles
   useEffect(() => {
     injectStyles();
   }, []);
-  
-  // Close dropdowns when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) {
-        setShowFontDropdown(false);
-        setShowFontSizeDropdown(false);
-        setShowColorPicker(null);
-        setShowHeadingDropdown(false);
-        setShowZoomDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-  
+
   const commands = createCommands(docsSchema);
   
   const getSelectedText = useCallback((): string => {
@@ -423,7 +533,6 @@ export const Toolbar = memo(function Toolbar({
     } else {
       runCommand(commands.setHighlight(color));
     }
-    setShowColorPicker(null);
     editorView.focus();
   }, [editorView, selectedCell, commands, runCommand]);
   
@@ -477,37 +586,6 @@ export const Toolbar = memo(function Toolbar({
   
   const currentFont = activeMarks?.textStyle?.fontFamily || 'Inter';
   
-  // Dropdown component
-  const DropdownMenu = ({ 
-    isOpen, 
-    onClose, 
-    children, 
-    align = 'left',
-    width,
-  }: { 
-    isOpen: boolean; 
-    onClose: () => void; 
-    children: React.ReactNode;
-    align?: 'left' | 'center' | 'right';
-    width?: number;
-  }) => {
-    if (!isOpen) return null;
-    
-    return (
-      <div 
-        style={{
-          ...styles.dropdown,
-          ...(align === 'center' ? { left: '50%', transform: 'translateX(-50%)' } : {}),
-          ...(align === 'right' ? { left: 'auto', right: 0 } : {}),
-          ...(width ? { minWidth: width } : {}),
-        }}
-        onMouseLeave={onClose}
-      >
-        {children}
-      </div>
-    );
-  };
-  
   const DropdownItem = ({
     onClick,
     active,
@@ -544,6 +622,7 @@ export const Toolbar = memo(function Toolbar({
       className="docs-toolbar"
       style={styles.toolbar}
     >
+      <ResponsiveToolbar gap={2}>
       {/* Undo/Redo */}
       <ToolbarButton onClick={handleUndo} disabled={!canUndo && !editorView} tooltip="Undo">
         <Undo2 size={18} strokeWidth={2} />
@@ -555,150 +634,44 @@ export const Toolbar = memo(function Toolbar({
       <Divider />
       
       {/* Zoom */}
-      <div style={{ position: 'relative' }}>
-        <button
-          onClick={() => setShowZoomDropdown(!showZoomDropdown)}
-          style={styles.dropdownButton}
-        >
-          <span>{zoom}%</span>
-          <ChevronDown size={14} />
-        </button>
-        <DropdownMenu isOpen={showZoomDropdown} onClose={() => setShowZoomDropdown(false)} width={80}>
-          {zoomLevels.map((level) => (
-            <DropdownItem
-              key={level}
-              onClick={() => { setZoom(level); setShowZoomDropdown(false); }}
-              active={zoom === level}
-            >
-              {level}%
-            </DropdownItem>
-          ))}
-        </DropdownMenu>
-      </div>
-      
+      <OverflowDropdown menuLabel="Zoom" triggerLabel={`${zoom}%`} hint={`${zoom}%`} width={80}>
+        {zoomLevels.map((level) => (
+          <DropdownItem key={level} onClick={() => setZoom(level)} active={zoom === level}>{level}%</DropdownItem>
+        ))}
+      </OverflowDropdown>
+
       <Divider />
-      
+
       {/* Heading Style */}
-      <div style={{ position: 'relative' }}>
-        <button
-          onClick={() => setShowHeadingDropdown(!showHeadingDropdown)}
-          style={{ ...styles.dropdownButton, minWidth: 100 }}
-        >
-          <Type size={14} style={{ marginRight: 4 }} />
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 70 }}>
-            {currentHeadingLabel}
-          </span>
-          <ChevronDown size={14} />
-        </button>
-        <DropdownMenu isOpen={showHeadingDropdown} onClose={() => setShowHeadingDropdown(false)} width={160}>
-          {headingOptions.map((option) => {
-            const isActive = option.level === 'normal' 
-              ? activeMarks?.blockType === 'paragraph'
-              : activeMarks?.blockType === 'heading' && activeMarks?.headingLevel === option.level;
-            return (
-              <DropdownItem
-                key={option.level}
-                onClick={() => {
-                  if (option.level === 'normal') runCommand(commands.setParagraph());
-                  else runCommand(commands.setHeading(option.level));
-                  setShowHeadingDropdown(false);
-                }}
-                active={isActive}
-                style={{ fontSize: option.size, fontWeight: option.level !== 'normal' ? 600 : 400 }}
-              >
-                {option.label}
-              </DropdownItem>
-            );
-          })}
-        </DropdownMenu>
-      </div>
-      
-      <Divider />
-      
-      {/* Font Family */}
-      <div style={{ position: 'relative' }}>
-        <button
-          onClick={() => setShowFontDropdown(!showFontDropdown)}
-          style={{ ...styles.dropdownButton, minWidth: 90 }}
-        >
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 60 }}>
-            {currentFont}
-          </span>
-          <ChevronDown size={14} />
-        </button>
-        <DropdownMenu isOpen={showFontDropdown} onClose={() => setShowFontDropdown(false)} width={180}>
-          {fonts.map((font) => (
+      <OverflowDropdown menuLabel="Style" triggerIcon={<Type size={14} style={{ marginRight: 4 }} />} triggerLabel={currentHeadingLabel} hint={currentHeadingLabel} width={160} minWidth={100}>
+        {headingOptions.map((option) => {
+          const isActive = option.level === 'normal'
+            ? activeMarks?.blockType === 'paragraph'
+            : activeMarks?.blockType === 'heading' && activeMarks?.headingLevel === option.level;
+          return (
             <DropdownItem
-              key={font}
-              onClick={() => { runCommand(commands.setFontFamily(font)); setShowFontDropdown(false); }}
-              active={currentFont === font}
-              style={{ fontFamily: font }}
+              key={option.level}
+              onClick={() => { if (option.level === 'normal') runCommand(commands.setParagraph()); else runCommand(commands.setHeading(option.level)); }}
+              active={isActive}
+              style={{ fontSize: option.size, fontWeight: option.level !== 'normal' ? 600 : 400 }}
             >
-              {font}
+              {option.label}
             </DropdownItem>
-          ))}
-        </DropdownMenu>
-      </div>
+          );
+        })}
+      </OverflowDropdown>
+
+      <Divider />
+
+      {/* Font Family */}
+      <OverflowDropdown menuLabel="Font" triggerLabel={currentFont} hint={currentFont} width={180} minWidth={90}>
+        {fonts.map((font) => (
+          <DropdownItem key={font} onClick={() => runCommand(commands.setFontFamily(font))} active={currentFont === font} style={{ fontFamily: font }}>{font}</DropdownItem>
+        ))}
+      </OverflowDropdown>
       
       {/* Font Size */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-        <ToolbarButton
-          onClick={() => {
-            const idx = fontSizes.indexOf(currentFontSize);
-            if (idx > 0) {
-              runCommand(commands.setFontSize(fontSizes[idx - 1]));
-            } else if (idx === -1) {
-              // Current size not in list - find the next smaller standard size
-              const smaller = [...fontSizes].reverse().find(s => s < currentFontSize);
-              if (smaller) runCommand(commands.setFontSize(smaller));
-            }
-          }}
-          tooltip="Decrease size"
-        >
-          <Minus size={14} strokeWidth={2.5} />
-        </ToolbarButton>
-        
-        <div style={{ position: 'relative' }}>
-          <input
-            type="text"
-            value={currentFontSize}
-            readOnly
-            onClick={() => setShowFontSizeDropdown(!showFontSizeDropdown)}
-            style={styles.fontSizeInput}
-          />
-          <DropdownMenu 
-            isOpen={showFontSizeDropdown} 
-            onClose={() => setShowFontSizeDropdown(false)}
-            align="center"
-            width={60}
-          >
-            {fontSizes.map((size) => (
-              <DropdownItem
-                key={size}
-                onClick={() => { runCommand(commands.setFontSize(size)); setShowFontSizeDropdown(false); }}
-                active={currentFontSize === size}
-                style={{ justifyContent: 'center' }}
-              >
-                {size}
-              </DropdownItem>
-            ))}
-          </DropdownMenu>
-        </div>
-        
-        <ToolbarButton
-          onClick={() => {
-            const idx = fontSizes.indexOf(currentFontSize);
-            if (idx < fontSizes.length - 1) runCommand(commands.setFontSize(fontSizes[idx + 1]));
-            else if (idx === -1) {
-              const next = fontSizes.find(s => s > currentFontSize);
-              if (next) runCommand(commands.setFontSize(next));
-            }
-          }}
-          tooltip="Increase size"
-        >
-          <Plus size={14} strokeWidth={2.5} />
-        </ToolbarButton>
-      </div>
+      <DocFontSizeControl value={currentFontSize} sizes={fontSizes} onPick={(s) => runCommand(commands.setFontSize(s))} />
       
       <Divider />
       
@@ -717,52 +690,10 @@ export const Toolbar = memo(function Toolbar({
       </ToolbarButton>
       
       {/* Text Color */}
-      <div style={{ position: 'relative' }}>
-        <ToolbarButton onClick={() => setShowColorPicker(showColorPicker === 'font' ? null : 'font')} tooltip="Text color">
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-            <Palette size={16} strokeWidth={2} />
-            <div style={{
-              width: 14,
-              height: 3,
-              borderRadius: 1,
-              backgroundColor: activeMarks?.textStyle?.color || '#000',
-            }} />
-          </div>
-        </ToolbarButton>
-        {showColorPicker === 'font' && (
-          <ColorPicker
-            currentColor={activeMarks?.textStyle?.color}
-            onColorSelect={(color) => {
-              runCommand(commands.setTextColor(color));
-              setShowColorPicker(null);
-            }}
-            onClose={() => setShowColorPicker(null)}
-          />
-        )}
-      </div>
-      
+      <DocColorControl icon={<Palette size={16} strokeWidth={2} />} label="Text color" value={activeMarks?.textStyle?.color} onApply={(color) => runCommand(commands.setTextColor(color))} />
+
       {/* Highlight Color */}
-      <div style={{ position: 'relative' }}>
-        <ToolbarButton 
-          onClick={() => setShowColorPicker(showColorPicker === 'highlight' ? null : 'highlight')} 
-          active={!!selectedCell}
-          tooltip={selectedCell ? "Cell background" : "Highlight"}
-        >
-          <Highlighter size={18} strokeWidth={2} />
-        </ToolbarButton>
-        {showColorPicker === 'highlight' && (
-          <ColorPicker
-            currentColor={activeMarks?.textStyle?.backgroundColor}
-            onColorSelect={(color) => {
-              handleHighlightColor(color);
-              setShowColorPicker(null);
-            }}
-            onClose={() => setShowColorPicker(null)}
-            showNoColor={true}
-            noColorLabel="Remove highlight"
-          />
-        )}
-      </div>
+      <DocColorControl icon={<Highlighter size={18} strokeWidth={2} />} label={selectedCell ? 'Cell background' : 'Highlight'} value={activeMarks?.textStyle?.backgroundColor} onApply={(color) => handleHighlightColor(color)} />
       
       <Divider />
       
@@ -873,7 +804,8 @@ export const Toolbar = memo(function Toolbar({
       <ToolbarButton onClick={onPageSetup} tooltip="Page setup">
         <Settings2 size={18} strokeWidth={2} />
       </ToolbarButton>
-      
+      </ResponsiveToolbar>
+
       {/* Dialogs */}
       <LinkDialog
         editorView={editorView ?? null}

@@ -42,15 +42,15 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      # The website consumes the (as-yet unpublished) slides packages via file:
-      # deps, so their dist must be built before the website resolves them.
-      # Published packages (docs/sheets) come pre-built from the registry.
+      # The website consumes every spindle package via file: deps (local
+      # monorepo, pre-publish), so all of their dist must be built before the
+      # website resolves them.
       - run: npm ci
       - name: Install Rollup native binary (npm workspace bug workaround)
         run: |
           ROLLUP_VERSION="$(node -p "require('rollup/package.json').version")"
           npm install --no-save --no-audit --no-fund "@rollup/rollup-linux-x64-gnu@${ROLLUP_VERSION}"
-      - run: npm run build -w @weavertime/spindle-shared -w @weavertime/spindle-slides-core -w @weavertime/spindle-slides-react
+      - run: npm run build
       - run: npm ci
         working-directory: website
       - run: npm run typecheck

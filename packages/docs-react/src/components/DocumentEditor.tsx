@@ -62,7 +62,7 @@ export const DocumentEditor = memo(function DocumentEditor({
   showToolbar = true,
   showRuler = true,
 }: DocumentEditorProps) {
-  const { document: docModel, zoom, currentUser } = useDocument();
+  const { document: docModel, zoom, setZoom, currentUser } = useDocument();
   const sections = useSections();
 
   const [showPageSetup, setShowPageSetup] = useState(false);
@@ -296,6 +296,38 @@ export const DocumentEditor = memo(function DocumentEditor({
     currentPageConfig.margins.footer,
   ]);
   
+  // Fit the page to the viewport width on narrow screens. The page is a fixed
+  // pixel width (Letter ≈ 816px); on a phone it's wider than the screen, and
+  // because the viewport centres it, the leading edge becomes unreachable —
+  // content spills off both sides. When it can't fit at 100% we scale zoom down
+  // to fit; when it fits (desktop) we leave the user's chosen zoom alone.
+  const pageWidthPx = presentationPageConfig.width;
+  // True while we're actively overriding zoom to fit a narrow screen — so when
+  // the screen widens again we can restore 100%, but a manual zoom on a screen
+  // that always fit (desktop) is never touched.
+  const autoFitRef = useRef(false);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    // Viewport has 24px padding each side; leave a little slack for the ruler
+    // gutter and scrollbar so the page never kisses the edge.
+    const CHROME = 24 * 2 + 16;
+    const fit = () => {
+      const avail = el.clientWidth - CHROME;
+      if (avail <= 0) return;
+      if (avail >= pageWidthPx) {
+        if (autoFitRef.current) { autoFitRef.current = false; setZoom(100); }
+        return; // fits at 100% → leave the user's zoom alone
+      }
+      autoFitRef.current = true;
+      setZoom(Math.max(25, Math.floor((avail / pageWidthPx) * 100)));
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [pageWidthPx, setZoom]);
+
   return (
     <div
       ref={containerRef}

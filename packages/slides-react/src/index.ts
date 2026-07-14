@@ -38,6 +38,7 @@ export {
   useKeyboardShortcuts,
   useEditingId,
   useCommentsOpen,
+  useFilmstripOpen,
 } from './hooks';
 export { useComments } from './hooks/useComments';
 export type { UseComments } from './hooks/useComments';

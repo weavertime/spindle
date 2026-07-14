@@ -1,6 +1,6 @@
 {
   "name": "@weavertime/spindle-sheets-core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Core spreadsheet engine for Spindle Sheets",
   "repository": {
     "type": "git",
@@ -48,7 +48,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@weavertime/spindle-shared": "^0.2.0",
+    "@weavertime/spindle-shared": "^0.3.0",
     "immer": "^10.0.0",
     "y-indexeddb": "^9.0.12",
     "y-protocols": "^1.0.7",

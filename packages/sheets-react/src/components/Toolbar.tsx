@@ -1,4 +1,5 @@
 import React, { memo, useState, useEffect, useRef, useMemo } from 'react';
+import { ResponsiveToolbar, useToolbarMenu, MenuRow } from '@weavertime/spindle-shared/react';
 import { HyperlinkModal } from './HyperlinkModal';
 import type { FormatType } from '@weavertime/spindle-sheets-core';
 import {
@@ -30,6 +31,8 @@ import {
   Minus,
   Plus,
   MessageSquare,
+  Type,
+  ALargeSmall,
 } from 'lucide-react';
 
 // ============================================================================
@@ -57,9 +60,9 @@ const styles = {
     fontFamily: '"Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
     position: 'relative' as const,
     zIndex: 100,
-    margin: '8px auto',
-    maxWidth: 'fit-content',
-    flexWrap: 'wrap' as const,
+    margin: '8px 0',
+    width: '100%',
+    boxSizing: 'border-box' as const,
   } as React.CSSProperties,
 
   // Button base style
@@ -331,6 +334,170 @@ const Divider = memo(function Divider() {
   return <div style={styles.divider} />;
 });
 
+const isHex = (c: string) => /^#[0-9a-fA-F]{6}$/.test(c);
+
+// A colour control: inline it's a button + swatch popover; inside the overflow
+// surface it's a menu row that opens the swatches in a modal (useToolbarMenu).
+const ColorControl = memo(function ColorControl({ icon, label, value, colors, onApply }: {
+  icon: React.ReactNode; label: string; value: string; colors: string[]; onApply?: (c: string) => void;
+}) {
+  const menu = useToolbarMenu();
+  const [open, setOpen] = useState(false);
+  const swatches = (done: () => void) => (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 8 }}>
+        {colors.map((c) => (
+          <button key={c} title={c} onClick={() => { onApply?.(c); done(); }} style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: c === value ? '2px solid #2d7ff9' : '1px solid #d5d9e0', background: c, cursor: 'pointer' }} />
+        ))}
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, fontSize: 14, color: '#334155', cursor: 'pointer' }}>
+        <input type="color" value={isHex(value) ? value : '#000000'} onChange={(e) => onApply?.(e.target.value)} style={{ width: 40, height: 32, border: '1px solid #d5d9e0', borderRadius: 6, background: 'none', padding: 2, cursor: 'pointer' }} />
+        Custom color
+      </label>
+    </div>
+  );
+  if (menu.inMenu) {
+    return <MenuRow icon={icon} label={label} hint={<span style={{ width: 16, height: 16, borderRadius: 4, border: '1px solid #d5d9e0', background: value, display: 'inline-block' }} />} onClick={() => menu.openModal(label, swatches(() => menu.closeMenu()))} />;
+  }
+  return (
+    <div style={{ position: 'relative' }}>
+      <ToolbarButton onClick={() => setOpen((o) => !o)} active={open} tooltip={label}>
+        {icon}
+        <span style={{ ...styles.colorBar, backgroundColor: value }} />
+      </ToolbarButton>
+      {open && (
+        <div style={{ ...styles.dropdown, padding: 8, minWidth: 216 }} onMouseLeave={() => setOpen(false)}>
+          {swatches(() => setOpen(false))}
+        </div>
+      )}
+    </div>
+  );
+});
+
+// A dropdown control: inline it's a button + DropdownMenu; inside the overflow
+// surface it's a menu row that opens the same items in a modal.
+const MenuButton = memo(function MenuButton({ icon, label, active, disabled, width, children }: {
+  icon: React.ReactNode; label: string; active?: boolean; disabled?: boolean; width?: number; children: React.ReactNode;
+}) {
+  const menu = useToolbarMenu();
+  const [open, setOpen] = useState(false);
+  if (menu.inMenu) {
+    return <MenuRow icon={icon} label={label} hint="›" onClick={disabled ? undefined : () => menu.openModal(label, <div onClick={() => menu.closeMenu()}>{children}</div>)} />;
+  }
+  return (
+    <div style={{ position: 'relative' }}>
+      <ToolbarButton onClick={() => setOpen((o) => !o)} active={open || active} disabled={disabled} tooltip={label}>{icon}</ToolbarButton>
+      <DropdownMenu isOpen={open} onClose={() => setOpen(false)} width={width} align="right">
+        <div onClick={() => setOpen(false)}>{children}</div>
+      </DropdownMenu>
+    </div>
+  );
+});
+
+// Load the given Google Fonts on demand (used by the font picker in both modes).
+function loadGoogleFonts(fonts: string[], loaded: React.MutableRefObject<Set<string>>) {
+  const toLoad = fonts.filter((f) => {
+    if (loaded.current.has(f)) return false;
+    if (document.querySelector(`link[data-fonts*="${f}"]`)) { loaded.current.add(f); return false; }
+    return true;
+  });
+  for (let i = 0; i < toLoad.length; i += 10) {
+    const batch = toLoad.slice(i, i + 10);
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?family=${batch.map((f) => f.replace(/\s+/g, '+')).join('&family=')}:wght@400&display=swap`;
+    link.setAttribute('data-fonts', batch.join(','));
+    document.head.appendChild(link);
+    batch.forEach((f) => loaded.current.add(f));
+  }
+}
+
+// The searchable font list used inside the font picker (its own state, so it
+// works both in the inline dropdown and in the overflow modal).
+const FontPickerPanel = memo(function FontPickerPanel({ fonts, value, onPick }: {
+  fonts: string[]; value: string; onPick: (f: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const loadedRef = useRef<Set<string>>(new Set());
+  const filtered = useMemo(() => fonts.filter((f) => f.toLowerCase().includes(query.toLowerCase())), [fonts, query]);
+  useEffect(() => { loadGoogleFonts(filtered.slice(0, 50), loadedRef); }, [filtered]);
+  return (
+    <div>
+      <div style={{ paddingBottom: 8, borderBottom: '1px solid rgba(0,0,0,0.06)', marginBottom: 6 }}>
+        <input type="text" placeholder="Search fonts…" value={query} onChange={(e) => setQuery(e.target.value)} onClick={(e) => e.stopPropagation()} style={styles.searchInput} autoFocus />
+      </div>
+      <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+        {filtered.length === 0 ? (
+          <div style={{ padding: 12, color: '#94a3b8', fontSize: 13, textAlign: 'center' }}>No fonts found</div>
+        ) : filtered.map((font, i) => (
+          <DropdownItem key={`${font}-${i}`} onClick={() => onPick(font)} active={value === font} style={{ fontFamily: `"${font}", sans-serif` }}>{font}</DropdownItem>
+        ))}
+      </div>
+    </div>
+  );
+});
+
+const FontFamilyControl = memo(function FontFamilyControl({ value, fonts, onPick }: {
+  value: string; fonts: string[]; onPick?: (f: string) => void;
+}) {
+  const menu = useToolbarMenu();
+  const [open, setOpen] = useState(false);
+  if (menu.inMenu) {
+    return <MenuRow icon={<Type size={17} />} label="Font" hint={value} onClick={() => menu.openModal('Font', <FontPickerPanel fonts={fonts} value={value} onPick={(f) => { onPick?.(f); menu.closeMenu(); }} />)} />;
+  }
+  return (
+    <div style={{ position: 'relative' }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ ...styles.dropdownButton, minWidth: 116, ...(open ? styles.buttonActive : {}) }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 84, fontFamily: `"${value}", sans-serif` }}>{value}</span>
+        <ChevronDown size={14} />
+      </button>
+      {open && (
+        <div style={{ ...styles.dropdown, padding: 8, minWidth: 240 }} onMouseLeave={() => setOpen(false)}>
+          <FontPickerPanel fonts={fonts} value={value} onPick={(f) => { onPick?.(f); setOpen(false); }} />
+        </div>
+      )}
+    </div>
+  );
+});
+
+const FontSizeControl = memo(function FontSizeControl({ value, sizes, onPick }: {
+  value: number; sizes: number[]; onPick?: (s: number) => void;
+}) {
+  const menu = useToolbarMenu();
+  const [open, setOpen] = useState(false);
+  const step = (dir: 'down' | 'up') => {
+    const idx = sizes.indexOf(value);
+    if (dir === 'down') { if (idx > 0) onPick?.(sizes[idx - 1]); else if (idx === -1) { const s = [...sizes].reverse().find((x) => x < value); if (s) onPick?.(s); } }
+    else { if (idx !== -1 && idx < sizes.length - 1) onPick?.(sizes[idx + 1]); else if (idx === -1) { const s = sizes.find((x) => x > value); if (s) onPick?.(s); } }
+  };
+  const grid = (done: () => void) => (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, 48px)', gap: 6, justifyContent: 'center' }}>
+      {sizes.map((s) => (
+        <button key={s} onClick={() => { onPick?.(s); done(); }} style={{ height: 40, borderRadius: 8, border: s === value ? '2px solid #2d7ff9' : '1px solid #d5d9e0', background: '#fff', cursor: 'pointer', fontSize: 14, color: '#334155' }}>{s}</button>
+      ))}
+    </div>
+  );
+  if (menu.inMenu) {
+    return <MenuRow icon={<ALargeSmall size={17} />} label="Font size" hint={value} onClick={() => menu.openModal('Font size', grid(() => menu.closeMenu()))} />;
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+      <ToolbarButton onClick={() => step('down')} tooltip="Decrease font size"><Minus size={14} strokeWidth={2.5} /></ToolbarButton>
+      <div style={{ position: 'relative' }}>
+        <input type="text" value={value} readOnly onClick={() => setOpen((o) => !o)} style={styles.fontSizeInput} />
+        {open && (
+          <div style={{ ...styles.dropdown, left: '50%', transform: 'translateX(-50%)', minWidth: 64, maxHeight: 240, overflowY: 'auto' }} onMouseLeave={() => setOpen(false)}>
+            {sizes.map((s) => (
+              <DropdownItem key={s} onClick={() => { onPick?.(s); setOpen(false); }} active={value === s} style={{ justifyContent: 'center' }}>{s}</DropdownItem>
+            ))}
+          </div>
+        )}
+      </div>
+      <ToolbarButton onClick={() => step('up')} tooltip="Increase font size"><Plus size={14} strokeWidth={2.5} /></ToolbarButton>
+    </div>
+  );
+});
+
 interface DropdownMenuProps {
   isOpen: boolean;
   onClose: () => void;
@@ -487,17 +654,8 @@ export const Toolbar = memo(function Toolbar({
   commentsActive,
   selectedFormat,
 }: ToolbarProps) {
-  const [showFontDropdown, setShowFontDropdown] = useState(false);
-  const [showFontSizeDropdown, setShowFontSizeDropdown] = useState(false);
-  const [showColorPicker, setShowColorPicker] = useState<'font' | 'background' | null>(null);
-  const [showBorderMenu, setShowBorderMenu] = useState(false);
-  const [showVerticalAlignMenu, setShowVerticalAlignMenu] = useState(false);
   const [showRotationMenu, setShowRotationMenu] = useState(false);
-  const [showSortMenu, setShowSortMenu] = useState(false);
   const [showHyperlinkModal, setShowHyperlinkModal] = useState(false);
-  const [showFreezeMenu, setShowFreezeMenu] = useState(false);
-  const [fontSearchQuery, setFontSearchQuery] = useState('');
-  const loadedFontsRef = useRef<Set<string>>(new Set());
   const toolbarRef = useRef<HTMLDivElement>(null);
 
   const hasFrozenPanes = frozenRows > 0 || frozenCols > 0;
@@ -506,24 +664,6 @@ export const Toolbar = memo(function Toolbar({
   // Inject animation styles once
   useEffect(() => {
     injectStyles();
-  }, []);
-
-  // Close all dropdowns when clicking outside the toolbar
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) {
-        setShowFontDropdown(false);
-        setShowFontSizeDropdown(false);
-        setShowColorPicker(null);
-        setShowBorderMenu(false);
-        setShowVerticalAlignMenu(false);
-        setShowSortMenu(false);
-        setShowFreezeMenu(false);
-        setFontSearchQuery('');
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   // Comprehensive list of Google Fonts
@@ -639,50 +779,6 @@ export const Toolbar = memo(function Toolbar({
     'Yantramanav', 'Yatra One', 'Yellowtail', 'Yeseva One', 'Yesteryear', 'Yrsa', 'Zeyada', 'Zilla Slab'
   ];
 
-  // Filter fonts based on search query
-  const filteredFonts = useMemo(
-    () =>
-      googleFonts.filter((font) =>
-        font.toLowerCase().includes(fontSearchQuery.toLowerCase())
-      ),
-    [fontSearchQuery]
-  );
-
-  // Dynamically load Google Fonts on demand
-  useEffect(() => {
-    if (!showFontDropdown) return;
-
-    const loadGoogleFontsBatch = (fontFamilies: string[]) => {
-      const fontsToLoad = fontFamilies.filter((font) => {
-        if (loadedFontsRef.current.has(font)) return false;
-        const existingLink = document.querySelector(`link[data-font="${font}"]`);
-        if (existingLink) {
-          loadedFontsRef.current.add(font);
-          return false;
-        }
-        return true;
-      });
-
-      if (fontsToLoad.length === 0) return;
-
-      const batchSize = 10;
-      for (let i = 0; i < fontsToLoad.length; i += batchSize) {
-        const batch = fontsToLoad.slice(i, i + batchSize);
-        const fontNames = batch.map((font) => font.replace(/\s+/g, '+')).join('&family=');
-
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = `https://fonts.googleapis.com/css2?family=${fontNames}:wght@400&display=swap`;
-        link.setAttribute('data-fonts', batch.join(','));
-        document.head.appendChild(link);
-
-        batch.forEach((font) => loadedFontsRef.current.add(font));
-      }
-    };
-
-    const fontsToLoad = filteredFonts.slice(0, 50);
-    loadGoogleFontsBatch(fontsToLoad);
-  }, [showFontDropdown, filteredFonts]);
 
   const commonFontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72];
   const commonColors = [
@@ -699,69 +795,10 @@ export const Toolbar = memo(function Toolbar({
   const currentFontSize = selectedFormat?.fontSize || 11;
   const currentFontFamily = selectedFormat?.fontFamily || 'Arial';
 
-  const stepFontSize = (direction: 'down' | 'up') => {
-    const idx = commonFontSizes.indexOf(currentFontSize);
-    if (direction === 'down') {
-      if (idx > 0) {
-        onFontSize?.(commonFontSizes[idx - 1]);
-      } else if (idx === -1) {
-        const smaller = [...commonFontSizes].reverse().find((s) => s < currentFontSize);
-        if (smaller) onFontSize?.(smaller);
-      }
-    } else {
-      if (idx !== -1 && idx < commonFontSizes.length - 1) {
-        onFontSize?.(commonFontSizes[idx + 1]);
-      } else if (idx === -1) {
-        const next = commonFontSizes.find((s) => s > currentFontSize);
-        if (next) onFontSize?.(next);
-      }
-    }
-  };
-
-  const renderColorPicker = (mode: 'font' | 'background') => {
-    const apply = mode === 'font' ? onFontColor : onBackgroundColor;
-    return (
-      <div
-        style={{ ...styles.dropdown, padding: '4px' }}
-        onMouseLeave={() => setShowColorPicker(null)}
-      >
-        <div style={styles.colorGrid}>
-          {commonColors.map((color) => (
-            <div
-              key={color}
-              className="sheets-color-swatch"
-              onClick={() => {
-                apply?.(color);
-                setShowColorPicker(null);
-              }}
-              style={{ ...styles.colorSwatch, backgroundColor: color }}
-              title={color}
-            />
-          ))}
-        </div>
-        <div style={{ padding: '0 8px 8px' }}>
-          <input
-            type="color"
-            onChange={(e) => {
-              apply?.(e.target.value);
-              setShowColorPicker(null);
-            }}
-            style={{
-              width: '100%',
-              height: '32px',
-              border: '1px solid rgba(0,0,0,0.1)',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              background: 'transparent',
-            }}
-          />
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div ref={toolbarRef} className="sheets-toolbar" style={styles.toolbar}>
+      <ResponsiveToolbar gap={2}>
       {/* Undo / Redo */}
       <ToolbarButton onClick={onUndo} tooltip="Undo (Ctrl+Z)">
         <Undo2 size={18} strokeWidth={2} />
@@ -773,128 +810,10 @@ export const Toolbar = memo(function Toolbar({
       <Divider />
 
       {/* Font Family */}
-      <div style={{ position: 'relative' }}>
-        <button
-          onClick={() => setShowFontDropdown(!showFontDropdown)}
-          style={{
-            ...styles.dropdownButton,
-            minWidth: 116,
-            ...(showFontDropdown ? styles.buttonActive : {}),
-          }}
-        >
-          <span
-            style={{
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              maxWidth: 84,
-              fontFamily: `"${currentFontFamily}", sans-serif`,
-            }}
-          >
-            {currentFontFamily}
-          </span>
-          <ChevronDown size={14} />
-        </button>
-        {showFontDropdown && (
-          <div
-            style={{
-              ...styles.dropdown,
-              padding: 0,
-              minWidth: 240,
-            }}
-            onMouseLeave={() => {
-              setShowFontDropdown(false);
-              setFontSearchQuery('');
-            }}
-          >
-            <div style={{ padding: '8px', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-              <input
-                type="text"
-                placeholder="Search fonts..."
-                value={fontSearchQuery}
-                onChange={(e) => setFontSearchQuery(e.target.value)}
-                onClick={(e) => e.stopPropagation()}
-                style={styles.searchInput}
-                autoFocus
-              />
-            </div>
-            <div style={{ maxHeight: 320, overflowY: 'auto', padding: '6px' }}>
-              {filteredFonts.length === 0 ? (
-                <div
-                  style={{
-                    padding: '12px',
-                    color: '#94a3b8',
-                    fontSize: '13px',
-                    textAlign: 'center',
-                  }}
-                >
-                  No fonts found
-                </div>
-              ) : (
-                filteredFonts.map((font, index) => (
-                  <DropdownItem
-                    key={`${font}-${index}`}
-                    onClick={() => {
-                      onFontFamily?.(font);
-                      setShowFontDropdown(false);
-                      setFontSearchQuery('');
-                    }}
-                    active={selectedFormat?.fontFamily === font}
-                    style={{ fontFamily: `"${font}", sans-serif` }}
-                  >
-                    {font}
-                  </DropdownItem>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+      <FontFamilyControl value={currentFontFamily} fonts={googleFonts} onPick={onFontFamily} />
 
       {/* Font Size */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-        <ToolbarButton onClick={() => stepFontSize('down')} tooltip="Decrease font size">
-          <Minus size={14} strokeWidth={2.5} />
-        </ToolbarButton>
-        <div style={{ position: 'relative' }}>
-          <input
-            type="text"
-            value={currentFontSize}
-            readOnly
-            onClick={() => setShowFontSizeDropdown(!showFontSizeDropdown)}
-            style={styles.fontSizeInput}
-          />
-          {showFontSizeDropdown && (
-            <div
-              style={{
-                ...styles.dropdown,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                minWidth: 64,
-                maxHeight: 240,
-                overflowY: 'auto',
-              }}
-              onMouseLeave={() => setShowFontSizeDropdown(false)}
-            >
-              {commonFontSizes.map((size) => (
-                <DropdownItem
-                  key={size}
-                  onClick={() => {
-                    onFontSize?.(size);
-                    setShowFontSizeDropdown(false);
-                  }}
-                  active={currentFontSize === size}
-                  style={{ justifyContent: 'center' }}
-                >
-                  {size}
-                </DropdownItem>
-              ))}
-            </div>
-          )}
-        </div>
-        <ToolbarButton onClick={() => stepFontSize('up')} tooltip="Increase font size">
-          <Plus size={14} strokeWidth={2.5} />
-        </ToolbarButton>
-      </div>
+      <FontSizeControl value={currentFontSize} sizes={commonFontSizes} onPick={onFontSize} />
 
       <Divider />
 
@@ -923,69 +842,19 @@ export const Toolbar = memo(function Toolbar({
       <Divider />
 
       {/* Font Color */}
-      <div style={{ position: 'relative' }}>
-        <ToolbarButton
-          onClick={() => setShowColorPicker(showColorPicker === 'font' ? null : 'font')}
-          active={showColorPicker === 'font'}
-          tooltip="Text color"
-        >
-          <Palette size={18} strokeWidth={2} />
-          <span
-            style={{ ...styles.colorBar, backgroundColor: selectedFormat?.fontColor || '#1e293b' }}
-          />
-        </ToolbarButton>
-        {showColorPicker === 'font' && renderColorPicker('font')}
-      </div>
+      <ColorControl icon={<Palette size={18} strokeWidth={2} />} label="Text color" value={selectedFormat?.fontColor || '#1e293b'} colors={commonColors} onApply={onFontColor} />
 
       {/* Background Color */}
-      <div style={{ position: 'relative' }}>
-        <ToolbarButton
-          onClick={() => setShowColorPicker(showColorPicker === 'background' ? null : 'background')}
-          active={showColorPicker === 'background'}
-          tooltip="Fill color"
-        >
-          <PaintBucket size={18} strokeWidth={2} />
-          <span
-            style={{
-              ...styles.colorBar,
-              backgroundColor: selectedFormat?.backgroundColor || '#cbd5e1',
-            }}
-          />
-        </ToolbarButton>
-        {showColorPicker === 'background' && renderColorPicker('background')}
-      </div>
+      <ColorControl icon={<PaintBucket size={18} strokeWidth={2} />} label="Fill color" value={selectedFormat?.backgroundColor || '#cbd5e1'} colors={commonColors} onApply={onBackgroundColor} />
 
       {/* Borders */}
-      <div style={{ position: 'relative' }}>
-        <ToolbarButton
-          onClick={() => setShowBorderMenu(!showBorderMenu)}
-          active={showBorderMenu}
-          tooltip="Borders"
-        >
-          <Grid2x2 size={18} strokeWidth={2} />
-        </ToolbarButton>
-        <DropdownMenu
-          isOpen={showBorderMenu}
-          onClose={() => setShowBorderMenu(false)}
-          width={150}
-        >
-          {(['all', 'top', 'right', 'bottom', 'left', 'none'] as const).map((border) => (
-            <DropdownItem
-              key={border}
-              onClick={() => {
-                onBorder?.(border);
-                setShowBorderMenu(false);
-              }}
-            >
-              {border === 'all'
-                ? 'All borders'
-                : border === 'none'
-                  ? 'No border'
-                  : `${border.charAt(0).toUpperCase()}${border.slice(1)} border`}
-            </DropdownItem>
-          ))}
-        </DropdownMenu>
-      </div>
+      <MenuButton icon={<Grid2x2 size={18} strokeWidth={2} />} label="Borders" width={150}>
+        {(['all', 'top', 'right', 'bottom', 'left', 'none'] as const).map((border) => (
+          <DropdownItem key={border} onClick={() => onBorder?.(border)}>
+            {border === 'all' ? 'All borders' : border === 'none' ? 'No border' : `${border.charAt(0).toUpperCase()}${border.slice(1)} border`}
+          </DropdownItem>
+        ))}
+      </MenuButton>
 
       <Divider />
 
@@ -1013,33 +882,13 @@ export const Toolbar = memo(function Toolbar({
       </ToolbarButton>
 
       {/* Vertical Alignment */}
-      <div style={{ position: 'relative' }}>
-        <ToolbarButton
-          onClick={() => setShowVerticalAlignMenu(!showVerticalAlignMenu)}
-          active={showVerticalAlignMenu}
-          tooltip="Vertical align"
-        >
-          <AlignVerticalJustifyCenter size={18} strokeWidth={2} />
-        </ToolbarButton>
-        <DropdownMenu
-          isOpen={showVerticalAlignMenu}
-          onClose={() => setShowVerticalAlignMenu(false)}
-          width={130}
-        >
-          {(['top', 'middle', 'bottom'] as const).map((align) => (
-            <DropdownItem
-              key={align}
-              onClick={() => {
-                onVerticalAlign?.(align);
-                setShowVerticalAlignMenu(false);
-              }}
-              active={selectedFormat?.verticalAlign === align}
-            >
-              {align.charAt(0).toUpperCase() + align.slice(1)}
-            </DropdownItem>
-          ))}
-        </DropdownMenu>
-      </div>
+      <MenuButton icon={<AlignVerticalJustifyCenter size={18} strokeWidth={2} />} label="Vertical align" width={130}>
+        {(['top', 'middle', 'bottom'] as const).map((align) => (
+          <DropdownItem key={align} onClick={() => onVerticalAlign?.(align)} active={selectedFormat?.verticalAlign === align}>
+            {align.charAt(0).toUpperCase() + align.slice(1)}
+          </DropdownItem>
+        ))}
+      </MenuButton>
 
       {/* Text Wrap */}
       <ToolbarButton onClick={onTextWrap} active={selectedFormat?.textWrap} tooltip="Wrap text">
@@ -1125,36 +974,16 @@ export const Toolbar = memo(function Toolbar({
       <Divider />
 
       {/* Sort */}
-      <div style={{ position: 'relative' }}>
-        <ToolbarButton
-          onClick={() => setShowSortMenu(!showSortMenu)}
-          active={showSortMenu}
-          disabled={!hasActiveColumn}
-          tooltip={hasActiveColumn ? 'Sort column' : 'Select a cell to sort'}
-        >
-          <ArrowDownAZ size={18} strokeWidth={2} />
-        </ToolbarButton>
-        <DropdownMenu isOpen={showSortMenu} onClose={() => setShowSortMenu(false)} width={150}>
-          <DropdownItem
-            onClick={() => {
-              if (hasActiveColumn) onSortColumn?.(activeColumn as number, 'asc');
-              setShowSortMenu(false);
-            }}
-          >
-            <ArrowDownAZ size={16} strokeWidth={2} />
-            Sort sheet A → Z
-          </DropdownItem>
-          <DropdownItem
-            onClick={() => {
-              if (hasActiveColumn) onSortColumn?.(activeColumn as number, 'desc');
-              setShowSortMenu(false);
-            }}
-          >
-            <ArrowUpAZ size={16} strokeWidth={2} />
-            Sort sheet Z → A
-          </DropdownItem>
-        </DropdownMenu>
-      </div>
+      <MenuButton icon={<ArrowDownAZ size={18} strokeWidth={2} />} label={hasActiveColumn ? 'Sort column' : 'Select a cell to sort'} disabled={!hasActiveColumn} width={150}>
+        <DropdownItem onClick={() => { if (hasActiveColumn) onSortColumn?.(activeColumn as number, 'asc'); }}>
+          <ArrowDownAZ size={16} strokeWidth={2} />
+          Sort sheet A → Z
+        </DropdownItem>
+        <DropdownItem onClick={() => { if (hasActiveColumn) onSortColumn?.(activeColumn as number, 'desc'); }}>
+          <ArrowUpAZ size={16} strokeWidth={2} />
+          Sort sheet Z → A
+        </DropdownItem>
+      </MenuButton>
 
       {/* Filter */}
       <ToolbarButton
@@ -1170,76 +999,23 @@ export const Toolbar = memo(function Toolbar({
       <Divider />
 
       {/* Freeze Panes */}
-      <div style={{ position: 'relative' }}>
-        <ToolbarButton
-          onClick={() => setShowFreezeMenu(!showFreezeMenu)}
-          active={showFreezeMenu || hasFrozenPanes}
-          tooltip="Freeze panes"
-        >
-          <Snowflake size={18} strokeWidth={2} />
-        </ToolbarButton>
-        <DropdownMenu
-          isOpen={showFreezeMenu}
-          onClose={() => setShowFreezeMenu(false)}
-          align="right"
-          width={210}
-        >
-          <div style={styles.menuLabel}>Freeze panes</div>
-          <DropdownItem
-            onClick={() => {
-              onFreezeRows?.(1);
-              setShowFreezeMenu(false);
-            }}
-            active={frozenRows === 1 && frozenCols === 0}
-          >
-            Freeze top row
-          </DropdownItem>
-          <DropdownItem
-            onClick={() => {
-              onFreezeCols?.(1);
-              setShowFreezeMenu(false);
-            }}
-            active={frozenCols === 1 && frozenRows === 0}
-          >
-            Freeze first column
-          </DropdownItem>
-          <DropdownItem
-            onClick={() => {
-              onFreezeRows?.(1);
-              onFreezeCols?.(1);
-              setShowFreezeMenu(false);
-            }}
-            active={frozenRows === 1 && frozenCols === 1}
-          >
-            Freeze first row & column
-          </DropdownItem>
-          {hasFrozenPanes && (
-            <>
-              <div style={{ ...styles.divider, width: 'auto', height: 1, margin: '4px 6px' }} />
-              <DropdownItem
-                onClick={() => {
-                  onUnfreeze?.();
-                  setShowFreezeMenu(false);
-                }}
-                style={{ color: '#ef4444' }}
-              >
-                Unfreeze panes
-              </DropdownItem>
-              <div
-                style={{
-                  padding: '4px 12px 6px',
-                  color: '#94a3b8',
-                  fontSize: '11px',
-                }}
-              >
-                Current: {frozenRows > 0 ? `${frozenRows} row${frozenRows > 1 ? 's' : ''}` : ''}
-                {frozenRows > 0 && frozenCols > 0 ? ', ' : ''}
-                {frozenCols > 0 ? `${frozenCols} col${frozenCols > 1 ? 's' : ''}` : ''}
-              </div>
-            </>
-          )}
-        </DropdownMenu>
-      </div>
+      <MenuButton icon={<Snowflake size={18} strokeWidth={2} />} label="Freeze panes" active={hasFrozenPanes} width={210}>
+        <div style={styles.menuLabel}>Freeze panes</div>
+        <DropdownItem onClick={() => onFreezeRows?.(1)} active={frozenRows === 1 && frozenCols === 0}>Freeze top row</DropdownItem>
+        <DropdownItem onClick={() => onFreezeCols?.(1)} active={frozenCols === 1 && frozenRows === 0}>Freeze first column</DropdownItem>
+        <DropdownItem onClick={() => { onFreezeRows?.(1); onFreezeCols?.(1); }} active={frozenRows === 1 && frozenCols === 1}>Freeze first row &amp; column</DropdownItem>
+        {hasFrozenPanes && (
+          <>
+            <div style={{ ...styles.divider, width: 'auto', height: 1, margin: '4px 6px' }} />
+            <DropdownItem onClick={() => onUnfreeze?.()} style={{ color: '#ef4444' }}>Unfreeze panes</DropdownItem>
+            <div style={{ padding: '4px 12px 6px', color: '#94a3b8', fontSize: '11px' }}>
+              Current: {frozenRows > 0 ? `${frozenRows} row${frozenRows > 1 ? 's' : ''}` : ''}
+              {frozenRows > 0 && frozenCols > 0 ? ', ' : ''}
+              {frozenCols > 0 ? `${frozenCols} col${frozenCols > 1 ? 's' : ''}` : ''}
+            </div>
+          </>
+        )}
+      </MenuButton>
 
       <Divider />
 
@@ -1247,6 +1023,7 @@ export const Toolbar = memo(function Toolbar({
       <ToolbarButton onClick={onToggleComments} active={commentsActive} tooltip="Comments">
         <MessageSquare size={18} strokeWidth={2} />
       </ToolbarButton>
+      </ResponsiveToolbar>
 
       {/* Hyperlink Modal */}
       <HyperlinkModal

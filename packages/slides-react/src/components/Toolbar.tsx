@@ -5,13 +5,14 @@
 import React, { useRef, useSyncExternalStore } from 'react';
 import {
   Type, Minus, MoveUpRight, Image as ImageIcon, Link2, Table,
-  Trash2, Copy, Undo2, Redo2, Group, Ungroup,
+  Trash2, Copy, Undo2, Redo2, Group, Ungroup, GalleryVerticalEnd,
   BringToFront, SendToBack, AlignHorizontalJustifyCenter, AlignVerticalJustifyCenter,
   AlignStartVertical, AlignEndVertical, AlignStartHorizontal, AlignEndHorizontal,
   AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter,
 } from 'lucide-react';
 import type { NewElementSpec, AlignMode } from '@weavertime/spindle-slides-core';
-import { useDeck, useSelection, useEditingId } from '../hooks';
+import { ResponsiveToolbar } from '@weavertime/spindle-shared/react';
+import { useDeck, useSelection, useEditingId, useFilmstripOpen } from '../hooks';
 import { useDeckContext } from '../context/DeckContext';
 import { DeckControls } from './DeckControls';
 import { TextFormatBar } from './TextFormatBar';
@@ -22,11 +23,12 @@ import { TableFormatBar } from './TableFormatBar';
 import { ShapePicker } from './ShapePicker';
 import { TB, ToolbarButton as IconButton, ToolbarDivider } from './toolbarUI';
 
-export function Toolbar(): React.ReactElement {
+export function Toolbar({ extras }: { extras?: React.ReactNode } = {}): React.ReactElement {
   const deck = useDeck();
   const selection = useSelection();
-  const { tableSel } = useDeckContext();
+  const { tableSel, ui } = useDeckContext();
   const cellSel = useSyncExternalStore(tableSel.subscribe, tableSel.getState);
+  const filmstripOpen = useFilmstripOpen();
   const fileRef = useRef<HTMLInputElement>(null);
   const editingId = useEditingId();
   const ids = selection.elementIds;
@@ -92,8 +94,15 @@ export function Toolbar(): React.ReactElement {
   return (
     <div style={TB.strip}>
       <div style={TB.pill}>
-      <DeckControls />
       <input ref={fileRef} type="file" accept="image/*" onChange={onImageFile} style={{ display: 'none' }} />
+      {/* Pinned outside ResponsiveToolbar so it never collapses into the overflow
+          menu — the filmstrip toggle stays a first-class, always-visible button. */}
+      <IconButton title="Slides panel" label="Slides" active={filmstripOpen} onClick={() => ui.toggleFilmstrip()}>
+        <GalleryVerticalEnd size={16} />
+      </IconButton>
+      <ToolbarDivider />
+      <ResponsiveToolbar gap={2}>
+      <DeckControls />
 
       {/* Insert — only when nothing is selected. */}
       {showInsert && (
@@ -193,6 +202,9 @@ export function Toolbar(): React.ReactElement {
       {!editing && <ImageFormatBar />}
       {!editing && <TableFormatBar />}
       {!editing && <LineFormatBar />}
+      {/* Host-injected controls (e.g. app-specific actions). */}
+      {extras}
+      </ResponsiveToolbar>
       </div>
     </div>
   );
