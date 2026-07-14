@@ -4,7 +4,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Play, MessageSquare } from 'lucide-react';
-import { useDeck, useKeyboardShortcuts, useCommentsOpen } from '../hooks';
+import { useDeck, useKeyboardShortcuts, useCommentsOpen, useFilmstripOpen } from '../hooks';
 import { usePasteImport } from '../hooks/usePasteImport';
 import { useDeckContext } from '../context/DeckContext';
 import { Toolbar } from './Toolbar';
@@ -35,9 +35,27 @@ export interface SlidesEditorProps {
    * kept out of this package; the host wires it up from the public render API.
    */
   headerActions?: React.ReactNode;
+  /**
+   * Extra controls appended to the toolbar (after the format bars). Same
+   * host-injection story as headerActions — app-specific toolbar buttons.
+   */
+  toolbarExtras?: React.ReactNode;
 }
 
-export function SlidesEditor({ style, readOnly = false, headerActions }: SlidesEditorProps): React.ReactElement {
+const MOBILE_MAX_W = 640;
+
+// Keyframes for the mobile filmstrip drawer (injected once).
+function ensureDrawerStyles(): void {
+  if (typeof document === 'undefined' || document.getElementById('spindle-slides-drawer-css')) return;
+  const el = document.createElement('style');
+  el.id = 'spindle-slides-drawer-css';
+  el.textContent =
+    '@keyframes spindle-drawer-fade{from{opacity:0}to{opacity:1}}' +
+    '@keyframes spindle-drawer-in{from{transform:translateX(-100%)}to{transform:translateX(0)}}';
+  document.head.appendChild(el);
+}
+
+export function SlidesEditor({ style, readOnly = false, headerActions, toolbarExtras }: SlidesEditorProps): React.ReactElement {
   const deck = useDeck();
   const [zoom, setZoom] = useState<Zoom>('fit');
   const [menu, setMenu] = useState<
@@ -49,14 +67,36 @@ export function SlidesEditor({ style, readOnly = false, headerActions }: SlidesE
   const [presenting, setPresenting] = useState(false);
   const { ui, tableSel } = useDeckContext();
   const showComments = useCommentsOpen();
+  const filmstripOpen = useFilmstripOpen();
   const { onKeyDown } = useKeyboardShortcuts();
   const { onPaste } = usePasteImport();
   const rootRef = useRef<HTMLDivElement>(null);
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.(`(max-width: ${MOBILE_MAX_W}px)`).matches
+  );
 
   // Focus the editor so keyboard shortcuts work without an explicit click.
   useEffect(() => {
     if (!readOnly) rootRef.current?.focus();
   }, [readOnly]);
+
+  useEffect(() => { ensureDrawerStyles(); }, []);
+
+  // The filmstrip eats horizontal room that's scarce on phones, so its default
+  // follows the breakpoint: shown on desktop, hidden on mobile (where it opens
+  // as a slide-over drawer). Crossing the breakpoint resets to that default; an
+  // explicit toggle in between still wins until the next crossing.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia(`(max-width: ${MOBILE_MAX_W}px)`);
+    const apply = () => {
+      setIsMobile(mq.matches);
+      ui.setFilmstripOpen(!mq.matches);
+    };
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, [ui]);
 
   return (
     <div
@@ -109,6 +149,7 @@ export function SlidesEditor({ style, readOnly = false, headerActions }: SlidesE
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
+        position: 'relative',
         outline: 'none',
         fontFamily: 'Inter, system-ui, sans-serif',
         color: '#1f2933',
@@ -155,15 +196,34 @@ export function SlidesEditor({ style, readOnly = false, headerActions }: SlidesE
           })}
         </div>
       </header>
-      {!readOnly && <Toolbar />}
+      {!readOnly && <Toolbar extras={toolbarExtras} />}
       <div style={{ display: 'flex', flex: '1 1 auto', minHeight: 0, gap: 12, padding: '4px 12px 12px', background: 'linear-gradient(180deg, #f1f5f9 0%, #eaeef4 100%)' }}>
-        <Filmstrip />
+        {/* Desktop: filmstrip sits inline in the layout, taking real width. */}
+        {filmstripOpen && !isMobile && <Filmstrip />}
         <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minWidth: 0, gap: 12 }}>
           <SlideStage zoom={zoom === 'fit' ? undefined : zoom} interactive={!readOnly} onZoomChange={setZoom} />
           {!readOnly && <NotesPanel />}
         </div>
         {!readOnly && showComments && <CommentsPanel onClose={() => ui.setCommentsOpen(false)} />}
       </div>
+      {/* Mobile: filmstrip opens as a slide-over drawer over the stage. Tapping
+          the backdrop — or a thumbnail (the click bubbles) — closes it. */}
+      {filmstripOpen && isMobile && (
+        <div
+          onClick={() => ui.setFilmstripOpen(false)}
+          style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(15,23,42,0.35)', animation: 'spindle-drawer-fade .18s ease' }}
+        >
+          <div
+            style={{
+              position: 'absolute', top: 0, left: 0, bottom: 0, width: 'min(78vw, 240px)',
+              background: '#eef1f5', boxShadow: '2px 0 16px rgba(15,23,42,0.25)', overflowY: 'auto',
+              padding: 8, animation: 'spindle-drawer-in .2s cubic-bezier(.2,.7,.3,1)',
+            }}
+          >
+            <Filmstrip />
+          </div>
+        </div>
+      )}
       {menu?.kind === 'element' && <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
       {menu?.kind === 'slide' && <SlideContextMenu slideId={menu.slideId} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
       {menu?.kind === 'tableCell' && <TableCellMenu tableId={menu.tableId} row={menu.row} col={menu.col} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
