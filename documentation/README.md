@@ -10,7 +10,9 @@ Spindle is a suite of high-performance productivity components for React, provid
 | `@weavertime/spindle-docs-react` | React document editor with true page layout |
 | `@weavertime/spindle-sheets-core` | Framework-agnostic spreadsheet engine |
 | `@weavertime/spindle-sheets-react` | React spreadsheet with canvas rendering |
-| `@weavertime/spindle-shared` | Shared utilities and types |
+| `@weavertime/spindle-slides-core` | Framework-agnostic presentation engine |
+| `@weavertime/spindle-slides-react` | React slides editor with DOM rendering |
+| `@weavertime/spindle-shared` | Shared utilities, types, and React UI |
 | `@weavertime/spindle-transport-websocket` | WebSocket `CollabProvider` for real-time collaboration |
 
 ---
@@ -113,6 +115,52 @@ function App() {
 - **Sorting & Filtering**: Column operations
 - **CSV Export/Import**: Data interchange
 
+See [`sheets/TODO.md`](sheets/TODO.md) for remaining work.
+
+---
+
+## 🖼️ Presentations (Slides)
+
+A collaborative presentation editor with DOM rendering, a scene/element model,
+and present mode.
+
+### Documentation
+
+- **[Overview](slides/overview.md)** - High-level tour and design principles
+- **[Architecture](slides/core/architecture.md)** - Scene model, geometry, and the React layer
+- **[Collaboration](slides/core/collaboration.md)** - Slides-specific real-time sync
+- **[Data Structures](slides/data-structures.md)** - Type definitions
+- **[Components](slides/components.md)** - React components
+
+### Quick Start
+
+```typescript
+import { DeckImpl } from '@weavertime/spindle-slides-core';
+import { DeckProvider, SlidesEditor } from '@weavertime/spindle-slides-react';
+
+// Create a deck
+const deck = new DeckImpl('deck_1', 'My Deck');
+
+function App() {
+  return (
+    <DeckProvider deck={deck}>
+      <SlidesEditor />
+    </DeckProvider>
+  );
+}
+```
+
+### Key Features
+
+- **Element Model**: text, shapes (~18 SVG presets), images, lines/connectors, and **tables**
+- **Tables**: per-cell rich text, cell/row/column/range selection, paste a spreadsheet range as a table
+- **Interactions**: drag/resize/rotate at 60fps, smart-guide snapping, align/distribute, groups, z-order
+- **Themes & Layouts**: symbolic PPTX color slots, layout gallery with placeholder materialization
+- **Present Mode**: fullscreen 16:9, keyboard nav, cross-fade, and presenter view (timer, notes, next-slide preview)
+- **Comments & Collaboration**: element-anchored threads and Yjs real-time sync
+
+See [`slides/TODO.md`](slides/TODO.md) for remaining work.
+
 ---
 
 ## Architecture Overview
@@ -139,15 +187,28 @@ spindle/
 │   │   ├── components/     # UI components
 │   │   └── context/        # React context
 │   │
-│   └── shared/             # Shared utilities
+│   ├── slides-core/        # Presentation engine
+│   │   ├── scene/          # Element/scene model
+│   │   ├── theme/          # Themes & layouts
+│   │   └── collab/         # Yjs collaboration
+│   │
+│   ├── slides-react/       # Slides React components
+│   │   ├── components/     # UI components
+│   │   └── interactions/   # Gestures & stores
+│   │
+│   ├── shared/             # Shared utilities + React UI
+│   └── transport-websocket/ # WebSocket CollabProvider
 │
 ├── examples/
 │   ├── docs-demo/          # Document editor demo
-│   └── sheets-demo/        # Spreadsheet demo
+│   ├── sheets-demo/        # Spreadsheet demo
+│   ├── slides-demo/        # Presentation demo
+│   └── collab-server/      # Local collaboration relay
 │
 └── documentation/          # This documentation
     ├── docs/               # Document editor docs
-    └── sheets/             # Spreadsheet docs
+    ├── sheets/             # Spreadsheet docs
+    └── slides/             # Presentation docs
 ```
 
 ---
@@ -201,6 +262,7 @@ npm run dev
 
 - **[Docs Demo](../examples/docs-demo/)** - Complete document editor
 - **[Sheets Demo](../examples/sheets-demo/)** - Complete spreadsheet
+- **[Slides Demo](../examples/slides-demo/)** - Complete presentation editor
 
 ---
 
@@ -210,5 +272,5 @@ npm run dev
 
 ---
 
-**Last Updated**: May 2026  
-**Version**: 0.2.0
+**Last Updated**: July 2026  
+**Version**: 0.3.0

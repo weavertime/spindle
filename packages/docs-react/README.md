@@ -83,11 +83,15 @@ const sections = useSections();
 const { canUndo, canRedo, undo, redo } = useHistory();
 ```
 
-## Limitations (TODOs. Coming Soon.)
+## Limitations
 
-- No spell check integration
-- No collaborative editing
-- No comments or track changes
-- Images are placeholders only (no upload handling)
-- Tables don't support merging cells or column resizing
-- No find/replace
+- No spell-check (browser spellcheck is disabled)
+- No track changes / suggestions mode (comment threads are supported)
+- Tables support column & row resize but not cell merge/split
+- No find & replace, word count, or export (PDF/DOCX)
+- Multi-section documents render only the first section in the UI
+
+Real-time collaboration, comments, and image upload (file / drag-drop / URL)
+**are** supported. See
+[`documentation/docs/TODO.md`](../../documentation/docs/TODO.md) for the full
+remaining-work list.

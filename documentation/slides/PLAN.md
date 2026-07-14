@@ -1,6 +1,12 @@
 # Spindle Slides — Implementation Plan
 
-> **Status: approved, not yet started.** This is a self-contained implementation brief for the new slides library. It was produced after exploring the existing docs/sheets packages and researching shipped slide editors (Google Slides, Pitch, tldraw, Figma Slides) and OSS prior art (PPTist, Excalidraw, BlockSuite). All architectural decisions below are final — implement, don't re-litigate. Follow the phases in order; each leaves master shippable; commit at every phase boundary.
+> **Status: implemented (v0.3.0).** This is the original implementation brief,
+> kept as a historical design record — the slides library now ships. Some
+> scope has since changed (notably **tables** and **presenter view** shipped,
+> though the brief lists them as excluded/follow-ups below). For the current
+> state and remaining work, see **[TODO.md](TODO.md)**.
+>
+> This is a self-contained implementation brief for the new slides library. It was produced after exploring the existing docs/sheets packages and researching shipped slide editors (Google Slides, Pitch, tldraw, Figma Slides) and OSS prior art (PPTist, Excalidraw, BlockSuite). All architectural decisions below are final — implement, don't re-litigate. Follow the phases in order; each leaves master shippable; commit at every phase boundary.
 
 ## Context
 

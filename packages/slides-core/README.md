@@ -2,7 +2,7 @@
 
 The framework-agnostic presentation engine behind [Spindle Slides](https://spindle.weavertime.com). Zero React.
 
-It owns the deck model, a container-agnostic **scene layer** (elements, rotated-rect geometry, anchor-invariant resize/rotate, snapping, align/distribute, z-order, flat groups, fractional indexing), rich text (a flat ProseMirror schema + pure JSON helpers), themes & layouts, comments, and an optional Yjs collaboration binding.
+It owns the deck model, a container-agnostic **scene layer** (elements — text, shapes, images, lines/connectors, and **tables** — rotated-rect geometry, anchor-invariant resize/rotate, snapping, align/distribute, z-order, flat groups, fractional indexing), rich text (a flat ProseMirror schema + pure JSON helpers), themes & layouts, comments, and an optional Yjs collaboration binding. Tables carry per-cell rich text, cell/row/column selection state, and content-driven row heights.
 
 ```ts
 import { DeckImpl } from '@weavertime/spindle-slides-core';
