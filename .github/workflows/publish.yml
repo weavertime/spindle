@@ -4,10 +4,14 @@ name: Publish Packages
 # published. Cutting the Release is the single action that both generates the
 # changelog (auto-notes — see .github/release.yml) and ships the packages.
 #
+# Auth is npm Trusted Publishing (OIDC) — there is NO token. Each package must
+# have a trusted publisher configured on npmjs.com pointing at this repo and
+# this workflow file (Package → Settings → Trusted Publisher). Provenance is
+# generated automatically.
+#
 # Versions come from each package.json — bump them (in lockstep) and commit
 # before you tag/release. A package whose version is already on npm is skipped,
-# so re-runs and partial bumps are safe. Requires an npm automation token in the
-# NPM_TOKEN secret (publish scope for @weavertime).
+# so re-runs and partial bumps are safe.
 on:
   release:
     types: [published]
@@ -16,7 +20,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write # required for npm provenance
+  id-token: write # OIDC identity for npm trusted publishing (+ provenance)
 
 # Never cancel an in-flight publish.
 concurrency:
@@ -31,9 +35,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing (OIDC) needs npm >= 11.5.1; Node 22 ships npm 10.
+      - run: npm install -g npm@latest
 
       - run: npm ci
       # npm ci/install omit Rollup's platform-native optional dep in a workspace
@@ -53,9 +60,9 @@ jobs:
       - run: npm run type-check
       - run: npm test
 
+      # No NODE_AUTH_TOKEN: npm detects the GitHub OIDC environment and
+      # authenticates via the package's configured trusted publisher.
       - name: Publish changed packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           published=0
@@ -72,7 +79,7 @@ jobs:
               echo "= $name@$version already on npm — skipping"
             else
               echo "+ publishing $name@$version"
-              npm publish -w "$name" --provenance
+              npm publish -w "$name"
               published=$((published + 1))
             fi
           done
