@@ -95,10 +95,13 @@ export function Toolbar({ extras }: { extras?: React.ReactNode } = {}): React.Re
     <div style={TB.strip}>
       <div style={TB.pill}>
       <input ref={fileRef} type="file" accept="image/*" onChange={onImageFile} style={{ display: 'none' }} />
-      <ResponsiveToolbar gap={2}>
+      {/* Pinned outside ResponsiveToolbar so it never collapses into the overflow
+          menu — the filmstrip toggle stays a first-class, always-visible button. */}
       <IconButton title="Slides panel" active={filmstripOpen} onClick={() => ui.toggleFilmstrip()}>
         <GalleryVerticalEnd size={16} />
       </IconButton>
+      <ToolbarDivider />
+      <ResponsiveToolbar gap={2}>
       <DeckControls />
 
       {/* Insert — only when nothing is selected. */}
