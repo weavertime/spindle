@@ -1,14 +1,17 @@
 name: Deploy Website
 
 # Builds the marketing site (spindle.weavertime.com) and deploys it to
-# Cloudflare Pages on every push to master that touches the website. The site
-# consumes the spindle packages via file: deps, so all package dist is built
-# first (same as the CI website job).
+# Cloudflare Pages on every push to master that touches the website or the docs.
+# The site renders the repo-root `documentation/` markdown (bundled at build
+# time) and consumes the spindle packages via file: deps, so all package dist is
+# built first (same as the CI website job).
 on:
   push:
     branches: [master]
     paths:
       - 'website/**'
+      # The docs pages are built from this folder, so a docs edit must redeploy.
+      - 'documentation/**'
       - '.github/workflows/deploy-website.yml'
   # Allow a manual redeploy from the Actions tab (e.g. after a package change).
   workflow_dispatch:
