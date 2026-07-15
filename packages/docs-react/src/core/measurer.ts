@@ -537,6 +537,11 @@ export class DomMeasurer {
         // Check if this is a span (run container) or br
         if (el.tagName === 'BR') {
           runIndex++;
+        } else if (el.tagName === 'IMG') {
+          // An inline image is its own run (renderRuns appends a bare <img>).
+          // It has no text nodes, but must still advance runIndex or every run
+          // after it maps to the wrong slot and the painter drops/mis-styles it.
+          runIndex++;
         } else if (el.tagName === 'SPAN' || el.tagName === 'A') {
           // This is a run container
           for (const child of Array.from(el.childNodes)) {
