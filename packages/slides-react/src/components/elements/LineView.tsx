@@ -57,11 +57,12 @@ export function LineView({ el, theme, endpoints }: { el: LineElement; theme: The
   const top = PAD;
   const bottom = PAD + h;
   // A connector passes explicit endpoints so start→end direction (hence the
-  // arrowhead) is exact; a free line infers its diagonal from flipV. The box
-  // alone can't encode direction — start could be any of the four corners.
+  // arrowhead) is exact; a free line reads its start corner from flipH/flipV,
+  // which together pick one of the four orderings — so the arrow lands on the
+  // right end even for a right-to-left or bottom-to-top line.
   const [x1, y1, x2, y2] = endpoints
     ? [endpoints.x1, endpoints.y1 + PAD, endpoints.x2, endpoints.y2 + PAD]
-    : el.flipV ? [0, bottom, w, top] : [0, top, w, bottom];
+    : [el.flipH ? w : 0, el.flipV ? bottom : top, el.flipH ? 0 : w, el.flipV ? top : bottom];
 
   const startId = `arw-s-${el.id}`;
   const endId = `arw-e-${el.id}`;

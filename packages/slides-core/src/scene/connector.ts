@@ -1,7 +1,9 @@
 // Connector geometry — resolving a line's endpoints when they are bound to
-// other elements' anchors, and reconstructing the line's box (x/y/w/h/flipV)
-// from two endpoints. A line occupies its box diagonal; flipV selects which
-// diagonal, so any two points map to a unique (box, flipV) pair. Pure + tested.
+// other elements' anchors, and reconstructing the line's box
+// (x/y/w/h/flipH/flipV) from two endpoints. A line occupies its box diagonal;
+// flipH/flipV pick which corner the *start* sits at, so all four start→end
+// orderings map to a distinct (box, flipH, flipV) triple and the direction
+// (hence which end carries the arrowhead) survives the round-trip. Pure + tested.
 
 import type { AnchorId, Frame, LineElement } from './types';
 import { frameCenter, rotatePoint, type Point } from './geometry';
@@ -27,12 +29,18 @@ export function anchorPoints(f: Frame): Array<{ anchor: AnchorId; point: Point }
   return ANCHOR_IDS.map((anchor) => ({ anchor, point: anchorPoint(f, anchor) }));
 }
 
-/** The box corner an unbound start/end occupies, given the line's flipV. */
+/** The box corner an unbound start/end occupies, given the line's flipH/flipV. */
 function freeStart(line: LineElement): Point {
-  return line.flipV ? { x: line.x, y: line.y + line.h } : { x: line.x, y: line.y };
+  return {
+    x: line.flipH ? line.x + line.w : line.x,
+    y: line.flipV ? line.y + line.h : line.y,
+  };
 }
 function freeEnd(line: LineElement): Point {
-  return line.flipV ? { x: line.x + line.w, y: line.y } : { x: line.x + line.w, y: line.y + line.h };
+  return {
+    x: line.flipH ? line.x : line.x + line.w,
+    y: line.flipV ? line.y : line.y + line.h,
+  };
 }
 
 export type FrameLookup = (elementId: string) => Frame | undefined;
@@ -56,19 +64,22 @@ export function resolveEndpoints(line: LineElement, getFrame: FrameLookup): { st
  * Reconstruct a line's axis-aligned box + diagonal orientation from two
  * endpoints, so the (start → end) diagonal renders through those exact points.
  */
-export function connectorBox(start: Point, end: Point): { x: number; y: number; w: number; h: number; flipV: boolean } {
+export function connectorBox(start: Point, end: Point): { x: number; y: number; w: number; h: number; flipH: boolean; flipV: boolean } {
   const x = Math.min(start.x, end.x);
   const y = Math.min(start.y, end.y);
   const w = Math.abs(end.x - start.x);
   const h = Math.abs(end.y - start.y);
-  // Main diagonal (top-left → bottom-right) when the deltas share sign; the
-  // other diagonal (flipV) when they oppose.
-  const flipV = (start.x - end.x) * (start.y - end.y) < 0;
-  return { x, y, w, h, flipV };
+  // flipH/flipV record which corner the start occupies (right/bottom of end),
+  // so freeStart/freeEnd rebuild the exact endpoints — including for axis-aligned
+  // lines, where the single-sign approach used to collapse direction and land the
+  // arrowhead on the wrong end.
+  const flipH = start.x > end.x;
+  const flipV = start.y > end.y;
+  return { x, y, w, h, flipH, flipV };
 }
 
 /** Effective box for a (possibly bound) line, resolved against `getFrame`. */
-export function resolveConnectorFrame(line: LineElement, getFrame: FrameLookup): { x: number; y: number; w: number; h: number; flipV: boolean } {
+export function resolveConnectorFrame(line: LineElement, getFrame: FrameLookup): { x: number; y: number; w: number; h: number; flipH: boolean; flipV: boolean } {
   const { start, end } = resolveEndpoints(line, getFrame);
   return connectorBox(start, end);
 }

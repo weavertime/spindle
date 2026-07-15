@@ -23,7 +23,20 @@ export type CollabStatus = 'connecting' | 'connected' | 'offline';
 export type CollabStatusHandler = (status: CollabStatus) => void;
 
 export interface CollabProvider {
-  /** Join a collaboration room. Resolves once the transport is ready. */
+  /**
+   * Join a collaboration room.
+   *
+   * Before the returned promise resolves, the provider MUST deliver every
+   * previously-stored 'doc' payload for the room to the handlers registered
+   * via `onMessage('doc')`. In other words, once `connect` resolves the caller
+   * can trust that its local document already reflects whatever state the room
+   * holds. This is what lets a binding decide, deterministically and without
+   * any timing guesswork, whether it is the room's creator (the document is
+   * still empty → seed it) or a joiner (state was replayed → seed nothing).
+   * A transport backed by a relay satisfies this by having the relay replay
+   * the room's opaque update log to the newcomer; the relay never inspects
+   * the payloads, so this stays end-to-end-encryption friendly.
+   */
   connect(roomId: string): Promise<void>;
 
   /** Leave the room and release all resources. Safe to call multiple times. */

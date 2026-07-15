@@ -44,7 +44,59 @@ async function attachedPair(seed?: DeckData): Promise<{ a: DeckImpl; b: DeckImpl
   return { a, b, ha, hb };
 }
 
-afterEach(() => __resetInMemoryRooms());
+// A CollabProvider that delivers everything on a later microtask, the way a
+// real socket does — the reply to a sync request never lands synchronously.
+// It honours the contract: connect() replays the room's doc log to the new
+// peer before resolving. Used to prove seeding is decided from replayed state,
+// not from a synchronous handshake that only works in-process.
+const asyncRooms = new Map<string, { peers: Set<AsyncRelayProvider>; log: Uint8Array[] }>();
+class AsyncRelayProvider {
+  private roomId: string | null = null;
+  private subs = new Map<string, Set<(p: Uint8Array, from?: string) => void>>();
+  async connect(roomId: string): Promise<void> {
+    this.roomId = roomId;
+    let room = asyncRooms.get(roomId);
+    if (!room) {
+      room = { peers: new Set(), log: [] };
+      asyncRooms.set(roomId, room);
+    }
+    room.peers.add(this);
+    const handlers = this.subs.get('doc');
+    for (const payload of [...room.log]) {
+      await Promise.resolve(); // defer, so replay is genuinely asynchronous
+      if (handlers) for (const h of handlers) h(payload, 'replay');
+    }
+  }
+  disconnect(): void {
+    asyncRooms.get(this.roomId ?? '')?.peers.delete(this);
+    this.subs.clear();
+    this.roomId = null;
+  }
+  send(channel: string, payload: Uint8Array): void {
+    const room = asyncRooms.get(this.roomId ?? '');
+    if (!room) return;
+    if (channel === 'doc') room.log.push(payload);
+    for (const peer of room.peers) {
+      if (peer === this) continue;
+      const hs = peer.subs.get(channel);
+      if (hs) for (const h of hs) void Promise.resolve().then(() => h(payload, 'peer'));
+    }
+  }
+  onMessage(channel: string, handler: (p: Uint8Array, from?: string) => void): () => void {
+    let s = this.subs.get(channel);
+    if (!s) {
+      s = new Set();
+      this.subs.set(channel, s);
+    }
+    s.add(handler);
+    return () => s!.delete(handler);
+  }
+}
+
+afterEach(() => {
+  __resetInMemoryRooms();
+  asyncRooms.clear();
+});
 
 describe('y-schema round-trip', () => {
   it('is idempotent through hydrate → serialize', () => {
@@ -73,6 +125,43 @@ describe('two-peer convergence over InMemoryProvider', () => {
     expect(b.slideCount()).toBe(1);
     expect(b.getElementsForSlide(b.getActiveSlideId())).toHaveLength(2);
     expect(stripSelection(a.getData())).toEqual(stripSelection(b.getData()));
+  });
+
+  it('a joiner that also holds the same seed data does not duplicate', async () => {
+    __resetInMemoryRooms();
+    const a = new DeckImpl('room', 'Deck');
+    a.setData(seedDeck());
+    const ha = await a.attachCollab(new InMemoryProvider(), identity('A'), { roomId: 'room' });
+    // B loads the document from its own backend before joining — the exact
+    // situation that used to stack a second copy of every slide/element.
+    const b = new DeckImpl('room', 'Deck');
+    b.setData(seedDeck());
+    const hb = await b.attachCollab(new InMemoryProvider(), identity('B'), { roomId: 'room' });
+
+    expect(b.slideCount()).toBe(1);
+    expect(b.getElementsForSlide(b.getActiveSlideId())).toHaveLength(2);
+    expect(a.slideCount()).toBe(1);
+    expect(stripSelection(a.getData())).toEqual(stripSelection(b.getData()));
+    ha.detach();
+    hb.detach();
+  });
+
+  it('a seeded joiner does not duplicate over an async (real-socket-like) transport', async () => {
+    asyncRooms.clear();
+    const a = new DeckImpl('room', 'Deck');
+    a.setData(seedDeck());
+    const ha = await a.attachCollab(new AsyncRelayProvider() as never, identity('A'), { roomId: 'room' });
+    const b = new DeckImpl('room', 'Deck');
+    b.setData(seedDeck());
+    const hb = await b.attachCollab(new AsyncRelayProvider() as never, identity('B'), { roomId: 'room' });
+
+    // Over an async transport the old code hydrated before the sync reply
+    // arrived, producing two of everything. connect()'s replay-before-resolve
+    // makes the seed decision correct here too.
+    expect(b.slideCount()).toBe(1);
+    expect(b.getElementsForSlide(b.getActiveSlideId())).toHaveLength(2);
+    ha.detach();
+    hb.detach();
   });
 
   it('converges on concurrent moves and reorders of different elements', async () => {

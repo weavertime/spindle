@@ -1,37 +1,40 @@
-// Minimal WebSocket relay server for Spindle collaboration.
+// Reference WebSocket relay server for Spindle collaboration.
 //
 // Wire protocol (matches @weavertime/spindle-transport-websocket):
 //   Connect:  ws://host:PORT/<roomId>
-//   Each message: 1 byte channel tag (0 = doc, 1 = awareness)
-//                  + opaque payload. The server doesn't interpret it —
-//                  payloads are y-protocols/sync or y-protocols/awareness
-//                  frames produced by the client-side Yjs binding.
+//   Each frame: 1 byte channel tag + opaque payload.
+//     tag 0 = doc        (durable — logged and replayed to newcomers)
+//     tag 1 = awareness   (ephemeral — fanned out only)
+//     tag 2 = sync        (server → client control: "replay complete")
+//   The server reads only the 1-byte tag; the payload stays opaque, so this
+//   remains zero-knowledge / E2EE-friendly.
 //
-// Behavior:
-//   - The roomId is the URL path (everything after the first '/').
-//   - On connect, the socket joins its room's peer set.
-//   - On message, the server broadcasts the raw bytes to every other peer
-//     in the same room. No persistence — late joiners catch up via
-//     y-protocols/sync handshakes with whichever peer is online.
+// Why a log + replay (not a bare relay): seeding a CRDT is a write, and if
+// every peer seeds independently the document duplicates. This server is the
+// room's authority — on connect it replays the room's doc log to the newcomer
+// and then sends a `sync` frame, so the client knows whether the room already
+// had state (join, don't seed) or was empty (creator, seed). The same replay
+// runs on reconnect, so a peer that dropped re-converges for free.
 //
-// This is intentionally minimal. Production deployments should add:
-//   - auth on the upgrade request
-//   - per-room state persistence so a room can be re-joined after going
-//     idle (e.g., y-websocket's filesystem persistence, or any kv store)
-//   - encryption at rest (the bytes here are app-level encrypted in our
-//     model anyway, so the server is already zero-knowledge if the app
-//     opts into E2EE).
+// This reference keeps the log in memory and drops a room once it is idle.
+// A production deployment should swap the in-memory `rooms` map for durable,
+// content-agnostic storage (any KV/blob store) and add auth on the upgrade —
+// the protocol above is unchanged.
 
-import { createServer } from 'node:http';
-import { WebSocketServer, type WebSocket } from 'ws';
+import { createServer, type Server } from 'node:http';
+import { WebSocketServer, type WebSocket, type RawData } from 'ws';
 
-const PORT = Number(process.env.PORT ?? 1234);
+const CHANNEL_DOC = 0;
+const CHANNEL_SYNC = 2;
 
-const rooms = new Map<string, Set<WebSocket>>();
+interface Room {
+  peers: Set<WebSocket>;
+  /** Ordered log of every doc frame, replayed verbatim to each newcomer. */
+  docLog: Buffer[];
+}
 
 function roomIdFromUrl(url: string | undefined): string {
   if (!url) return '';
-  // Strip query string + leading slashes.
   const path = url.split('?')[0].replace(/^\/+/, '');
   try {
     return decodeURIComponent(path);
@@ -40,38 +43,61 @@ function roomIdFromUrl(url: string | undefined): string {
   }
 }
 
-const httpServer = createServer((_req, res) => {
-  res.writeHead(200, { 'content-type': 'text/plain' });
-  res.end('spindle-collab-server: connect via WebSocket at /<roomId>\n');
-});
+function toBuffer(raw: RawData): Buffer {
+  if (Buffer.isBuffer(raw)) return raw;
+  if (Array.isArray(raw)) return Buffer.concat(raw);
+  return Buffer.from(raw as ArrayBuffer);
+}
 
-const wss = new WebSocketServer({ server: httpServer });
+export interface CollabServerOptions {
+  /** Port to listen on. Defaults to $PORT or 1234. Pass 0 for an ephemeral port. */
+  port?: number;
+  /** Called once the server is listening (receives the resolved port). */
+  onListening?: (port: number) => void;
+}
 
-wss.on('connection', (ws, req) => {
-  const roomId = roomIdFromUrl(req.url);
-  if (!roomId) {
-    ws.close(1008, 'roomId required (use ws://host/<roomId>)');
-    return;
-  }
+/**
+ * Create and start a relay server. Returns the underlying http.Server so a
+ * caller (or a test) can read `.address()` and `.close()` it.
+ */
+export function createCollabServer(options: CollabServerOptions = {}): Server {
+  const rooms = new Map<string, Room>();
 
-  let peers = rooms.get(roomId);
-  if (!peers) {
-    peers = new Set();
-    rooms.set(roomId, peers);
-  }
-  peers.add(ws);
+  const httpServer = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/plain' });
+    res.end('spindle-collab-server: connect via WebSocket at /<roomId>\n');
+  });
 
-  // eslint-disable-next-line no-console
-  console.log(
-    `[collab-server] join room=${roomId} peers=${peers.size}`,
-  );
+  const wss = new WebSocketServer({ server: httpServer });
 
-  ws.on('message', (raw, isBinary) => {
-    // Relay verbatim. ws.send accepts Buffer/ArrayBuffer/string; we keep
-    // the original frame type so binary stays binary.
-    for (const peer of peers!) {
-      if (peer === ws) continue;
-      if (peer.readyState === 1 /* OPEN */) {
+  wss.on('connection', (ws, req) => {
+    const roomId = roomIdFromUrl(req.url);
+    if (!roomId) {
+      ws.close(1008, 'roomId required (use ws://host/<roomId>)');
+      return;
+    }
+
+    let room = rooms.get(roomId);
+    if (!room) {
+      room = { peers: new Set(), docLog: [] };
+      rooms.set(roomId, room);
+    }
+    room.peers.add(ws);
+
+    // Replay the room's existing doc state, then signal that the newcomer is
+    // synced. connect() on the client resolves on this frame.
+    for (const frame of room.docLog) {
+      if (ws.readyState === ws.OPEN) ws.send(frame, { binary: true });
+    }
+    if (ws.readyState === ws.OPEN) ws.send(Buffer.from([CHANNEL_SYNC]), { binary: true });
+
+    ws.on('message', (raw, isBinary) => {
+      const frame = toBuffer(raw);
+      if (frame.length < 1) return;
+      // Log doc frames (durable); awareness is fanned out but never stored.
+      if (frame[0] === CHANNEL_DOC) room!.docLog.push(Buffer.from(frame));
+      for (const peer of room!.peers) {
+        if (peer === ws || peer.readyState !== peer.OPEN) continue;
         try {
           peer.send(raw, { binary: isBinary });
         } catch (err) {
@@ -79,25 +105,31 @@ wss.on('connection', (ws, req) => {
           console.warn('[collab-server] send failed:', err);
         }
       }
-    }
+    });
+
+    ws.on('close', () => {
+      room!.peers.delete(ws);
+      // In-memory reference: forget the room (and its log) once empty. A
+      // durable deployment would keep it so a room survives going idle.
+      if (room!.peers.size === 0) rooms.delete(roomId);
+    });
+
+    ws.on('error', (err) => {
+      // eslint-disable-next-line no-console
+      console.warn('[collab-server] socket error:', err.message);
+    });
   });
 
-  ws.on('close', () => {
-    peers!.delete(ws);
+  const port = options.port ?? Number(process.env.PORT ?? 1234);
+  httpServer.listen(port, () => {
+    const resolved = (httpServer.address() as { port: number } | null)?.port ?? port;
+    options.onListening?.(resolved);
     // eslint-disable-next-line no-console
-    console.log(
-      `[collab-server] leave room=${roomId} peers=${peers!.size}`,
-    );
-    if (peers!.size === 0) rooms.delete(roomId);
+    console.log(`[collab-server] listening on ws://localhost:${resolved}/<roomId>`);
   });
 
-  ws.on('error', (err) => {
-    // eslint-disable-next-line no-console
-    console.warn('[collab-server] socket error:', err.message);
-  });
-});
+  return httpServer;
+}
 
-httpServer.listen(PORT, () => {
-  // eslint-disable-next-line no-console
-  console.log(`[collab-server] listening on ws://localhost:${PORT}/<roomId>`);
-});
+// Start when run directly (npm start / tsx src/server.ts).
+createCollabServer();

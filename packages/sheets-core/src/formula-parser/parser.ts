@@ -244,19 +244,47 @@ export class FormulaParser {
           
           // Single character operators
           if (op.length === 1 && char === op) {
-            // Make sure it's not part of a number (e.g., -5 or 1e-5)
             const prevChar = i > 0 ? expr[i - 1] : '';
-            const isPartOfNumber = 
+            const nextChar = i < expr.length - 1 ? expr[i + 1] : '';
+
+            // The +/- in scientific notation (e.g. 1e-5) is part of the number.
+            const isPartOfNumber =
               (op === '-' && (prevChar === 'e' || prevChar === 'E')) ||
               (op === '+' && (prevChar === 'e' || prevChar === 'E'));
-            
-            // Make sure single < or > isn't part of a two-char operator
-            const nextChar = i < expr.length - 1 ? expr[i + 1] : '';
-            const isTwoCharOp = 
+
+            // A +/- directly following another operator is a unary sign that
+            // belongs to the operand on its right (e.g. the -3 in 2*-3), not a
+            // binary split point. A leading sign is left alone so it still
+            // parses via the empty-left path (0 - x), which also handles -A1.
+            let prevNonSpace = '';
+            for (let k = i - 1; k >= 0; k--) {
+              if (expr[k] !== ' ') {
+                prevNonSpace = expr[k];
+                break;
+              }
+            }
+            const isUnarySign =
+              (op === '-' || op === '+') &&
+              prevNonSpace !== '' &&
+              '+-*/(<>='.includes(prevNonSpace);
+
+            // Skip a single char that is really one half of a two-char operator
+            // — either the first char (<=, >=, <>) or the second (the = in
+            // <=/>=, or the > in <>). Without the second-char guard the tie-break
+            // toward the rightmost operator makes the lone = win, so <= / >= / <>
+            // all mis-parse.
+            const isTwoCharOp =
               (op === '<' && (nextChar === '>' || nextChar === '=')) ||
-              (op === '>' && nextChar === '=');
-            
-            if (!isPartOfNumber && !isTwoCharOp && (prec < lowestPrec || (prec === lowestPrec && i > (lowestPrecOp?.index ?? -1)))) {
+              (op === '>' && nextChar === '=') ||
+              (op === '=' && (prevChar === '<' || prevChar === '>')) ||
+              (op === '>' && prevChar === '<');
+
+            if (
+              !isPartOfNumber &&
+              !isUnarySign &&
+              !isTwoCharOp &&
+              (prec < lowestPrec || (prec === lowestPrec && i > (lowestPrecOp?.index ?? -1)))
+            ) {
               lowestPrec = prec;
               lowestPrecOp = { operator: op, index: i };
             }

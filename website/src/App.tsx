@@ -29,7 +29,7 @@ const NPM_ORG = 'https://www.npmjs.com/org/weavertime';
 const INSTALL = 'npm i @weavertime/spindle-sheets-react';
 
 const FEATURES = [
-  { fi: 'Rendering', h: 'Painted to canvas', p: 'Cells and glyphs draw straight to a canvas with virtual scrolling, so tens of thousands of rows stay smooth while scrolling.' },
+  { fi: 'Rendering', h: 'Painted to canvas', p: 'Cells and glyphs draw straight to a canvas with virtual scrolling, so tens of thousands of rows stay smooth.' },
   { fi: 'Footprint', h: 'Sparse by design', p: 'A sparse cell store keeps memory and bundle size lean, so you ship only the cells you actually use.' },
   { fi: 'Architecture', h: 'Portable cores', p: 'sheets-core and docs-core carry zero React. React is just the first loom; the engine goes anywhere.' },
   { fi: 'Collaboration', h: 'Real-time, offline-ready', p: 'CRDT editing over Yjs. Presence, remote cursors, and conflict-free offline merge come standard.' },
@@ -40,7 +40,7 @@ const FEATURES = [
 const SURFACES = [
   { kind: 'sheet' as const, h: 'Sheets', pkg: '@weavertime/spindle-sheets-react', soon: false, demo: '/demo/sheets', p: 'Formulas, filters, cell formatting, frozen panes, and a canvas grid that scrolls like native.' },
   { kind: 'doc' as const, h: 'Docs', pkg: '@weavertime/spindle-docs-react', soon: false, demo: '/demo/docs', p: 'Paginated, print-true documents on a ProseMirror engine with a line-level “True Layout” paginator.' },
-  { kind: 'slide' as const, h: 'Slides', pkg: '@weavertime/spindle-slides-react', soon: false, demo: '/demo/slides', p: 'Positioned elements, shapes, and rich text on a standalone scene engine. Drag, present, export to PDF, and co-edit in real time.' },
+  { kind: 'slide' as const, h: 'Slides', pkg: '@weavertime/spindle-slides-react', soon: false, demo: '/demo/slides', p: 'Positioned elements, shapes, and rich text on a standalone scene engine. Drag, present, and co-edit in real time.' },
 ];
 
 const PACKAGES = [
@@ -50,7 +50,7 @@ const PACKAGES = [
   ['spindle-docs-core', 'Document engine · True Layout · zero React'],
   ['spindle-docs-react', 'React document editor components'],
   ['spindle-slides-core', 'Presentation engine · scene layer · fractional index · zero React'],
-  ['spindle-slides-react', 'React slide editor: canvas, gestures, present mode & PDF'],
+  ['spindle-slides-react', 'React slide editor: stage, gestures, present mode'],
   ['spindle-transport-websocket', 'WebSocket-backed collaboration provider'],
 ];
 
@@ -146,9 +146,9 @@ function Install() {
 <span className="c1"># the spreadsheet library</span>{'\n'}
 <span className="k">npm</span> i <span className="t">@weavertime/spindle-sheets-react</span>{'\n\n'}
 <span className="k">import</span> {'{ WorkbookProvider, WorkbookCanvas }'} <span className="k">from</span> <span className="s">'@weavertime/spindle-sheets-react'</span>;{'\n\n'}
-<span className="k">export function</span> <span className="t">Editor</span>({'{ data }'}) {'{'}{'\n'}
+<span className="k">export function</span> <span className="t">Editor</span>({'{ workbook }'}) {'{'}{'\n'}
 {'  '}<span className="k">return</span> ({'\n'}
-{'    '}&lt;<span className="t">WorkbookProvider</span> initial={'{data}'}&gt;{'\n'}
+{'    '}&lt;<span className="t">WorkbookProvider</span> workbook={'{workbook}'}&gt;{'\n'}
 {'      '}&lt;<span className="t">WorkbookCanvas</span> /&gt;{'\n'}
 {'    '}&lt;/<span className="t">WorkbookProvider</span>&gt;{'\n'}
 {'  '});{'\n'}

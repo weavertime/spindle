@@ -1,10 +1,16 @@
 // WebSocketProvider: a CollabProvider over a WebSocket relay server.
 //
-// Reconnection: on close (other than an intentional disconnect()), the
-// provider waits with exponential backoff and re-opens the socket.
-// onMessage subscriptions are owned by the provider instance, so they
-// survive disconnects and are simply called again when bytes arrive on
-// the new socket.
+// Contract (see CollabProvider.connect): connect() must not resolve until the
+// room's existing 'doc' state has been delivered to the doc handlers, so a
+// binding can decide whether to seed. The server satisfies this by replaying
+// the room's opaque 'doc' log to a newcomer and then sending a one-byte
+// CHANNEL_SYNC control frame; connect() resolves on that frame. The replay
+// also runs on every reconnect, so a peer that was offline re-converges for
+// free (applying replayed updates is idempotent).
+//
+// Reconnection: on an unintentional close, the provider reopens with
+// exponential backoff. Handlers are guarded so a superseded socket's late
+// events can never mutate state that now belongs to a newer socket.
 
 import type {
   CollabChannel,
@@ -16,6 +22,8 @@ import type {
 
 const CHANNEL_DOC = 0;
 const CHANNEL_AWARENESS = 1;
+// Server → client control frame: "the room's state has been replayed to you".
+const CHANNEL_SYNC = 2;
 
 function channelToByte(channel: CollabChannel): number {
   return channel === 'doc' ? CHANNEL_DOC : CHANNEL_AWARENESS;
@@ -39,6 +47,14 @@ export interface WebSocketProviderOptions {
   minReconnectDelayMs?: number;
   /** Max reconnect delay in ms. Default 10_000. */
   maxReconnectDelayMs?: number;
+  /**
+   * How long to wait after the socket opens for the server's CHANNEL_SYNC
+   * frame before resolving connect() anyway. A conforming server replies
+   * immediately, so this only matters against a relay that doesn't implement
+   * replay — there the provider degrades to best-effort rather than hanging.
+   * Default 4000.
+   */
+  syncTimeoutMs?: number;
 }
 
 export class WebSocketProvider implements CollabProvider {
@@ -46,6 +62,7 @@ export class WebSocketProvider implements CollabProvider {
   private readonly Ctor: typeof WebSocket;
   private readonly minDelay: number;
   private readonly maxDelay: number;
+  private readonly syncTimeoutMs: number;
 
   private socket: WebSocket | null = null;
   private roomId: string | null = null;
@@ -61,6 +78,8 @@ export class WebSocketProvider implements CollabProvider {
   /** Promise resolver for the in-flight connect(). */
   private connectResolve: (() => void) | null = null;
   private connectReject: ((err: unknown) => void) | null = null;
+  /** Fallback timer that resolves connect() if no CHANNEL_SYNC frame arrives. */
+  private syncTimer: ReturnType<typeof setTimeout> | null = null;
   /** Connection status + subscribers. */
   private status: CollabStatus = 'offline';
   private statusHandlers: Set<CollabStatusHandler> = new Set();
@@ -77,6 +96,7 @@ export class WebSocketProvider implements CollabProvider {
     }
     this.minDelay = options.minReconnectDelayMs ?? 250;
     this.maxDelay = options.maxReconnectDelayMs ?? 10_000;
+    this.syncTimeoutMs = options.syncTimeoutMs ?? 4000;
   }
 
   connect(roomId: string): Promise<void> {
@@ -101,7 +121,9 @@ export class WebSocketProvider implements CollabProvider {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.clearSyncTimer();
     if (this.socket) {
+      this.detachSocket(this.socket);
       try {
         this.socket.close();
       } catch {
@@ -163,8 +185,37 @@ export class WebSocketProvider implements CollabProvider {
     }
   }
 
+  /** Detach every handler from a socket so its late events become no-ops. */
+  private detachSocket(ws: WebSocket): void {
+    ws.onopen = null;
+    ws.onmessage = null;
+    ws.onerror = null;
+    ws.onclose = null;
+  }
+
+  private clearSyncTimer(): void {
+    if (this.syncTimer !== null) {
+      clearTimeout(this.syncTimer);
+      this.syncTimer = null;
+    }
+  }
+
+  /** Resolve the in-flight connect(), if any. Called on the sync frame. */
+  private resolveConnect(): void {
+    this.clearSyncTimer();
+    if (this.connectResolve) {
+      const r = this.connectResolve;
+      this.connectResolve = null;
+      this.connectReject = null;
+      r();
+    }
+  }
+
   private openSocket(): void {
     if (!this.roomId) return;
+    // Retire any previous socket so its handlers can't fight the new one.
+    if (this.socket) this.detachSocket(this.socket);
+
     const url = `${this.url}/${encodeURIComponent(this.roomId)}`;
     const ws = new this.Ctor(url);
     ws.binaryType = 'arraybuffer';
@@ -172,6 +223,7 @@ export class WebSocketProvider implements CollabProvider {
     this.setStatus('connecting');
 
     ws.onopen = () => {
+      if (this.socket !== ws) return; // superseded
       this.reconnectAttempt = 0;
       this.setStatus('connected');
       // Flush any messages queued while the socket was opening.
@@ -185,16 +237,19 @@ export class WebSocketProvider implements CollabProvider {
         }
       }
       this.pendingOutbound = [];
-      // Resolve the connect() promise once we're actually open.
-      if (this.connectResolve) {
-        const r = this.connectResolve;
-        this.connectResolve = null;
-        this.connectReject = null;
-        r();
+      // Do NOT resolve connect() yet — wait for the server to replay the room
+      // and send CHANNEL_SYNC. Arm a fallback so a non-conforming relay can't
+      // hang the caller forever.
+      if (this.connectResolve && this.syncTimer === null) {
+        this.syncTimer = setTimeout(() => {
+          this.syncTimer = null;
+          this.resolveConnect();
+        }, this.syncTimeoutMs);
       }
     };
 
     ws.onmessage = (event) => {
+      if (this.socket !== ws) return; // superseded
       const data = event.data;
       let bytes: Uint8Array | null = null;
       if (data instanceof ArrayBuffer) bytes = new Uint8Array(data);
@@ -202,6 +257,11 @@ export class WebSocketProvider implements CollabProvider {
       // Browsers occasionally hand back Blob if binaryType wasn't honored;
       // we set it to 'arraybuffer' above, so this is mostly defensive.
       if (!bytes || bytes.length < 1) return;
+      if (bytes[0] === CHANNEL_SYNC) {
+        // Initial (or post-reconnect) replay is complete.
+        this.resolveConnect();
+        return;
+      }
       const channel = byteToChannel(bytes[0]);
       if (!channel) return;
       const payload = bytes.slice(1);
@@ -219,15 +279,14 @@ export class WebSocketProvider implements CollabProvider {
     };
 
     ws.onerror = () => {
-      // Surface as a connect() rejection only the FIRST time; subsequent
-      // attempts are just reconnects and shouldn't reject the original
-      // promise (which the caller has long since resolved).
-      // Browser WebSocket onerror doesn't include details — onclose follows
-      // and handles the actual recovery.
+      // Surface as a connect() rejection only via onclose, which always
+      // follows. Browser WebSocket onerror carries no useful detail.
     };
 
     ws.onclose = () => {
+      if (this.socket !== ws) return; // superseded — a newer socket owns us now
       this.socket = null;
+      this.clearSyncTimer();
       if (this.intentionallyClosed) {
         this.setStatus('offline');
         return;

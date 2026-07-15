@@ -473,7 +473,7 @@ export class DeckImpl {
       if (!hit) continue;
       const box = resolveConnectorFrame(line, getFrame);
       this.applyElementPatch(line.id, box as Partial<SlideElement>);
-      this.emit('elementChange', { slideId: line.containerId, elementId: line.id, keys: ['x', 'y', 'w', 'h', 'flipV'] });
+      this.emit('elementChange', { slideId: line.containerId, elementId: line.id, keys: ['x', 'y', 'w', 'h', 'flipH', 'flipV'] });
     }
   }
 

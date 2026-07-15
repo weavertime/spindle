@@ -42,7 +42,7 @@ export function ConnectorView({ elementId, interactive }: { elementId: string; i
   const start = edit?.elementId === el.id && edit.end === 'start' ? edit.point : resolved.start;
   const end = edit?.elementId === el.id && edit.end === 'end' ? edit.point : resolved.end;
   const box = connectorBox(start, end);
-  const effective: LineElement = { ...el, x: box.x, y: box.y, w: box.w, h: box.h, flipV: box.flipV, rotation: 0 };
+  const effective: LineElement = { ...el, x: box.x, y: box.y, w: box.w, h: box.h, flipH: box.flipH, flipV: box.flipV, rotation: 0 };
   // Local endpoints keep the arrowhead on the *bound* end regardless of where
   // the shapes sit relative to each other (the box can't encode direction).
   const endpoints = { x1: start.x - box.x, y1: start.y - box.y, x2: end.x - box.x, y2: end.y - box.y };
