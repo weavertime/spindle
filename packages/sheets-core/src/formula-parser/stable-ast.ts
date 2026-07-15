@@ -48,6 +48,11 @@ export class StableRefDeletedError extends Error {
   }
 }
 
+// A row/col id that resolves to nothing (real ids are 12-char base32, so '#'
+// can never collide). Assigned to a rebased ref that fell off the top/left of
+// the grid, so it surfaces as #REF! instead of a silent clamp to the edge.
+const INVALID_REF_ID = '#REF!';
+
 export interface SheetResolver {
   getSheet(name?: string): Sheet | undefined;
 }
@@ -328,16 +333,19 @@ function rebaseRef(
     const cur = sheet.getRowIndex(ref.rowId);
     if (cur !== undefined) {
       const offset = cur - sourceRow;
-      const newRow = Math.max(0, targetRow + offset);
-      newRowId = sheet.ensureRowId(newRow);
+      const newRow = targetRow + offset;
+      // A relative ref that lands above row 0 / left of column A is #REF! in
+      // Excel, not a silent clamp to the edge. A sentinel id that resolves to
+      // nothing makes the ref render and evaluate as #REF!.
+      newRowId = newRow < 0 ? INVALID_REF_ID : sheet.ensureRowId(newRow);
     }
   }
   if (!ref.colAbsolute) {
     const cur = sheet.getColIndex(ref.colId);
     if (cur !== undefined) {
       const offset = cur - sourceCol;
-      const newCol = Math.max(0, targetCol + offset);
-      newColId = sheet.ensureColId(newCol);
+      const newCol = targetCol + offset;
+      newColId = newCol < 0 ? INVALID_REF_ID : sheet.ensureColId(newCol);
     }
   }
 
