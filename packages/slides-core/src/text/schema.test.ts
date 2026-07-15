@@ -39,3 +39,46 @@ describe('slidesSchema round-trip', () => {
     expect(json.content[0].attrs).toMatchObject({ align: 'left', listType: 'none', indent: 0 });
   });
 });
+
+describe('slidesSchema toDOM sanitizes untrusted color/font attrs', () => {
+  // Extract the inline `style` string from a DOMOutputSpec array like
+  // ['span', { style: '…' }, 0].
+  const styleOf = (spec: unknown): string => {
+    const attrs = Array.isArray(spec) && spec[1] && typeof spec[1] === 'object' ? (spec[1] as Record<string, string>) : {};
+    return attrs.style || '';
+  };
+  const renderMark = (name: string, attrs: Record<string, unknown>): string => {
+    const mark = slidesSchema.marks[name].create(attrs);
+    const toDOM = slidesSchema.marks[name].spec.toDOM as (m: typeof mark, inline: boolean) => unknown;
+    return styleOf(toDOM(mark, false));
+  };
+
+  it('drops a CSS-injection payload smuggled through a literal hex', () => {
+    expect(renderMark('textColor', { color: { kind: 'rgb', hex: 'red;background:url(//evil)' } })).toBe('');
+  });
+
+  it('keeps a valid literal color', () => {
+    expect(renderMark('textColor', { color: { kind: 'rgb', hex: '#2D7FF9' } })).toBe('color:#2D7FF9');
+  });
+
+  it('emits var(--slot-…) only for a recognized theme slot', () => {
+    expect(renderMark('textColor', { color: { kind: 'theme', slot: 'accent1' } })).toBe('color:var(--slot-accent1)');
+    expect(renderMark('textColor', { color: { kind: 'theme', slot: 'x)}{color:red' } })).toBe('');
+  });
+
+  it('sanitizes highlight (background-color) the same way', () => {
+    expect(renderMark('highlight', { color: { kind: 'rgb', hex: '#abc' } })).toBe('background-color:#abc');
+    expect(renderMark('highlight', { color: { kind: 'rgb', hex: 'x;background:url(//evil)' } })).toBe('');
+  });
+
+  it('resolves symbolic fonts to CSS vars and rejects injection in literal fonts', () => {
+    expect(renderMark('fontFamily', { family: 'major' })).toBe('font-family:var(--font-major)');
+    expect(renderMark('fontFamily', { family: 'Georgia, serif' })).toBe('font-family:Georgia, serif');
+    expect(renderMark('fontFamily', { family: 'Arial;background:url(//evil)' })).toBe('');
+  });
+
+  it('coerces a crafted font-size to a number', () => {
+    expect(renderMark('fontSize', { size: '10px;background:url(//evil)' })).toBe('font-size:18px');
+    expect(renderMark('fontSize', { size: 24 })).toBe('font-size:24px');
+  });
+});

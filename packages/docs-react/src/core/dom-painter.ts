@@ -21,7 +21,14 @@ import {
 } from './flow-blocks';
 import { Measure, hasLineData, LineMeasure } from './measurer';
 import { DocumentLayout, PageLayout, PageFragment, PageConfig } from './true-layout-engine';
-import { sanitizeHref, sanitizeImageSrc, safeCssColor } from './sanitize';
+import {
+  sanitizeHref,
+  sanitizeImageSrc,
+  safeCssColor,
+  safeFontFamily,
+  safeCssKeyword,
+  safeLineHeight,
+} from './sanitize';
 
 // Re-export header/footer types from docs-core for convenience
 export type {
@@ -667,9 +674,9 @@ export class DomPainter {
     para.style.cssText = `
       margin: 0;
       padding: 0;
-      text-align: ${block.alignment || 'center'};
+      text-align: ${safeCssKeyword(block.alignment) || 'center'};
     `;
-    
+
     // Render inline content
     for (const item of block.content) {
       if (item.type === 'text') {
@@ -680,7 +687,8 @@ export class DomPainter {
         if (item.bold) styles += 'font-weight: bold;';
         if (item.italic) styles += 'font-style: italic;';
         if (item.fontSize) styles += `font-size: ${item.fontSize * this.config.scale}px;`;
-        if (item.fontFamily) styles += `font-family: ${item.fontFamily};`;
+        const itemFont = safeFontFamily(item.fontFamily);
+        if (itemFont) styles += `font-family: ${itemFont};`;
         const itemColor = safeCssColor(item.color);
         if (itemColor) styles += `color: ${itemColor};`;
 
@@ -867,8 +875,8 @@ export class DomPainter {
     para.style.cssText = `
       margin: 0;
       padding: 0;
-      text-align: ${attrs.alignment || 'left'};
-      line-height: ${(attrs.lineHeight || this.config.lineHeight)};
+      text-align: ${safeCssKeyword(attrs.alignment) || 'left'};
+      line-height: ${safeLineHeight(attrs.lineHeight) ?? this.config.lineHeight};
       padding-left: ${indentPx + (attrs.leftIndent || 0) * this.config.scale}px;
       padding-right: ${(attrs.rightIndent || 0) * this.config.scale}px;
     `;
@@ -1098,7 +1106,7 @@ export class DomPainter {
       padding-left: ${indentPx}px;
       font-size: ${fontSize}px;
       font-weight: ${block.level <= 2 ? 400 : 700};
-      text-align: ${attrs.alignment || 'left'};
+      text-align: ${safeCssKeyword(attrs.alignment) || 'left'};
       line-height: 1.3;
     `;
     
@@ -1161,8 +1169,8 @@ export class DomPainter {
     const attrs = block.attrs || {};
     item.style.cssText = `
       margin: 0;
-      text-align: ${attrs.alignment || 'left'};
-      line-height: ${attrs.lineHeight || this.config.lineHeight};
+      text-align: ${safeCssKeyword(attrs.alignment) || 'left'};
+      line-height: ${safeLineHeight(attrs.lineHeight) ?? this.config.lineHeight};
     `;
     
     // Add spacing
@@ -1252,8 +1260,9 @@ export class DomPainter {
           vertical-align: top;
           min-height: 1em;
         `;
-        if (cell.backgroundColor) {
-          cellStyles += `background-color: ${cell.backgroundColor};`;
+        const cellBg = safeCssColor(cell.backgroundColor);
+        if (cellBg) {
+          cellStyles += `background-color: ${cellBg};`;
         }
         // Apply column width if specified
         if (cell.colwidth && cell.colwidth.length > 0 && cell.colwidth[0]) {
@@ -1278,7 +1287,7 @@ export class DomPainter {
             const attrs = cellBlock.attrs || {};
             p.style.margin = '0';
             p.style.minHeight = '1em';
-            p.style.textAlign = attrs.alignment || 'left';
+            p.style.textAlign = safeCssKeyword(attrs.alignment) || 'left';
             
             // Calculate PM position for this paragraph within the cell
             // Cell structure: cell_start + 1 (enter cell) + paragraph content
@@ -1372,7 +1381,7 @@ export class DomPainter {
     const wrapper = document.createElement('div');
     wrapper.className = 'image-block';
     wrapper.style.cssText = `
-      text-align: ${block.alignment || 'center'};
+      text-align: ${safeCssKeyword(block.alignment) || 'center'};
       margin: ${8 * this.config.scale}px 0;
       position: relative;
     `;
@@ -1502,7 +1511,8 @@ export class DomPainter {
     if (run.underline) styles.push('text-decoration: underline');
     if (run.strikethrough) styles.push('text-decoration: line-through');
     if (run.fontSize) styles.push(`font-size: ${run.fontSize * this.config.scale}px`);
-    if (run.fontFamily) styles.push(`font-family: ${run.fontFamily}`);
+    const runFont = safeFontFamily(run.fontFamily);
+    if (runFont) styles.push(`font-family: ${runFont}`);
     const runColor = safeCssColor(run.color);
     if (runColor) styles.push(`color: ${runColor}`);
     const runBgColor = safeCssColor(run.backgroundColor);

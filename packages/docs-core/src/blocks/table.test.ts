@@ -1,9 +1,33 @@
 import {
   createTable,
   insertTableColumn,
+  deleteTableColumn,
   mergeCells,
   getTableColCount,
 } from './table';
+import type { TableBlock } from '../types';
+
+/**
+ * Logical column width of every row, computed with an independent grid
+ * placement so it can cross-check the production code. A table is "consistent"
+ * when every row reports the same width (a rectangular logical grid).
+ */
+function rowLogicalWidths(table: TableBlock): number[] {
+  const grid: boolean[][] = table.rows.map(() => []);
+  for (let r = 0; r < table.rows.length; r++) {
+    let col = 0;
+    for (const cell of table.rows[r].cells) {
+      while (grid[r][col]) col++;
+      const cs = cell.colspan || 1;
+      const rs = cell.rowspan || 1;
+      for (let dr = 0; dr < rs && r + dr < table.rows.length; dr++) {
+        for (let dc = 0; dc < cs; dc++) grid[r + dr][col + dc] = true;
+      }
+      col += cs;
+    }
+  }
+  return grid.map((row) => row.length);
+}
 
 describe('insertTableColumn — colWidths stays aligned with columns', () => {
   it('clamps both the cell and the width insertion index for an out-of-range position', () => {
@@ -43,5 +67,69 @@ describe('mergeCells — covered cells are removed, not left as phantoms', () =>
     expect(merged.rows[1].cells).toHaveLength(1);
     // Row 2 is outside the merge range and unchanged.
     expect(merged.rows[2].cells).toHaveLength(3);
+  });
+});
+
+describe('logical columns stay consistent across a merge', () => {
+  it('reports 3 logical columns after mergeCells(0,0,1,1) on a 3x3 table', () => {
+    const merged = mergeCells(createTable(3, 3), 0, 0, 1, 1);
+    // Physically row 0 has 2 cells and row 1 has 1, but the logical grid is 3 wide.
+    expect(getTableColCount(merged)).toBe(3);
+    expect(rowLogicalWidths(merged)).toEqual([3, 3, 3]);
+  });
+
+  it('appends a logical column without corrupting the merged grid', () => {
+    const merged = mergeCells(createTable(3, 3), 0, 0, 1, 1);
+    const grown = insertTableColumn(merged, 3);
+
+    expect(getTableColCount(grown)).toBe(4);
+    // Every row is still a rectangular 4-wide grid.
+    expect(rowLogicalWidths(grown)).toEqual([4, 4, 4]);
+    // The append does not widen the merged cell — it stays 2x2.
+    expect(grown.rows[0].cells[0].colspan).toBe(2);
+    expect(grown.rows[0].cells[0].rowspan).toBe(2);
+    // A new physical cell landed in each row (row 1 was down to a single cell).
+    expect(grown.rows[0].cells).toHaveLength(3);
+    expect(grown.rows[1].cells).toHaveLength(2);
+    expect(grown.rows[2].cells).toHaveLength(4);
+  });
+
+  it('inserts a logical column through the merged span by widening it', () => {
+    const merged = mergeCells(createTable(3, 3), 0, 0, 1, 1);
+    const grown = insertTableColumn(merged, 1); // boundary runs through the 2x2 span
+
+    expect(getTableColCount(grown)).toBe(4);
+    expect(rowLogicalWidths(grown)).toEqual([4, 4, 4]);
+    // The spanning cell absorbed the new column (colspan 2 -> 3), once.
+    expect(grown.rows[0].cells[0].colspan).toBe(3);
+    expect(grown.rows[0].cells[0].rowspan).toBe(2);
+    expect(grown.rows[0].cells).toHaveLength(2); // no extra cell in the merged rows
+    expect(grown.rows[1].cells).toHaveLength(1);
+    expect(grown.rows[2].cells).toHaveLength(4); // plain row gains a real cell
+  });
+
+  it('deletes a logical column by shrinking the span and dropping covered cells', () => {
+    const merged = mergeCells(createTable(3, 3), 0, 0, 1, 1);
+    const shrunk = deleteTableColumn(merged, 0);
+
+    expect(getTableColCount(shrunk)).toBe(2);
+    expect(rowLogicalWidths(shrunk)).toEqual([2, 2, 2]);
+    // The merged cell shrank from colspan 2 to 1 (still rowspan 2).
+    expect(shrunk.rows[0].cells[0].colspan).toBe(1);
+    expect(shrunk.rows[0].cells[0].rowspan).toBe(2);
+    expect(shrunk.rows[2].cells).toHaveLength(2); // plain row lost one cell
+  });
+
+  it('keeps plain tables consistent through insert then delete', () => {
+    const t0 = createTable(3, 3, { colWidths: [10, 20, 30] });
+    const t1 = insertTableColumn(t0, 1, 99);
+    expect(getTableColCount(t1)).toBe(4);
+    expect(rowLogicalWidths(t1)).toEqual([4, 4, 4]);
+    expect(t1.colWidths).toEqual([10, 99, 20, 30]);
+
+    const t2 = deleteTableColumn(t1, 1);
+    expect(getTableColCount(t2)).toBe(3);
+    expect(rowLogicalWidths(t2)).toEqual([3, 3, 3]);
+    expect(t2.colWidths).toEqual([10, 20, 30]);
   });
 });

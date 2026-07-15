@@ -12,7 +12,18 @@
 
 import { Schema } from 'prosemirror-model';
 import type { Color } from '../scene/types';
-import { sanitizeHref } from './sanitize';
+import { sanitizeHref, safeCssColor, safeFontFamily, safeThemeSlot } from './sanitize';
+
+// Resolve a model Color to a sanitized CSS value for the editor's best-effort
+// render. A literal hex goes through the color allowlist; a theme color becomes
+// a `var(--slot-…)` reference, but only for a recognized slot — both guard
+// against a crafted `hex`/`slot` in imported or collaborator JSON injecting CSS.
+function colorToCss(c: Color | null): string | undefined {
+  if (!c) return undefined;
+  if (c.kind === 'rgb') return safeCssColor(c.hex);
+  const slot = safeThemeSlot(c.slot);
+  return slot ? `var(--slot-${slot})` : undefined;
+}
 
 export const slidesSchema = new Schema({
   nodes: {
@@ -82,9 +93,8 @@ export const slidesSchema = new Schema({
       attrs: { color: { default: null } },
       parseDOM: [{ style: 'color', getAttrs: (v) => ({ color: { kind: 'rgb', hex: v as string } }) }],
       toDOM: (mark) => {
-        const c = mark.attrs.color as Color | null;
-        if (!c) return ['span', {}, 0];
-        const css = c.kind === 'rgb' ? c.hex : `var(--slot-${c.slot})`;
+        const css = colorToCss(mark.attrs.color as Color | null);
+        if (!css) return ['span', {}, 0];
         return ['span', { style: `color:${css}` }, 0];
       },
     },
@@ -93,22 +103,29 @@ export const slidesSchema = new Schema({
       parseDOM: [{ style: 'font-family', getAttrs: (v) => ({ family: v as string }) }],
       toDOM: (mark) => {
         const fam = mark.attrs.family as string;
-        const css = fam === 'major' ? 'var(--font-major)' : fam === 'minor' ? 'var(--font-minor)' : fam;
+        const css =
+          fam === 'major' ? 'var(--font-major)'
+          : fam === 'minor' ? 'var(--font-minor)'
+          : safeFontFamily(fam);
+        if (!css) return ['span', {}, 0];
         return ['span', { style: `font-family:${css}` }, 0];
       },
     },
     fontSize: {
       attrs: { size: { default: 18 } },
       parseDOM: [{ style: 'font-size', getAttrs: (v) => ({ size: parseInt(v as string, 10) || 18 }) }],
-      toDOM: (mark) => ['span', { style: `font-size:${mark.attrs.size}px` }, 0],
+      toDOM: (mark) => {
+        // Coerce to a finite number so a crafted attr can't inject CSS.
+        const size = Number(mark.attrs.size);
+        return ['span', { style: `font-size:${Number.isFinite(size) ? size : 18}px` }, 0];
+      },
     },
     highlight: {
       attrs: { color: { default: null } },
       parseDOM: [{ style: 'background-color', getAttrs: (v) => ({ color: { kind: 'rgb', hex: v as string } }) }],
       toDOM: (mark) => {
-        const c = mark.attrs.color as Color | null;
-        if (!c) return ['span', {}, 0];
-        const css = c.kind === 'rgb' ? c.hex : `var(--slot-${c.slot})`;
+        const css = colorToCss(mark.attrs.color as Color | null);
+        if (!css) return ['span', {}, 0];
         return ['span', { style: `background-color:${css}` }, 0];
       },
     },

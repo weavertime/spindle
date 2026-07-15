@@ -35,6 +35,9 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
   const [showNotes, setShowNotes] = useState(false);
   const numberBuffer = useRef('');
   const numberTimer = useRef<number | undefined>(undefined);
+  // Cross-fade swap timer; tracked so it can be cleared on unmount (otherwise it
+  // fires setIndex/setFading after the component is gone).
+  const fadeTimer = useRef<number | undefined>(undefined);
 
   // Drop any partially-typed slide number and cancel its idle timer. Uses only
   // refs, so it stays correct when called from the once-subscribed key handler.
@@ -62,7 +65,9 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
     // new slide back in — the swap timeout matches the CSS transition so the
     // cross-fade actually completes.
     setFading(true);
-    window.setTimeout(() => {
+    if (fadeTimer.current !== undefined) window.clearTimeout(fadeTimer.current);
+    fadeTimer.current = window.setTimeout(() => {
+      fadeTimer.current = undefined;
       setIndex(next);
       setFading(false);
     }, FADE_MS);
@@ -136,7 +141,13 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
       }
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      // Clear any pending fade-swap and number-idle timers so they can't call
+      // setState after unmount or linger as stray timers.
+      if (fadeTimer.current !== undefined) window.clearTimeout(fadeTimer.current);
+      if (numberTimer.current !== undefined) window.clearTimeout(numberTimer.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -33,3 +33,62 @@ export function sanitizeHref(href: string | null | undefined): string {
   const scheme = value.slice(0, colon + 1).replace(CONTROL_CHARS, '').toLowerCase();
   return SAFE_HREF_SCHEMES.includes(scheme) ? value : '';
 }
+
+/** Schemes permitted for image sources (plus a `data:image/` special case). */
+const SAFE_IMAGE_SCHEMES = ['http:', 'https:'];
+
+/**
+ * Sanitize an image `src`. Allows http:, https:, `data:image/…`, and relative
+ * URLs; rejects javascript: and everything else by returning ''. Prevents a
+ * hidden editor view from firing a network request to an attacker URL.
+ */
+export function sanitizeImageSrc(src: string | null | undefined): string {
+  if (!src) return '';
+  const value = String(src).trim();
+  if (value === '') return '';
+  const colon = value.indexOf(':');
+  if (colon === -1) return value; // relative / protocol-relative
+  const beforeSlash = value.search(/[/?#]/);
+  if (beforeSlash !== -1 && beforeSlash < colon) return value;
+  const scheme = value.slice(0, colon + 1).replace(CONTROL_CHARS, '').toLowerCase();
+  if (SAFE_IMAGE_SCHEMES.includes(scheme)) return value;
+  if (/^data:image\//i.test(value.replace(CONTROL_CHARS, ''))) return value;
+  return '';
+}
+
+const HEX_COLOR = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+// A whitelisted color function or var() reference over a safe character set.
+// No leading `\s*` (avoids ReDoS — the class already matches whitespace).
+const FN_COLOR =
+  /^(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch|color|color-mix|var)\([a-z0-9.,%/()#_\s-]+\)$/i;
+const KEYWORD_COLOR = /^[a-zA-Z]+$/;
+
+/**
+ * Return `color` if it is a safe CSS color token, otherwise undefined. Blocks
+ * CSS injection such as `red; background: url(//evil)` at the toDOM boundary.
+ */
+export function safeCssColor(color: string | null | undefined): string | undefined {
+  if (!color) return undefined;
+  const value = String(color).trim();
+  if (value === '') return undefined;
+  if (/url\(/i.test(value)) return undefined;
+  if (HEX_COLOR.test(value) || FN_COLOR.test(value) || KEYWORD_COLOR.test(value)) {
+    return value;
+  }
+  return undefined;
+}
+
+// font-family: letters, digits, spaces, commas, quotes, hyphens. Excludes the
+// characters (';{}():') needed to break out of the declaration.
+const SAFE_FONT_FAMILY = /^[a-zA-Z0-9\s,'"-]+$/;
+
+/**
+ * Return `value` if it is a safe CSS `font-family` list, otherwise undefined.
+ */
+export function safeFontFamily(value: string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  const v = String(value).trim();
+  if (v === '') return undefined;
+  if (/url/i.test(v)) return undefined;
+  return SAFE_FONT_FAMILY.test(v) ? v : undefined;
+}

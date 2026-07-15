@@ -109,11 +109,63 @@ export function createTableFromData(
 }
 
 /**
- * Get the number of columns in a table
+ * Get the number of logical columns in a table.
+ *
+ * Span-aware: after a merge, covered cells are removed from the model, so a raw
+ * `rows[0].cells.length` undercounts. The first row is never covered by a
+ * rowspan from above, so summing its cells' `colspan` (default 1) yields the
+ * true logical column count.
  */
 export function getTableColCount(table: TableBlock): number {
   if (table.rows.length === 0) return 0;
-  return table.rows[0].cells.length;
+  return table.rows[0].cells.reduce((sum, cell) => sum + (cell.colspan || 1), 0);
+}
+
+/**
+ * A reference to the origin cell that owns a logical grid slot: `r`/`ci` index
+ * into `table.rows[r].cells[ci]`.
+ */
+interface CellRef {
+  r: number;
+  ci: number;
+}
+
+/**
+ * Expand the (possibly ragged, span-carrying) row model into a dense logical
+ * grid. `grid[row][logicalCol]` points at the origin cell occupying that slot;
+ * `starts[row][ci]` is the logical column where physical cell `ci` begins. This
+ * is the standard HTML table placement algorithm and is what lets column
+ * insert/delete reason in logical columns rather than physical cell indices.
+ */
+function buildTableGrid(table: TableBlock): { grid: (CellRef | null)[][]; starts: number[][] } {
+  const grid: (CellRef | null)[][] = [];
+  const starts: number[][] = [];
+  const ensureRow = (r: number) => {
+    while (grid.length <= r) grid.push([]);
+  };
+
+  for (let r = 0; r < table.rows.length; r++) {
+    ensureRow(r);
+    starts[r] = [];
+    let col = 0;
+    const cells = table.rows[r].cells;
+    for (let ci = 0; ci < cells.length; ci++) {
+      // Skip slots already taken by a rowspan from an earlier row.
+      while (grid[r][col]) col++;
+      starts[r][ci] = col;
+      const cs = cells[ci].colspan || 1;
+      const rs = cells[ci].rowspan || 1;
+      for (let dr = 0; dr < rs; dr++) {
+        ensureRow(r + dr);
+        for (let dc = 0; dc < cs; dc++) {
+          grid[r + dr][col + dc] = { r, ci };
+        }
+      }
+      col += cs;
+    }
+  }
+
+  return { grid, starts };
 }
 
 /**
@@ -194,34 +246,71 @@ export function deleteTableRow(
 }
 
 /**
- * Insert a column at a specific position
+ * Insert a column at a specific logical position.
+ *
+ * Operates on logical columns so it stays correct across merged/spanning cells:
+ * a spanning cell straddling the insertion boundary absorbs the new column by
+ * widening its `colspan` (once, even though a rowspan makes it appear in several
+ * rows); otherwise a fresh empty cell is spliced in at the physical index that
+ * corresponds to the logical column in that row.
  */
 export function insertTableColumn(
   table: TableBlock,
   position: number,
   width?: number
 ): TableBlock {
-  // Clamp the insertion index once and use it for both the cells and the
-  // colWidths, so the widths array stays aligned with the columns (a raw
-  // negative/overflowing position would otherwise splice at a different spot).
-  const insertAt = Math.max(0, Math.min(position, getTableColCount(table)));
+  if (table.rows.length === 0) return table;
 
-  const newRows = table.rows.map(row => {
-    const newCells = [...row.cells];
-    newCells.splice(insertAt, 0, createTableCell());
-    return { ...row, cells: newCells };
+  const colCount = getTableColCount(table);
+  const p = Math.max(0, Math.min(position, colCount));
+  const { grid, starts } = buildTableGrid(table);
+
+  // Origin cells that straddle the boundary and should widen; and, per row, the
+  // physical index at which to splice a new cell (null = absorbed by a span).
+  const toWiden = new Set<string>();
+  const insertAt: (number | null)[] = table.rows.map((_row, r) => {
+    const gRow = grid[r];
+    if (p > 0 && p < gRow.length) {
+      const left = gRow[p - 1];
+      const right = gRow[p];
+      if (left && right && left.r === right.r && left.ci === right.ci) {
+        toWiden.add(`${left.r}:${left.ci}`);
+        return null;
+      }
+    }
+    // First physical cell whose logical start is at/after the boundary.
+    let phys = 0;
+    const rowStarts = starts[r];
+    while (phys < rowStarts.length && rowStarts[phys] < p) phys++;
+    return phys;
+  });
+
+  const newRows = table.rows.map((row, r) => {
+    let cells = row.cells.map((cell, ci) =>
+      toWiden.has(`${r}:${ci}`) ? { ...cell, colspan: (cell.colspan || 1) + 1 } : cell
+    );
+    const at = insertAt[r];
+    if (at !== null) {
+      cells = [...cells];
+      cells.splice(at, 0, createTableCell());
+    }
+    return { ...row, cells };
   });
 
   const newColWidths = table.colWidths ? [...table.colWidths] : undefined;
   if (newColWidths) {
-    newColWidths.splice(insertAt, 0, width || 100);
+    newColWidths.splice(Math.min(p, newColWidths.length), 0, width || 100);
   }
 
   return { ...table, rows: newRows, colWidths: newColWidths };
 }
 
 /**
- * Delete a column at a specific position
+ * Delete a column at a specific logical position.
+ *
+ * Span-aware: an origin cell intersecting the column is either shrunk
+ * (`colspan > 1`) or removed entirely (`colspan === 1`); each origin cell is
+ * touched once regardless of how many rows a rowspan makes it span.
  */
 export function deleteTableColumn(
   table: TableBlock,
@@ -230,18 +319,41 @@ export function deleteTableColumn(
   const colCount = getTableColCount(table);
   if (position < 0 || position >= colCount) return table;
   if (colCount <= 1) return table; // Keep at least one column
-  
-  const newRows = table.rows.map(row => {
-    const newCells = [...row.cells];
-    newCells.splice(position, 1);
+
+  const p = position;
+  const { grid } = buildTableGrid(table);
+
+  // Classify each origin cell that touches column p.
+  const shrink = new Set<string>();
+  const remove = new Set<string>();
+  for (let r = 0; r < grid.length; r++) {
+    const owner = grid[r][p];
+    if (!owner) continue;
+    const key = `${owner.r}:${owner.ci}`;
+    const cell = table.rows[owner.r].cells[owner.ci];
+    if ((cell.colspan || 1) > 1) shrink.add(key);
+    else remove.add(key);
+  }
+
+  const newRows = table.rows.map((row, r) => {
+    const newCells: TableCell[] = [];
+    row.cells.forEach((cell, ci) => {
+      const key = `${r}:${ci}`;
+      if (remove.has(key)) return; // covered cell for this column disappears
+      if (shrink.has(key)) {
+        newCells.push({ ...cell, colspan: (cell.colspan || 1) - 1 });
+        return;
+      }
+      newCells.push(cell);
+    });
     return { ...row, cells: newCells };
   });
-  
+
   const newColWidths = table.colWidths ? [...table.colWidths] : undefined;
   if (newColWidths) {
-    newColWidths.splice(position, 1);
+    newColWidths.splice(p, 1);
   }
-  
+
   return { ...table, rows: newRows, colWidths: newColWidths };
 }
 

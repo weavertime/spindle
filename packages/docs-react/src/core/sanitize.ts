@@ -68,23 +68,74 @@ export function sanitizeImageSrc(src: string | null | undefined): string {
 }
 
 const HEX_COLOR = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
-const FN_COLOR = /^(?:rgb|rgba|hsl|hsla)\(\s*[0-9.,%/\sa-z]+\)$/i;
+// rgb/rgba/hsl/hsla/hwb/lab/lch/oklab/oklch/color/color-mix/var, with an
+// argument list drawn from a safe character set (digits, spaces, commas, dots,
+// %, /, hyphens, `#`, `_`, and nested parens for color-mix()/var()).
+//
+// ReDoS note: there is intentionally NO leading `\s*` before the char class —
+// the class already matches `\s`, and that adjacency (`\s*[...\s...]+`) causes
+// polynomial backtracking. A single greedy `+` over one char class is linear.
+const FN_COLOR =
+  /^(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch|color|color-mix|var)\([a-z0-9.,%/()#_\s-]+\)$/i;
 const KEYWORD_COLOR = /^[a-zA-Z]+$/;
 
 /**
- * Return `color` if it is a safe CSS color token (hex, rgb/rgba/hsl/hsla
- * function, or a bare keyword such as `red`/`transparent`/`currentColor`),
+ * Return `color` if it is a safe CSS color token (hex, a whitelisted color
+ * function such as rgb()/hsl()/oklch()/lab()/color-mix(), a `var(--…)`
+ * reference, or a bare keyword such as `red`/`transparent`/`currentColor`),
  * otherwise undefined.
  *
- * This blocks CSS injection like `red; background: url(//evil)` — the semicolon,
- * colon and parentheses make it match none of the allowed forms.
+ * This blocks CSS injection like `red; background: url(//evil)` — the semicolon
+ * and `url(` make it match none of the allowed forms.
  */
 export function safeCssColor(color: string | null | undefined): string | undefined {
   if (!color) return undefined;
   const value = String(color).trim();
   if (value === '') return undefined;
+  // Defense in depth: `url(` never belongs in a color and could fetch a remote
+  // resource; reject it even though the function forms below would already fail.
+  if (/url\(/i.test(value)) return undefined;
   if (HEX_COLOR.test(value) || FN_COLOR.test(value) || KEYWORD_COLOR.test(value)) {
     return value;
   }
   return undefined;
+}
+
+// font-family tokens: letters, digits, spaces, commas, quotes, hyphens only.
+// The class excludes ';', '{', '}', '(', ')', ':' — the characters needed to
+// break out of the declaration — and we additionally reject any `url` substring.
+const SAFE_FONT_FAMILY = /^[a-zA-Z0-9\s,'"-]+$/;
+
+/**
+ * Return `value` if it is a safe CSS `font-family` list, otherwise undefined.
+ * Blocks CSS injection via unbalanced quotes, `url(...)`, or extra declarations.
+ */
+export function safeFontFamily(value: string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  const v = String(value).trim();
+  if (v === '') return undefined;
+  if (/url/i.test(v)) return undefined;
+  return SAFE_FONT_FAMILY.test(v) ? v : undefined;
+}
+
+// The only keywords ever emitted for `text-align`.
+const ALIGN_KEYWORDS = new Set(['left', 'right', 'center', 'justify', 'start', 'end']);
+
+/**
+ * Return a whitelisted CSS alignment keyword (lower-cased), or undefined.
+ * Prevents `left; background: url(//evil)`-style injection at alignment sinks.
+ */
+export function safeCssKeyword(value: string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  const v = String(value).trim().toLowerCase();
+  return ALIGN_KEYWORDS.has(v) ? v : undefined;
+}
+
+/**
+ * Coerce a line-height to a finite positive number, or undefined. Numeric
+ * line-heights can never carry a CSS-injection payload.
+ */
+export function safeLineHeight(value: unknown): number | undefined {
+  const n = typeof value === 'number' ? value : parseFloat(String(value));
+  return Number.isFinite(n) && n > 0 ? n : undefined;
 }
