@@ -596,11 +596,11 @@ export class WorkbookImpl implements Workbook {
    * footprint are fed back as seeds for another pass, so formulas that read a
    * spilled cell pick up the change. The loop runs to a fixed point.
    */
-  private recalculateDependents(cellKey: string, sheetId: string | undefined): void {
-    const sheet = this.getSheet(sheetId);
-    // Range dependencies are stored as stable corner-key rectangles; the graph
-    // resolves containment against the sheet's current row/column order.
-    const resolveCell = (key: string) => sheet.stableKeyToIndices(key);
+  private recalculateDependents(cellKey: string, _sheetId: string | undefined): void {
+    // Cell keys are globally unique, so dependents (and range corners) are
+    // resolved against the whole workbook — a formula on another sheet that
+    // references this cell is found and re-evaluated on its own sheet.
+    const resolveCell = (key: string) => this.resolveGlobalCell(key);
 
     let seeds = [cellKey, ...this.spillSeeds];
     this.spillSeeds = [];
@@ -611,22 +611,37 @@ export class WorkbookImpl implements Workbook {
 
       const { ordered, cyclic } = this.formulaGraph.topologicalOrder(dirty, edges);
       for (const key of ordered) {
-        const indices = sheet.stableKeyToIndices(key);
-        if (indices) {
-          this.evaluateFormula(sheetId, indices.row, indices.col);
+        const loc = this.resolveGlobalCell(key);
+        if (loc) {
+          this.evaluateFormula(loc.sheetId, loc.row, loc.col);
         }
       }
       for (const key of cyclic) {
-        const indices = sheet.stableKeyToIndices(key);
-        if (!indices) continue;
+        const loc = this.resolveGlobalCell(key);
+        if (!loc) continue;
         this.formulaGraph.markClean(key, '#CIRCULAR!' as CellValue);
-        this.setCell(sheetId, indices.row, indices.col, { value: '#CIRCULAR!' as CellValue });
+        this.setCell(loc.sheetId, loc.row, loc.col, { value: '#CIRCULAR!' as CellValue });
       }
 
       // Spill footprints touched this pass become the seeds for the next.
       seeds = this.spillSeeds;
       this.spillSeeds = [];
     }
+  }
+
+  /**
+   * Resolve a global cell key to its owning sheet and position. Keys are
+   * globally unique, so at most one sheet matches. O(number of sheets), which
+   * is fine for the handful of sheets a real workbook has.
+   */
+  private resolveGlobalCell(
+    key: string,
+  ): { sheetId: string; row: number; col: number } | undefined {
+    for (const [id, sheet] of this.sheets) {
+      const idx = sheet.stableKeyToIndices(key);
+      if (idx) return { sheetId: id, row: idx.row, col: idx.col };
+    }
+    return undefined;
   }
 
   /** The spill overlay for a sheet, created lazily. */

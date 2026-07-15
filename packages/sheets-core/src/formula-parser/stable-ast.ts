@@ -48,6 +48,11 @@ export class StableRefDeletedError extends Error {
   }
 }
 
+// A row/col id that resolves to nothing (real ids are 12-char base32, so '#'
+// can never collide). Assigned to a rebased ref that fell off the top/left of
+// the grid, so it surfaces as #REF! instead of a silent clamp to the edge.
+const INVALID_REF_ID = '#REF!';
+
 export interface SheetResolver {
   getSheet(name?: string): Sheet | undefined;
 }
@@ -328,16 +333,19 @@ function rebaseRef(
     const cur = sheet.getRowIndex(ref.rowId);
     if (cur !== undefined) {
       const offset = cur - sourceRow;
-      const newRow = Math.max(0, targetRow + offset);
-      newRowId = sheet.ensureRowId(newRow);
+      const newRow = targetRow + offset;
+      // A relative ref that lands above row 0 / left of column A is #REF! in
+      // Excel, not a silent clamp to the edge. A sentinel id that resolves to
+      // nothing makes the ref render and evaluate as #REF!.
+      newRowId = newRow < 0 ? INVALID_REF_ID : sheet.ensureRowId(newRow);
     }
   }
   if (!ref.colAbsolute) {
     const cur = sheet.getColIndex(ref.colId);
     if (cur !== undefined) {
       const offset = cur - sourceCol;
-      const newCol = Math.max(0, targetCol + offset);
-      newColId = sheet.ensureColId(newCol);
+      const newCol = targetCol + offset;
+      newColId = newCol < 0 ? INVALID_REF_ID : sheet.ensureColId(newCol);
     }
   }
 
@@ -352,20 +360,21 @@ function rebaseRef(
 
 /**
  * Walk the stable AST and collect dependency keys for the formula graph.
- * Cross-sheet refs are skipped — the in-sheet graph doesn't track them
- * (matches the pre-existing limitation of the numeric-key path).
+ * Cross-sheet refs are tracked too: their row/col ids resolve against the
+ * target sheet and are globally unique, so `rowId:colId` identifies the right
+ * cell across the whole workbook and editing it dirties this formula.
  */
 export function collectStableDependencies(node: StableFormulaNode): FormulaDependencies {
   const cells = new Set<string>();
   const ranges: RangeDependency[] = [];
   const visit = (n: StableFormulaNode): void => {
-    if (n.cellRef && !n.cellRef.sheetName) {
+    if (n.cellRef) {
       cells.add(`${n.cellRef.rowId}:${n.cellRef.colId}`);
     }
     // A range is kept as its two corner keys — a rectangle. Containment is
     // tested at recalc time, so a cell that is empty when the formula is
     // entered, or a row/column inserted into the range later, is still tracked.
-    if (n.rangeRef && !n.rangeRef.start.sheetName && !n.rangeRef.end.sheetName) {
+    if (n.rangeRef) {
       ranges.push({
         startKey: `${n.rangeRef.start.rowId}:${n.rangeRef.start.colId}`,
         endKey: `${n.rangeRef.end.rowId}:${n.rangeRef.end.colId}`,

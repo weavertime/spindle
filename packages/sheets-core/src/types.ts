@@ -352,8 +352,13 @@ export interface FormulaNode {
   volatile?: boolean; // recomputed on every recalc pass (RAND, NOW, OFFSET, …)
 }
 
-/** Resolves a stable cell key to its current numeric position. */
-export type CellResolver = (cellKey: string) => { row: number; col: number } | undefined;
+/**
+ * Resolves a stable cell key to its current position, including which sheet
+ * owns it. Cell keys are globally unique, so this identifies exactly one cell
+ * across the whole workbook — the sheetId lets range containment reject a
+ * same-index cell on a different sheet.
+ */
+export type CellResolver = (cellKey: string) => { sheetId: string; row: number; col: number } | undefined;
 
 export interface FormulaGraph {
   nodes: Map<string, FormulaNode>;

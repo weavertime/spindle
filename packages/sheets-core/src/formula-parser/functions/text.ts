@@ -30,13 +30,32 @@ function wildcardRegex(pattern: string): RegExp {
 function applyNumberFormat(num: number, format: string): string {
   if (format === '' || format.toLowerCase() === 'general') return String(num);
 
+  // Format sections: positive;negative;zero (Excel). A negative or zero section
+  // formats the magnitude and owns the sign, so no automatic minus is added.
+  const sections = format.split(';');
+  if (sections.length >= 2 && num < 0) {
+    return formatMagnitude(Math.abs(num), sections[1]);
+  }
+  if (sections.length >= 3 && num === 0) {
+    return formatMagnitude(0, sections[2]);
+  }
+  // Single section (or the positive section): keep the sign explicitly.
+  const sign = num < 0 ? '-' : '';
+  return sign + formatMagnitude(Math.abs(num), sections[0]);
+}
+
+/** Format a non-negative number with one format section (no sign handling). */
+function formatMagnitude(num: number, format: string): string {
+  if (format === '') return '';
+  if (format.toLowerCase() === 'general') return String(num);
+
   // Scientific notation, e.g. "0.00E+00".
   if (/[eE]\+?0+/.test(format)) {
     const decimals = (format.match(/\.(0+)[eE]/)?.[1] ?? '').length;
-    const [mantissa, exp] = Math.abs(num).toExponential(decimals).split('e');
+    const [mantissa, exp] = num.toExponential(decimals).split('e');
     const expNum = Number(exp);
     const expStr = (expNum < 0 ? '-' : '+') + String(Math.abs(expNum)).padStart(2, '0');
-    return (num < 0 ? '-' : '') + mantissa + 'E' + expStr;
+    return mantissa + 'E' + expStr;
   }
 
   const isPercent = format.includes('%');
@@ -45,10 +64,9 @@ function applyNumberFormat(num: number, format: string): string {
   const grouped = /[#0],[#0]/.test(format);
   const currency = format.trimStart().startsWith('$') ? '$' : '';
 
-  const [rawInt, fracPart] = Math.abs(working).toFixed(decimals).split('.');
+  const [rawInt, fracPart] = working.toFixed(decimals).split('.');
   const intPart = grouped ? rawInt.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : rawInt;
   let result = currency + intPart + (fracPart ? '.' + fracPart : '');
-  if (num < 0) result = '-' + result;
   if (isPercent) result += '%';
   return result;
 }
