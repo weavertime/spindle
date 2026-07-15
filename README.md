@@ -13,8 +13,6 @@ Existing solutions were either:
 
 This inspired me to create **Spindle**—a forever-free, open-source library that delivers the full editing experience you'd expect from commercial suites like Google Workspace or Microsoft Office, but built for developers who value performance, flexibility, and complete control over their tools.
 
-Weaversuite will be a fully encrypted drive application powered by the Spindle editing experience.
-
 ## Quick Start
 
 ### Installation
