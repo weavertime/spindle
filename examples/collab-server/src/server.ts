@@ -109,9 +109,12 @@ export function createCollabServer(options: CollabServerOptions = {}): Server {
 
     ws.on('close', () => {
       room!.peers.delete(ws);
-      // In-memory reference: forget the room (and its log) once empty. A
-      // durable deployment would keep it so a room survives going idle.
-      if (room!.peers.size === 0) rooms.delete(roomId);
+      // Keep the room's doc log even when it goes idle, so a peer that briefly
+      // drops (or the last peer leaving and later rejoining) is replayed its
+      // state instead of losing it — the log is the room's authority. This
+      // grows memory for abandoned rooms: a production deployment should move
+      // `rooms` to durable storage with an eviction + compaction policy. The
+      // payloads stay opaque, so that remains E2EE-friendly.
     });
 
     ws.on('error', (err) => {

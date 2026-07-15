@@ -116,6 +116,32 @@ describe('WebSocketProvider against a replaying relay', () => {
     await server.close();
   });
 
+  it('reconnects (does not reject) when a socket drops after open but before the sync frame', async () => {
+    // First connection opens then closes before sending CHANNEL_SYNC; later
+    // connections sync normally. connect() must resolve via the reconnect
+    // rather than reject and give up.
+    let connCount = 0;
+    const http = createServer();
+    const wss = new WebSocketServer({ server: http });
+    wss.on('connection', (ws) => {
+      connCount += 1;
+      if (connCount === 1) {
+        setTimeout(() => ws.close(), 15); // drop after the client has opened
+        return;
+      }
+      ws.send(Buffer.from([CHANNEL_SYNC]), { binary: true });
+    });
+    await new Promise<void>((r) => http.listen(0, r));
+    const port = (http.address() as AddressInfo).port;
+
+    const p = new WebSocketProvider({ url: `ws://localhost:${port}`, WebSocketImpl: WS, minReconnectDelayMs: 20 });
+    await p.connect('room'); // must not throw
+    expect(connCount).toBeGreaterThanOrEqual(2);
+
+    p.disconnect();
+    await new Promise<void>((r) => wss.close(() => http.close(() => r())));
+  });
+
   it('re-syncs a reconnecting peer via replay (offline edits are not lost)', async () => {
     const server = await startServer();
     const a = new WebSocketProvider({ url: server.url, WebSocketImpl: WS, minReconnectDelayMs: 30 });

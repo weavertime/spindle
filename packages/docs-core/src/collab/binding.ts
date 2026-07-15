@@ -149,13 +149,35 @@ export async function attachCollabToYDoc(
   // which is what prevents duplicated content.
   await provider.connect(roomId);
 
-  if (getYDocFields(ydoc).content.length === 0) {
-    hydrateYDocFromData(ydoc, initialData);
+  // Seed only if the room has never been seeded (a persistent marker) AND the
+  // doc is still empty. The marker means a joiner to a room whose content was
+  // legitimately deleted won't resurrect it, and a restored/pre-existing doc
+  // isn't re-seeded.
+  const seedMeta = ydoc.getMap('__spindle');
+  if (seedMeta.get('seeded') !== true && getYDocFields(ydoc).content.length === 0) {
+    ydoc.transact(() => {
+      hydrateYDocFromData(ydoc, initialData);
+      seedMeta.set('seeded', true);
+    });
   }
 
-  // Broadcast our awareness state so existing peers see us immediately.
-  const awarenessInit = encodeAwarenessUpdate(awareness, [ydoc.clientID]);
-  provider.send('awareness', awarenessInit);
+  // Contribute our full state so the relay reflects what we hold even if its
+  // log was reset or we restored from local persistence before connecting.
+  // Idempotent (Yjs dedupes by client/clock); repairs an out-of-date relay.
+  if (getYDocFields(ydoc).content.length > 0) {
+    const stateEncoder = encoding.createEncoder();
+    syncProtocol.writeUpdate(stateEncoder, Y.encodeStateAsUpdate(ydoc));
+    provider.send('doc', encoding.toUint8Array(stateEncoder));
+  }
+
+  // Broadcast our awareness state so existing peers see us immediately, and
+  // re-broadcast on every reconnect so peers don't lose our cursor after a blip.
+  const sendAwareness = (): void =>
+    provider.send('awareness', encodeAwarenessUpdate(awareness, [ydoc.clientID]));
+  sendAwareness();
+  const unsubStatus = provider.onStatusChange?.((status) => {
+    if (status === 'connected') sendAwareness();
+  });
 
   // --- Teardown -------------------------------------------------------------
 
@@ -164,6 +186,7 @@ export async function attachCollabToYDoc(
     removeAwarenessStates(awareness, [ydoc.clientID], 'detach');
     ydoc.off('update', onDocUpdate);
     awareness.off('update', onAwarenessUpdate);
+    unsubStatus?.();
     unsubDoc();
     unsubAwareness();
     awareness.destroy();
