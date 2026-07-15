@@ -272,8 +272,34 @@ export class DeckImpl {
       index: this.slideIndexAfter(slideId),
     };
     this.slides.set(copy.id, copy);
-    for (const el of this.getElementsForSlide(slideId)) {
-      const elCopy = { ...structuredClone(el), id: generateId(), containerId: copy.id } as SlideElement;
+    const srcElements = this.getElementsForSlide(slideId);
+    // Map every source element id to its copy's id first, so internal references
+    // (connector binds) can be rewritten to point at the copies rather than
+    // lingering on the originals. Group ids get their own fresh id per source
+    // group, so the copied group is a distinct group of only the copies.
+    const idMap = new Map<string, string>();
+    for (const el of srcElements) idMap.set(el.id, generateId());
+    const groupMap = new Map<string, string>();
+    for (const el of srcElements) {
+      const elCopy = { ...structuredClone(el), id: idMap.get(el.id)!, containerId: copy.id } as SlideElement;
+      // Give the copied group a fresh shared id so getGroupMembers on the copy
+      // returns only the copies (not the source slide's members).
+      if (elCopy.groupId) {
+        let mapped = groupMap.get(elCopy.groupId);
+        if (!mapped) { mapped = generateId(); groupMap.set(elCopy.groupId, mapped); }
+        elCopy.groupId = mapped;
+      }
+      // Re-point connector binds at the copied shapes; leave binds to off-slide
+      // elements untouched.
+      if (elCopy.type === 'line') {
+        const line = elCopy as LineElement;
+        if (line.startBind && idMap.has(line.startBind.elementId)) {
+          line.startBind = { ...line.startBind, elementId: idMap.get(line.startBind.elementId)! };
+        }
+        if (line.endBind && idMap.has(line.endBind.elementId)) {
+          line.endBind = { ...line.endBind, elementId: idMap.get(line.endBind.elementId)! };
+        }
+      }
       this.elements.set(elCopy.id, elCopy);
     }
     this.emit('slideAdd', { slideId: copy.id });
@@ -548,6 +574,13 @@ export class DeckImpl {
       x: el.x + 16,
       y: el.y + 16,
     } as SlideElement;
+    // A line's box shifted, so shift its explicit endpoints too (mirror
+    // moveElements) — otherwise the box and its diagonal desync.
+    if (copy.type === 'line') {
+      const l = copy as LineElement;
+      if (l.startPoint) l.startPoint = { x: l.startPoint.x + 16, y: l.startPoint.y + 16 };
+      if (l.endPoint) l.endPoint = { x: l.endPoint.x + 16, y: l.endPoint.y + 16 };
+    }
     delete copy.groupId;
     this.elements.set(copy.id, copy);
     this.emit('elementAdd', { slideId: el.containerId, elementId: copy.id });

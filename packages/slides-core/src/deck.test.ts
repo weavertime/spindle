@@ -1,7 +1,10 @@
 import { DeckImpl } from './deck';
+import { normalizeDeckData } from './serialization';
 import type { DeckData, DeckEventType, ElementChangePayload } from './types';
 import type { TableElement } from './scene/types';
 import { richTextFromPlainText, docHasMark } from './text/model';
+
+const solidFill = { kind: 'solid', color: { kind: 'theme', slot: 'accent1' } } as const;
 
 function capture(deck: DeckImpl, event: DeckEventType): unknown[] {
   const seen: unknown[] = [];
@@ -62,6 +65,39 @@ describe('slides', () => {
     // Duplicated elements are independent records with new ids.
     expect(copyEls[0].id).not.toBe(deck.getElementsForSlide(slide)[0].id);
   });
+
+  it('remaps internal references (group + connector binds) when duplicating a slide', () => {
+    const deck = new DeckImpl();
+    const slide = deck.getActiveSlideId();
+    const a = deck.addElement(slide, { type: 'shape', x: 0, y: 0, w: 100, h: 100 });
+    const b = deck.addElement(slide, { type: 'shape', x: 400, y: 0, w: 100, h: 100 });
+    const groupId = deck.groupElements([a.id, b.id])!;
+    const conn = deck.addElement(slide, {
+      type: 'line', x: 100, y: 50, w: 300, h: 0,
+      startBind: { elementId: a.id, anchor: 'e' },
+    });
+
+    const copy = deck.duplicateSlide(slide)!;
+    const copyEls = deck.getElementsForSlide(copy.id);
+    expect(copyEls).toHaveLength(3);
+    const srcIds = new Set([a.id, b.id, conn.id]);
+    for (const el of copyEls) expect(srcIds.has(el.id)).toBe(false);
+
+    // The copied group is a fresh group made of only the copies.
+    const copyGroupId = copyEls.find((e) => e.type !== 'line')!.groupId!;
+    expect(copyGroupId).not.toBe(groupId);
+    const groupMembers = deck.getGroupMembers(copyGroupId);
+    expect(groupMembers.sort()).toEqual(copyEls.filter((e) => e.type !== 'line').map((e) => e.id).sort());
+    // The original group is untouched (only its two source elements).
+    expect(deck.getGroupMembers(groupId).sort()).toEqual([a.id, b.id].sort());
+
+    // The copied connector binds to the COPIED shape, not the original.
+    const copyConn = copyEls.find((e) => e.type === 'line')!;
+    if (copyConn.type !== 'line') throw new Error('not a line');
+    const copyA = copyEls.find((e) => e.type !== 'line' && e.x === 0)!;
+    expect(copyConn.startBind?.elementId).toBe(copyA.id);
+    expect([a.id, b.id]).not.toContain(copyConn.startBind?.elementId);
+  });
 });
 
 describe('elements', () => {
@@ -111,6 +147,22 @@ describe('elements', () => {
     deck.deleteElement(el.id);
     expect(deck.getElement(el.id)).toBeUndefined();
     expect(deck.getElementsForSlide(slide)).toHaveLength(1);
+  });
+
+  it('shifts a duplicated line\'s explicit endpoints alongside its box', () => {
+    const deck = new DeckImpl();
+    const slide = deck.getActiveSlideId();
+    const line = deck.addElement(slide, {
+      type: 'line', x: 100, y: 100, w: 200, h: 100,
+      startPoint: { x: 100, y: 100 }, endPoint: { x: 300, y: 200 },
+    });
+    const copy = deck.duplicateElement(line.id)!;
+    if (copy.type !== 'line') throw new Error('not a line');
+    expect(copy.x).toBe(116);
+    expect(copy.y).toBe(116);
+    // Endpoints move with the box so the diagonal stays in sync.
+    expect(copy.startPoint).toEqual({ x: 116, y: 116 });
+    expect(copy.endPoint).toEqual({ x: 316, y: 216 });
   });
 
   it('moves elements by a delta as one undo entry', () => {
@@ -243,6 +295,32 @@ describe('getData / setData', () => {
     const dataB = b.getData();
 
     expect(dataB).toEqual(dataA);
+  });
+
+  it('preserves array order when only some elements have indices', () => {
+    // A has a high index, C a lower one, B none — mixing given + generated keys
+    // would sort them wrong. Normalization must keep the array order [A,B,C].
+    const shape = (id: string, index: string) => ({
+      type: 'shape', shape: 'rect', x: 0, y: 0, w: 10, h: 10, rotation: 0,
+      fill: solidFill, id, containerId: 's', index,
+    });
+    const norm = normalizeDeckData({
+      id: 'd', title: 't', slideSize: { w: 1280, h: 720 },
+      slides: [{ id: 's', index: 'V', elements: [shape('A', 'zzz'), shape('B', ''), shape('C', 'zzy')] }],
+    } as unknown as DeckData);
+    const els = norm.slides[0].elements!;
+    const byIndex = [...els].sort((x, y) => (x.index! < y.index! ? -1 : 1));
+    expect(byIndex.map((e) => e.id)).toEqual(['A', 'B', 'C']);
+  });
+
+  it('preserves array order when only some slides have indices', () => {
+    const slide = (id: string, index: string) => ({ id, index, elements: [] });
+    const norm = normalizeDeckData({
+      id: 'd', title: 't', slideSize: { w: 1280, h: 720 },
+      slides: [slide('A', 'zzz'), slide('B', ''), slide('C', 'zzy')],
+    } as unknown as DeckData);
+    const bySlideIndex = [...norm.slides].sort((x, y) => (x.index! < y.index! ? -1 : 1));
+    expect(bySlideIndex.map((s) => s.id)).toEqual(['A', 'B', 'C']);
   });
 });
 
