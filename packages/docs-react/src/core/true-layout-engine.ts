@@ -11,7 +11,7 @@
  */
 
 import { FlowBlock } from './flow-blocks';
-import { Measure, hasLineData, getLineCount } from './measurer';
+import { Measure, hasLineData, getLineCount, getLineRangeHeight } from './measurer';
 
 // ============================================================================
 // Layout Types
@@ -474,7 +474,7 @@ function createFragmentsForLines(
   
   const fragments: PageFragment[] = [];
   let currentLine = startLine;
-  
+
   while (currentLine < endLine) {
     const { linesToFit, heightUsed } = findLinesToFit(
       measure,
@@ -484,13 +484,16 @@ function createFragmentsForLines(
       minLinesAtBreak,
       endLine
     );
-    
-    if (linesToFit === 0) {
-      // Can't fit any more lines - this shouldn't happen normally
-      break;
-    }
-    
-    const toLine = currentLine + linesToFit;
+
+    // findLinesToFit can return 0 even on a full page — e.g. a single line
+    // taller than the whole page, where the widow guard refuses to place fewer
+    // than minLinesAtBreak lines. Force one line so the loop always advances;
+    // otherwise the remaining lines are silently dropped and the block vanishes.
+    const take = linesToFit > 0 ? linesToFit : 1;
+    const height =
+      linesToFit > 0 ? heightUsed : getLineRangeHeight(measure, currentLine, currentLine + 1) * scale;
+
+    const toLine = currentLine + take;
     
     fragments.push({
       blockId: block.id,
@@ -499,11 +502,11 @@ function createFragmentsForLines(
       toLine,
       x: 0,
       y: 0, // Will be set by caller
-      height: heightUsed,
+      height,
       isFirstFragment: currentLine === 0,
       isLastFragment: toLine >= endLine,
     });
-    
+
     currentLine = toLine;
   }
   
