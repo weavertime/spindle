@@ -142,13 +142,7 @@ function DocsHeader({ onMenu, menuOpen }: { onMenu: () => void; menuOpen: boolea
           <span />
         </button>
         <Link className="brand" to="/" aria-label="Spindle home">
-          <svg width="20" height="27" viewBox="0 0 22 30" fill="none" aria-hidden="true">
-            <path d="M11 1 L11 29" stroke="#E0A83E" strokeWidth="1.4" />
-            <path d="M4 6 L18 10 M18 6 L4 10" stroke="#c9bfa6" strokeWidth="1.2" />
-            <path d="M3 15 L19 15" stroke="#E0A83E" strokeWidth="1" />
-            <path d="M11 12.5 L16 15 L11 17.5 L6 15 Z" fill="#E0A83E" />
-            <path d="M4 20 L18 24 M18 20 L4 24" stroke="#c9bfa6" strokeWidth="1.2" />
-          </svg>
+          <img src="/spindle.svg" width="25" height="25" alt="" aria-hidden="true" />
           Spindle <small>Docs</small>
         </Link>
         <nav className="docs-top-nav">
