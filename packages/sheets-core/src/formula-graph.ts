@@ -91,12 +91,15 @@ export class FormulaGraphImpl implements FormulaGraph {
   /** Is `idx` inside the rectangle, resolving its corner keys to indices now? */
   private rectContains(
     rect: RangeDependency,
-    idx: { row: number; col: number },
+    idx: { sheetId: string; row: number; col: number },
     resolveCell: CellResolver
   ): boolean {
     const a = resolveCell(rect.startKey);
     const b = resolveCell(rect.endKey);
     if (!a || !b) return false;
+    // The range and the candidate cell must live on the same sheet — otherwise
+    // a same-index cell on another sheet would falsely test inside the range.
+    if (a.sheetId !== b.sheetId || a.sheetId !== idx.sheetId) return false;
     return (
       idx.row >= Math.min(a.row, b.row) &&
       idx.row <= Math.max(a.row, b.row) &&

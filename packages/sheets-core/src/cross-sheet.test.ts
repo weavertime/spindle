@@ -1,0 +1,50 @@
+import { WorkbookImpl } from './workbook';
+
+describe('cross-sheet dependency tracking', () => {
+  it('recomputes a formula when the cell it references on another sheet changes', () => {
+    const wb = new WorkbookImpl('wb', 'WB');
+    const s2 = wb.addSheet('Sheet2');
+    wb.setCellValue(s2.id, 0, 0, 10); // Sheet2!A1 = 10
+    wb.setFormula(undefined, 0, 0, '=Sheet2!A1'); // Sheet1!A1
+    expect(wb.getCellValue(undefined, 0, 0)).toBe(10);
+
+    wb.setCellValue(s2.id, 0, 0, 20); // edit Sheet2!A1
+    expect(wb.getCellValue(undefined, 0, 0)).toBe(20); // was stale (10) before this fix
+  });
+
+  it('recomputes a cross-sheet range aggregate when a cell inside it changes', () => {
+    const wb = new WorkbookImpl('wb', 'WB');
+    const s2 = wb.addSheet('Sheet2');
+    wb.setCellValue(s2.id, 0, 0, 1);
+    wb.setCellValue(s2.id, 1, 0, 2);
+    wb.setCellValue(s2.id, 2, 0, 3);
+    wb.setFormula(undefined, 0, 0, '=SUM(Sheet2!A1:A3)');
+    expect(wb.getCellValue(undefined, 0, 0)).toBe(6);
+
+    wb.setCellValue(s2.id, 1, 0, 10); // Sheet2!A2
+    expect(wb.getCellValue(undefined, 0, 0)).toBe(14);
+  });
+
+  it('detects a circular reference that spans two sheets', () => {
+    const wb = new WorkbookImpl('wb', 'WB');
+    const s2 = wb.addSheet('Sheet2');
+    wb.setFormula(undefined, 0, 0, '=Sheet2!A1'); // Sheet1!A1 -> Sheet2!A1
+    wb.setFormula(s2.id, 0, 0, '=Sheet1!A1'); // Sheet2!A1 -> Sheet1!A1 (cycle)
+    expect(wb.getCellValue(undefined, 0, 0)).toBe('#CIRCULAR!');
+    expect(wb.getCellValue(s2.id, 0, 0)).toBe('#CIRCULAR!');
+  });
+
+  it('does not falsely recompute for a same-index cell on another sheet', () => {
+    const wb = new WorkbookImpl('wb', 'WB');
+    const s2 = wb.addSheet('Sheet2');
+    wb.setCellValue(s2.id, 0, 0, 1);
+    wb.setCellValue(s2.id, 1, 0, 2);
+    wb.setFormula(undefined, 0, 0, '=SUM(Sheet2!A1:A2)');
+    expect(wb.getCellValue(undefined, 0, 0)).toBe(3);
+
+    // Sheet1!A2 shares row/col indices with a cell inside the Sheet2 range but
+    // must not dirty the aggregate — that would be a cross-sheet false positive.
+    wb.setCellValue(undefined, 1, 0, 999);
+    expect(wb.getCellValue(undefined, 0, 0)).toBe(3);
+  });
+});

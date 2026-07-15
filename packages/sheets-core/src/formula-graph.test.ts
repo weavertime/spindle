@@ -8,7 +8,7 @@ import type { CellResolver } from './types';
  */
 const resolve: CellResolver = (key) => {
   const m = key.match(/^(\d+):(\d+)$/);
-  return m ? { row: Number(m[1]), col: Number(m[2]) } : undefined;
+  return m ? { sheetId: 'S', row: Number(m[1]), col: Number(m[2]) } : undefined;
 };
 
 function cellDeps(...cells: string[]) {
