@@ -31,17 +31,34 @@ describe('anchorPoint', () => {
 });
 
 describe('connectorBox round-trips endpoints', () => {
-  it('main diagonal (no flip)', () => {
+  it('main diagonal (start top-left)', () => {
     const b = connectorBox({ x: 10, y: 20 }, { x: 110, y: 220 });
-    expect(b).toEqual({ x: 10, y: 20, w: 100, h: 200, flipV: false });
+    expect(b).toEqual({ x: 10, y: 20, w: 100, h: 200, flipH: false, flipV: false });
   });
-  it('anti-diagonal (flip)', () => {
+  it('anti-diagonal (start bottom-left)', () => {
     const b = connectorBox({ x: 10, y: 220 }, { x: 110, y: 20 });
-    expect(b).toEqual({ x: 10, y: 20, w: 100, h: 200, flipV: true });
+    expect(b).toEqual({ x: 10, y: 20, w: 100, h: 200, flipH: false, flipV: true });
   });
-  it('start below-right of end still reconstructs the same box', () => {
+  it('start bottom-right of end is distinct (direction is not lost)', () => {
     const b = connectorBox({ x: 110, y: 220 }, { x: 10, y: 20 });
-    expect(b).toEqual({ x: 10, y: 20, w: 100, h: 200, flipV: false });
+    expect(b).toEqual({ x: 10, y: 20, w: 100, h: 200, flipH: true, flipV: true });
+  });
+});
+
+describe('connectorBox preserves start→end direction through freeStart/freeEnd', () => {
+  const roundTrip = (start: { x: number; y: number }, end: { x: number; y: number }) => {
+    const b = connectorBox(start, end);
+    const l = line({ x: b.x, y: b.y, w: b.w, h: b.h, flipH: b.flipH, flipV: b.flipV });
+    return resolveEndpoints(l, () => undefined);
+  };
+  it('vertical bottom → top keeps its endpoints ordered', () => {
+    expect(roundTrip({ x: 0, y: 100 }, { x: 0, y: 0 })).toEqual({ start: { x: 0, y: 100 }, end: { x: 0, y: 0 } });
+  });
+  it('horizontal right → left keeps its endpoints ordered', () => {
+    expect(roundTrip({ x: 100, y: 0 }, { x: 0, y: 0 })).toEqual({ start: { x: 100, y: 0 }, end: { x: 0, y: 0 } });
+  });
+  it('a diagonal drawn backwards keeps its endpoints ordered', () => {
+    expect(roundTrip({ x: 110, y: 220 }, { x: 10, y: 20 })).toEqual({ start: { x: 110, y: 220 }, end: { x: 10, y: 20 } });
   });
 });
 
@@ -104,6 +121,6 @@ describe('resolveConnectorFrame', () => {
       (id) => frames[id]
     );
     // A east = (100,50); B west = (300,250).
-    expect(box).toEqual({ x: 100, y: 50, w: 200, h: 200, flipV: false });
+    expect(box).toEqual({ x: 100, y: 50, w: 200, h: 200, flipH: false, flipV: false });
   });
 });
