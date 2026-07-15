@@ -18,6 +18,17 @@ describe('formula DoS guards', () => {
     const res = parser.parse(long);
     expect(res.error).toBeTruthy();
   });
+
+  it('evaluates a giant sparse range without freezing (evaluation is clamped to data)', () => {
+    const wb = new WorkbookImpl('wb', 'WB');
+    wb.setCellValue(undefined, 0, 0, 1);
+    wb.setCellValue(undefined, 1, 0, 2);
+    wb.setCellValue(undefined, 2, 0, 3);
+    const start = Date.now();
+    wb.setFormula(undefined, 0, 1, '=SUM(A1:A1048576)'); // B1, outside column A
+    expect(wb.getCellValue(undefined, 0, 1)).toBe(6);
+    expect(Date.now() - start).toBeLessThan(1000);
+  });
 });
 
 describe('CSV injection guard on export', () => {

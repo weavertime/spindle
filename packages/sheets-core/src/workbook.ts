@@ -124,6 +124,9 @@ export class WorkbookImpl implements Workbook {
       this.activeSheetId = Array.from(this.sheets.keys())[0];
     }
     this.mirrorSheetDelete(sheetId);
+    // Formulas on other sheets that referenced the deleted one must now
+    // recompute to #REF!.
+    this.recalculateAllFormulas();
     this.events.emit('sheetDelete', { sheetId });
   }
 
@@ -148,8 +151,13 @@ export class WorkbookImpl implements Workbook {
   renameSheet(sheetId: string, newName: string): void {
     const sheet = this.getSheet(sheetId);
     const oldName = sheet.name;
+    if (oldName === newName) return;
     sheet.name = newName;
+    // Rewrite cross-sheet references so they follow the rename instead of
+    // breaking to #REF!, then recompute the affected formulas.
+    this.rewriteSheetNameInFormulas(oldName, newName);
     this.mirrorSheetRename(sheetId, newName);
+    this.recalculateAllFormulas();
     this.events.emit('sheetRename', { sheetId, oldName, newName });
   }
 
@@ -573,16 +581,35 @@ export class WorkbookImpl implements Workbook {
     const maxRow = Math.max(startRow, endRow);
     const minCol = Math.min(startCol, endCol);
     const maxCol = Math.max(startCol, endCol);
-    
+
+    // Guard against an enormous range (e.g. =SUM(A1:A1048576)) freezing the main
+    // thread. Cells past the sheet's populated extent are empty and contribute
+    // nothing, so clamp the iteration to the actual data. Only pay the O(cells)
+    // extent scan for an oversized range — normal ranges iterate directly.
+    let effMaxRow = maxRow;
+    let effMaxCol = maxCol;
+    const MAX_RANGE_EVAL_CELLS = 100_000;
+    if ((maxRow - minRow + 1) * (maxCol - minCol + 1) > MAX_RANGE_EVAL_CELLS) {
+      const sheet = this.getSheet(sheetId);
+      let dataMaxRow = 0;
+      let dataMaxCol = 0;
+      for (const [r, c] of sheet.entries()) {
+        if (r > dataMaxRow) dataMaxRow = r;
+        if (c > dataMaxCol) dataMaxCol = c;
+      }
+      effMaxRow = Math.min(maxRow, dataMaxRow);
+      effMaxCol = Math.min(maxCol, dataMaxCol);
+    }
+
     const values: unknown[][] = [];
-    for (let row = minRow; row <= maxRow; row++) {
+    for (let row = minRow; row <= effMaxRow; row++) {
       const rowValues: unknown[] = [];
-      for (let col = minCol; col <= maxCol; col++) {
+      for (let col = minCol; col <= effMaxCol; col++) {
         rowValues.push(this.getCellCalculatedValue(sheetId, row, col));
       }
       values.push(rowValues);
     }
-    
+
     return values;
   }
 
@@ -600,7 +627,19 @@ export class WorkbookImpl implements Workbook {
     // Cell keys are globally unique, so dependents (and range corners) are
     // resolved against the whole workbook — a formula on another sheet that
     // references this cell is found and re-evaluated on its own sheet.
-    const resolveCell = (key: string) => this.resolveGlobalCell(key);
+    //
+    // resolveGlobalCell is O(sheets); it's called per dirty key and per range
+    // corner in the containment scan, so memoize it for the duration of this
+    // recalc. Cell positions don't shift mid-recalc, so the cache stays valid.
+    const locCache = new Map<string, { sheetId: string; row: number; col: number } | undefined>();
+    const resolveCell = (key: string) => {
+      let loc = locCache.get(key);
+      if (loc === undefined && !locCache.has(key)) {
+        loc = this.resolveGlobalCell(key);
+        locCache.set(key, loc);
+      }
+      return loc;
+    };
 
     let seeds = [cellKey, ...this.spillSeeds];
     this.spillSeeds = [];
@@ -611,13 +650,13 @@ export class WorkbookImpl implements Workbook {
 
       const { ordered, cyclic } = this.formulaGraph.topologicalOrder(dirty, edges);
       for (const key of ordered) {
-        const loc = this.resolveGlobalCell(key);
+        const loc = resolveCell(key);
         if (loc) {
           this.evaluateFormula(loc.sheetId, loc.row, loc.col);
         }
       }
       for (const key of cyclic) {
-        const loc = this.resolveGlobalCell(key);
+        const loc = resolveCell(key);
         if (!loc) continue;
         this.formulaGraph.markClean(key, '#CIRCULAR!' as CellValue);
         this.setCell(loc.sheetId, loc.row, loc.col, { value: '#CIRCULAR!' as CellValue });
@@ -642,6 +681,39 @@ export class WorkbookImpl implements Workbook {
       if (idx) return { sheetId: id, row: idx.row, col: idx.col };
     }
     return undefined;
+  }
+
+  /**
+   * Re-evaluate every formula in the workbook. Used after a structural sheet
+   * change (delete/rename) that can invalidate cross-sheet references anywhere.
+   */
+  private recalculateAllFormulas(): void {
+    for (const [sheetId, sheet] of this.sheets.entries()) {
+      for (const [row, col, cell] of sheet.entries()) {
+        if (cell.formula) this.evaluateFormula(sheetId, row, col);
+      }
+    }
+  }
+
+  /**
+   * Rewrite every formula's references to a renamed sheet so they follow the
+   * new name (Excel behavior) instead of breaking to #REF!. The display string
+   * is refreshed from the AST on the next evaluation.
+   */
+  private rewriteSheetNameInFormulas(oldName: string, newName: string): void {
+    const rewrite = (node: StableFormulaNode): void => {
+      if (node.cellRef?.sheetName === oldName) node.cellRef.sheetName = newName;
+      if (node.rangeRef?.start.sheetName === oldName) node.rangeRef.start.sheetName = newName;
+      if (node.rangeRef?.end.sheetName === oldName) node.rangeRef.end.sheetName = newName;
+      node.args?.forEach(rewrite);
+      if (node.left) rewrite(node.left);
+      if (node.right) rewrite(node.right);
+    };
+    for (const [, sheet] of this.sheets.entries()) {
+      for (const [, , cell] of sheet.entries()) {
+        if (cell.formulaAst) rewrite(cell.formulaAst);
+      }
+    }
   }
 
   /** The spill overlay for a sheet, created lazily. */

@@ -43,6 +43,16 @@ describe('boolean literals', () => {
     expect(ev('=IF(TRUE, 1, 2)')).toBe(1);
     expect(ev('=(1>0)=TRUE')).toBe(true);
   });
+
+  it('coerce to 1/0 in arithmetic even though they end in E', () => {
+    // Regression: the trailing E of TRUE/FALSE tripped the scientific-notation
+    // guard, so =TRUE+1 parsed as one string token.
+    expect(ev('=TRUE+1')).toBe(2);
+    expect(ev('=TRUE-1')).toBe(0);
+    expect(ev('=FALSE+1')).toBe(1);
+    expect(ev('=TRUE+TRUE')).toBe(2);
+    expect(ev('=1e-3+1')).toBe(1.001); // scientific notation still works
+  });
 });
 
 describe('comparison semantics', () => {
