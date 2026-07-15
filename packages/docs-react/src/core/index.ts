@@ -1,15 +1,9 @@
 /**
  * Core components for the Spindle Docs layout engine
  * 
- * This module exports two architectures:
- * 
- * 1. Legacy Architecture (PresentationEditor)
- *    - Uses a single ProseMirror instance with CSS clipping
- *    - Simpler but has mid-line clipping issues
- * 
- * 2. True Layout Engine (TrueLayoutEditor)
- *    - Hidden ProseMirror + independent page rendering
- *    - Line-level pagination with no clipping issues
+ * The True Layout Engine (TrueLayoutEditor) drives a hidden ProseMirror
+ * instance and paints pages independently, giving line-level pagination
+ * with no clipping.
  */
 
 // ============================================================================
@@ -107,34 +101,3 @@ export {
   getImageInteractionManager 
 } from './image-interactions';
 export type { ImagePosition } from './image-interactions';
-
-// ============================================================================
-// Legacy Architecture (Deprecated - use TrueLayoutEditor instead)
-// ============================================================================
-
-export { HiddenEditor } from './HiddenEditor';
-export type { HiddenEditorHandle, HiddenEditorProps } from './HiddenEditor';
-
-export { PresentationEditor } from './PresentationEditor';
-export type { PresentationEditorProps } from './PresentationEditor';
-
-export { PageRenderer, SelectionOverlay } from './PageRenderer';
-export type { PageRendererProps, SelectionOverlayProps } from './PageRenderer';
-
-// Legacy layout engine exports (for backward compatibility)
-export {
-  measureBlocks,
-  computeLayout,
-  findPositionInLayout,
-  findPositionAtCoords,
-  getPositionCoords,
-  computeSelectionRects,
-} from './LayoutEngine';
-export type {
-  PageConfig as LegacyPageConfig,
-  BlockMeasurement,
-  PageBlock,
-  PageLayout as LegacyPageLayout,
-  DocumentLayout as LegacyDocumentLayout,
-  LayoutOptions as LegacyLayoutOptions,
-} from './LayoutEngine';

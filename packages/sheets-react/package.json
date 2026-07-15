@@ -22,8 +22,7 @@
     }
   },
   "files": [
-    "dist",
-    "src"
+    "dist"
   ],
   "scripts": {
     "build": "rollup -c",
@@ -50,7 +49,6 @@
   "dependencies": {
     "@weavertime/spindle-sheets-core": "^0.3.0",
     "@weavertime/spindle-shared": "^0.3.0",
-    "immer": "^10.0.0",
     "lucide-react": "^0.563.0"
   },
   "devDependencies": {
@@ -64,5 +62,8 @@
     "rollup": "^4.0.0",
     "ts-jest": "^29.1.0",
     "typescript": "^5.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

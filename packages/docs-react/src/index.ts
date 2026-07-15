@@ -86,37 +86,6 @@ export type {
   DynamicFieldContext,
 } from './core';
 
-// ============================================================================
-// Legacy Architecture (use TrueLayoutEditor for new code)
-// ============================================================================
-
-export {
-  PresentationEditor,
-  HiddenEditor,
-  PageRenderer,
-  SelectionOverlay,
-  computeLayout,
-  measureBlocks,
-  findPositionInLayout,
-  findPositionAtCoords,
-  getPositionCoords,
-  computeSelectionRects,
-} from './core';
-
-export type {
-  PresentationEditorProps,
-  HiddenEditorHandle,
-  HiddenEditorProps,
-  PageRendererProps,
-  SelectionOverlayProps,
-  LegacyPageConfig,
-  BlockMeasurement,
-  PageBlock,
-  LegacyPageLayout,
-  LegacyDocumentLayout,
-  LegacyLayoutOptions,
-} from './core';
-
 // ProseMirror components (for direct access if needed)
 export { 
   ProseMirrorEditor, 

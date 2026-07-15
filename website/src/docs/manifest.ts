@@ -1,10 +1,15 @@
 // Single source of truth for the docs: the markdown in the repo-root
 // `documentation/` folder is pulled in raw and lazy-loaded, so it splits into
 // its own chunk and never bloats the marketing shell.
-const rawDocs = import.meta.glob('../../../documentation/**/*.md', {
-  query: '?raw',
-  import: 'default',
-}) as Record<string, () => Promise<string>>;
+// Internal planning notes (TODO.md, PLAN.md) are excluded so they never ship
+// in the public docs bundle or become reachable by direct URL.
+const rawDocs = import.meta.glob(
+  ['../../../documentation/**/*.md', '!**/TODO.md', '!**/PLAN.md'],
+  {
+    query: '?raw',
+    import: 'default',
+  },
+) as Record<string, () => Promise<string>>;
 
 // Map each file to a slug = its path under documentation/ without `.md`.
 // README.md becomes the docs index (empty slug → /docs).

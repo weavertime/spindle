@@ -27,8 +27,7 @@
     }
   },
   "files": [
-    "dist",
-    "src"
+    "dist"
   ],
   "scripts": {
     "build": "rollup -c",
@@ -49,7 +48,6 @@
   },
   "dependencies": {
     "@weavertime/spindle-shared": "^0.3.0",
-    "immer": "^10.0.0",
     "y-indexeddb": "^9.0.12",
     "y-protocols": "^1.0.7",
     "yjs": "^13.6.30"
@@ -61,5 +59,8 @@
     "rollup": "^4.0.0",
     "ts-jest": "^29.1.0",
     "typescript": "^5.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

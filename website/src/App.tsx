@@ -29,11 +29,11 @@ const NPM_ORG = 'https://www.npmjs.com/org/weavertime';
 const INSTALL = 'npm i @weavertime/spindle-sheets-react';
 
 const FEATURES = [
-  { fi: 'Rendering', h: 'Painted to canvas', p: 'Cells and glyphs draw straight to a canvas with virtual scrolling. Tens of thousands of rows stay smooth at 60fps.' },
+  { fi: 'Rendering', h: 'Painted to canvas', p: 'Cells and glyphs draw straight to a canvas with virtual scrolling, so tens of thousands of rows stay smooth while scrolling.' },
   { fi: 'Footprint', h: 'Sparse by design', p: 'A sparse cell store keeps memory and bundle size lean, so you ship only the cells you actually use.' },
   { fi: 'Architecture', h: 'Portable cores', p: 'sheets-core and docs-core carry zero React. React is just the first loom; the engine goes anywhere.' },
   { fi: 'Collaboration', h: 'Real-time, offline-ready', p: 'CRDT editing over Yjs. Presence, remote cursors, and conflict-free offline merge come standard.' },
-  { fi: 'AI-native', h: 'Pure-JSON model', p: 'Documents and workbooks are plain JSON. A bundled MCP server lets Claude generate and validate them directly.' },
+  { fi: 'AI-native', h: 'Pure-JSON model', p: 'Documents and workbooks are plain JSON — easy for an LLM to generate and validate directly.' },
   { fi: 'License', h: 'Forever free', p: 'MIT-licensed. No tiers, no seats, no asterisks. The entire suite is yours to fork and reshape.' },
 ];
 

@@ -13,7 +13,6 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import type { Sheet, Range, Selection, WorkbookImpl } from '@weavertime/spindle-sheets-core';
-import type { CollabIdentity } from '@weavertime/spindle-shared';
 import type { Awareness } from 'y-protocols/awareness';
 
 interface RemotePeer {
@@ -320,6 +319,3 @@ function cellRangeRect(
   for (let r = startRow; r <= endRow; r++) h += sheet.getRowHeight(r);
   return { x: a.x, y: a.y, w, h };
 }
-
-// suppress unused linter when CollabIdentity import is only for type hinting in docs
-void (null as unknown as CollabIdentity);
