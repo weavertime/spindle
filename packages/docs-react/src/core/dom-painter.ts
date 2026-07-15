@@ -21,6 +21,7 @@ import {
 } from './flow-blocks';
 import { Measure, hasLineData, LineMeasure } from './measurer';
 import { DocumentLayout, PageLayout, PageFragment, PageConfig } from './true-layout-engine';
+import { sanitizeHref, sanitizeImageSrc, safeCssColor } from './sanitize';
 
 // Re-export header/footer types from docs-core for convenience
 export type {
@@ -680,8 +681,9 @@ export class DomPainter {
         if (item.italic) styles += 'font-style: italic;';
         if (item.fontSize) styles += `font-size: ${item.fontSize * this.config.scale}px;`;
         if (item.fontFamily) styles += `font-family: ${item.fontFamily};`;
-        if (item.color) styles += `color: ${item.color};`;
-        
+        const itemColor = safeCssColor(item.color);
+        if (itemColor) styles += `color: ${itemColor};`;
+
         span.style.cssText = styles;
         para.appendChild(span);
       } else if (item.type === 'dynamicField') {
@@ -691,7 +693,7 @@ export class DomPainter {
         para.appendChild(span);
       } else if (item.type === 'image') {
         const img = document.createElement('img');
-        img.src = item.src;
+        img.src = sanitizeImageSrc(item.src);
         img.alt = item.alt || '';
         img.style.cssText = `
           width: ${(item.width || 24) * this.config.scale}px;
@@ -990,9 +992,9 @@ export class DomPainter {
         } else if (run.kind === 'link') {
           const a = document.createElement('a');
           a.textContent = segment.text;
-          a.href = run.href;
+          a.href = sanitizeHref(run.href);
           a.style.cssText = `
-            color: ${run.color || '#1a73e8'};
+            color: ${safeCssColor(run.color) || '#1a73e8'};
             text-decoration: underline;
             ${run.bold ? 'font-weight: bold;' : ''}
             ${run.italic ? 'font-style: italic;' : ''}
@@ -1382,7 +1384,7 @@ export class DomPainter {
     }
     
     const img = document.createElement('img');
-    img.src = block.src;
+    img.src = sanitizeImageSrc(block.src);
     img.alt = block.alt || '';
     img.draggable = false; // Prevent native image drag
     img.style.cssText = `
@@ -1437,7 +1439,7 @@ export class DomPainter {
         container.appendChild(document.createElement('br'));
       } else if (run.kind === 'image') {
         const img = document.createElement('img');
-        img.src = run.src;
+        img.src = sanitizeImageSrc(run.src);
         img.width = run.width * this.config.scale;
         img.height = run.height * this.config.scale;
         img.alt = run.alt || '';
@@ -1446,9 +1448,9 @@ export class DomPainter {
       } else if (run.kind === 'link') {
         const a = document.createElement('a');
         a.textContent = run.text;
-        a.href = run.href;
+        a.href = sanitizeHref(run.href);
         a.style.cssText = `
-          color: ${run.color || '#1a73e8'};
+          color: ${safeCssColor(run.color) || '#1a73e8'};
           text-decoration: underline;
           ${run.bold ? 'font-weight: bold;' : ''}
           ${run.italic ? 'font-style: italic;' : ''}
@@ -1501,8 +1503,10 @@ export class DomPainter {
     if (run.strikethrough) styles.push('text-decoration: line-through');
     if (run.fontSize) styles.push(`font-size: ${run.fontSize * this.config.scale}px`);
     if (run.fontFamily) styles.push(`font-family: ${run.fontFamily}`);
-    if (run.color) styles.push(`color: ${run.color}`);
-    if (run.backgroundColor) styles.push(`background-color: ${run.backgroundColor}`);
+    const runColor = safeCssColor(run.color);
+    if (runColor) styles.push(`color: ${runColor}`);
+    const runBgColor = safeCssColor(run.backgroundColor);
+    if (runBgColor) styles.push(`background-color: ${runBgColor}`);
     if (run.superscript) styles.push('vertical-align: super; font-size: 0.8em');
     if (run.subscript) styles.push('vertical-align: sub; font-size: 0.8em');
     

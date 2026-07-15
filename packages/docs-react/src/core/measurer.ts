@@ -23,6 +23,7 @@ import {
   isRunContainingBlock,
   isTextRun,
 } from './flow-blocks';
+import { sanitizeHref, sanitizeImageSrc, safeCssColor } from './sanitize';
 
 // ============================================================================
 // Measurement Types
@@ -782,7 +783,7 @@ export class DomMeasurer {
         container.appendChild(document.createElement('br'));
       } else if (run.kind === 'image') {
         const img = document.createElement('img');
-        img.src = run.src;
+        img.src = sanitizeImageSrc(run.src);
         img.width = run.width;
         img.height = run.height;
         img.alt = run.alt || '';
@@ -791,9 +792,9 @@ export class DomMeasurer {
       } else if (run.kind === 'link') {
         const a = document.createElement('a');
         a.textContent = run.text;
-        a.href = run.href;
+        a.href = sanitizeHref(run.href);
         a.style.cssText = `
-          color: ${run.color || '#1a73e8'};
+          color: ${safeCssColor(run.color) || '#1a73e8'};
           text-decoration: underline;
           ${run.bold ? 'font-weight: bold;' : ''}
           ${run.italic ? 'font-style: italic;' : ''}
@@ -873,8 +874,10 @@ export class DomMeasurer {
     if (run.strikethrough) styles.push('text-decoration: line-through');
     if (run.fontSize) styles.push(`font-size: ${run.fontSize}px`);
     if (run.fontFamily) styles.push(`font-family: ${run.fontFamily}`);
-    if (run.color) styles.push(`color: ${run.color}`);
-    if (run.backgroundColor) styles.push(`background-color: ${run.backgroundColor}`);
+    const runColor = safeCssColor(run.color);
+    if (runColor) styles.push(`color: ${runColor}`);
+    const runBgColor = safeCssColor(run.backgroundColor);
+    if (runBgColor) styles.push(`background-color: ${runBgColor}`);
     if (run.superscript) styles.push('vertical-align: super; font-size: 0.8em');
     if (run.subscript) styles.push('vertical-align: sub; font-size: 0.8em');
     

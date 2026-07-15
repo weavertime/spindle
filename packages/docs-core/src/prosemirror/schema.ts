@@ -1,4 +1,5 @@
 import { Schema, NodeSpec, MarkSpec, DOMOutputSpec } from 'prosemirror-model';
+import { sanitizeHref } from './sanitize';
 
 /**
  * Node specifications matching our document model
@@ -320,7 +321,7 @@ const marks: Record<string, MarkSpec> = {
         tag: 'a[href]',
         getAttrs(dom: HTMLElement) {
           return {
-            href: dom.getAttribute('href'),
+            href: sanitizeHref(dom.getAttribute('href')),
             title: dom.getAttribute('title'),
             target: dom.getAttribute('target'),
           };
@@ -329,7 +330,7 @@ const marks: Record<string, MarkSpec> = {
     ],
     toDOM(node): DOMOutputSpec {
       const attrs: Record<string, string | null> = {
-        href: node.attrs.href,
+        href: sanitizeHref(node.attrs.href as string | null),
         rel: 'noopener noreferrer',
       };
       if (node.attrs.title) attrs.title = node.attrs.title;
