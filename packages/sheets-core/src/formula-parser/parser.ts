@@ -32,6 +32,13 @@ export class FormulaParser {
     let error: string | undefined;
 
     try {
+      // Guard against a pathologically long formula. parseExpression is
+      // recursive and roughly O(n^2) on a flat expression, so a huge input
+      // freezes the main thread; reject it instead.
+      if (formula.length > 10_000) {
+        throw new Error('#ERROR! Formula too long');
+      }
+
       // Remove leading = if present
       const expression = formula.startsWith('=') ? formula.slice(1) : formula;
 
@@ -155,11 +162,22 @@ export class FormulaParser {
         ? adjustedRangeRef.end.col 
         : currentCol + adjustedRangeRef.end.col;
 
-      // Add dependencies with sheet name prefix if it's a cross-sheet reference
+      // Add dependencies with sheet name prefix if it's a cross-sheet reference.
+      // Skip the per-cell expansion for an oversized range (e.g. A1:A1048576):
+      // it would iterate billions of cells and hang the main thread. The recalc
+      // graph derives its real dependencies from the AST
+      // (collectStableDependencies), so this Set is only a best-effort extra.
       const sheetPrefix = sheetName ? `${sheetName}!` : '';
-      for (let r = Math.min(startRow, endRow); r <= Math.max(startRow, endRow); r++) {
-        for (let c = Math.min(startCol, endCol); c <= Math.max(startCol, endCol); c++) {
-          dependencies.add(`${sheetPrefix}${r}:${c}`);
+      const rLo = Math.min(startRow, endRow);
+      const rHi = Math.max(startRow, endRow);
+      const cLo = Math.min(startCol, endCol);
+      const cHi = Math.max(startCol, endCol);
+      const MAX_RANGE_DEP_CELLS = 100_000;
+      if ((rHi - rLo + 1) * (cHi - cLo + 1) <= MAX_RANGE_DEP_CELLS) {
+        for (let r = rLo; r <= rHi; r++) {
+          for (let c = cLo; c <= cHi; c++) {
+            dependencies.add(`${sheetPrefix}${r}:${c}`);
+          }
         }
       }
 
