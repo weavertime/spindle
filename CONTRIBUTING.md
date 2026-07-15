@@ -16,7 +16,7 @@ packages/
   spindle-docs-core            Document engine (True Layout) — zero React
   spindle-docs-react           React document editor components
   spindle-slides-core          Presentation engine (scene layer, fractional index) — zero React
-  spindle-slides-react         React slide editor: canvas, gestures, present mode
+  spindle-slides-react         React slide editor: stage, gestures, present mode
   spindle-transport-websocket  WebSocket CollabProvider for real-time collaboration
 website/                       The spindle.weavertime.com marketing + docs site (standalone)
 documentation/                 Markdown docs (rendered by the website)
