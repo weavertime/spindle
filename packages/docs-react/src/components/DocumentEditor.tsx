@@ -123,7 +123,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     docModel.setDefaultPageConfig(config);
   }, [docModel, sections]);
   
-  // Handle document changes from PresentationEditor
+  // Handle document changes from the editor
   const handleDocChange = useCallback((blocks: Block[]) => {
     if (sections[0]) {
       docModel.setSectionBlocks(sections[0].id, blocks);
@@ -131,7 +131,7 @@ export const DocumentEditor = memo(function DocumentEditor({
     }
   }, [docModel, sections]);
   
-  // Handle selection changes from PresentationEditor
+  // Handle selection changes from the editor
   const handleSelectionChange = useCallback((state: EditorState) => {
     const marks = activeMarksPluginKey.getState(state) as ActiveMarks | undefined;
     if (marks) {

@@ -22,7 +22,6 @@ const tsPluginNoDecl = typescript({
 });
 
 const external = [
-  'immer',
   'yjs',
   'y-protocols',
   'y-protocols/awareness',

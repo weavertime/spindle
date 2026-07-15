@@ -115,7 +115,7 @@ function App() {
 - **Sorting & Filtering**: Column operations
 - **CSV Export/Import**: Data interchange
 
-See [`sheets/TODO.md`](sheets/TODO.md) for remaining work.
+See the [issue tracker](https://github.com/weavertime/spindle/issues) for planned work.
 
 ---
 
@@ -159,7 +159,7 @@ function App() {
 - **Present Mode**: fullscreen 16:9, keyboard nav, cross-fade, and presenter view (timer, notes, next-slide preview)
 - **Comments & Collaboration**: element-anchored threads and Yjs real-time sync
 
-See [`slides/TODO.md`](slides/TODO.md) for remaining work.
+See the [issue tracker](https://github.com/weavertime/spindle/issues) for planned work.
 
 ---
 

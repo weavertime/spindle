@@ -70,7 +70,7 @@ function MySpreadsheet() {
 
   // Example: Access and save workbook data
   const saveToDb = () => {
-    const workbookData = wb.getData();
+    const workbookData = workbook.getData();
     // Send to your backend API
     console.log('Saving workbook data:', workbookData);
     // Example: fetch('/api/workbooks', { method: 'POST', body: JSON.stringify(workbookData) })

@@ -357,7 +357,7 @@ All spreadsheet state is managed through a central workbook object that acts as 
 
 Visual styling and data formatting are handled through dedicated style and format pools that store reusable definitions separately from cell data. This approach minimizes memory usage by avoiding duplication - a style definition is stored once and referenced by multiple cells. During rendering, these pools are consulted to apply the correct visual appearance, from number formatting (currency, percentages) to cell styling (colors, borders, fonts), ensuring consistent presentation across the spreadsheet.
 
-Keyboard interactions are seamlessly coordinated between the canvas and edit overlay components. When not editing, the canvas handles navigation keys (arrow keys, Tab, Enter) to move between cells and selection keys (Shift+arrows) to extend selections. Once editing begins, keyboard focus shifts to the edit overlay, which handles text input, formula editing features like reference insertion, and commit/cancel actions (Enter to save, Escape to cancel). This division of responsibility creates a smooth, intuitive editing experience that feels natural to spreadsheet users.
+Keyboard handling is split between the canvas and the edit overlay. When not editing, the canvas handles navigation keys (arrow keys, Tab, Enter) to move between cells and selection keys (Shift+arrows) to extend selections. Once editing begins, focus shifts to the edit overlay, which handles text input, formula editing (such as reference insertion), and commit/cancel actions (Enter to save, Escape to cancel).
 
 ### Architecture Overview
 
