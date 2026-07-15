@@ -73,13 +73,7 @@ function TopBar() {
   return (
     <header className="top"><div className="wrap">
       <a className="brand" href="#top" aria-label="Spindle home">
-        <svg width="22" height="30" viewBox="0 0 22 30" fill="none" aria-hidden="true">
-          <path d="M11 1 L11 29" stroke="#E0A83E" strokeWidth="1.4" />
-          <path d="M4 6 L18 10 M18 6 L4 10" stroke="#ECE6D6" strokeWidth="1.2" opacity=".85" />
-          <path d="M3 15 L19 15" stroke="#E0A83E" strokeWidth="1" />
-          <path d="M11 12.5 L16 15 L11 17.5 L6 15 Z" fill="#E0A83E" />
-          <path d="M4 20 L18 24 M18 20 L4 24" stroke="#ECE6D6" strokeWidth="1.2" opacity=".85" />
-        </svg>
+        <img src="/spindle.svg" width="28" height="28" alt="" aria-hidden="true" />
         Spindle <small>by Weavertime</small>
       </a>
       <nav className="nav">
