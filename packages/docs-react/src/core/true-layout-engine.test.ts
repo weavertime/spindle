@@ -121,6 +121,21 @@ describe('computeTrueLayout — oversized content never vanishes', () => {
     const l = layout([{ b: block('img'), m: image('img', 900) }]);
     const frag = l.pages.flatMap((p) => p.fragments).find((f) => f.blockId === 'img');
     expect(frag).toBeDefined();
+    // Regression: the fragment height was clamped to the page content height
+    // (600), silently truncating the bottom 300px of the block. It must cover
+    // the block's full measured height so no content is lost.
+    expect(frag!.height).toBe(900);
+  });
+
+  it('preserves the full height of an unsplittable block preceded by content', () => {
+    // A block that fills part of page 1, then a tall non-line block that cannot
+    // split: the tall block moves to its own page and keeps its whole height.
+    const l = layout([
+      { b: block('a'), m: para('a', 20, 5) },
+      { b: block('img'), m: image('img', 1000) },
+    ]);
+    const frag = l.pages.flatMap((p) => p.fragments).find((f) => f.blockId === 'img')!;
+    expect(frag.height).toBe(1000);
   });
 
   it('keeps every line of a multi-line block whose first line is taller than the page', () => {
