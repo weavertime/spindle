@@ -16,6 +16,26 @@ import {
 
 const INDENT_PX = 28;
 
+// URL sanitizer for rendered link hrefs. Attacker-controlled hrefs (from pasted
+// or imported HTML) must not become `javascript:`/`data:`/`vbscript:` anchors.
+// Kept local to avoid a cross-package coupling for one small helper.
+const SAFE_HREF_SCHEMES = ['http:', 'https:', 'mailto:', 'tel:'];
+// eslint-disable-next-line no-control-regex
+const HREF_CONTROL_CHARS = /[\u0000-\u0020]/g;
+
+function sanitizeHref(href: string | null | undefined): string {
+  if (!href) return '';
+  const value = String(href).trim();
+  if (value === '') return '';
+  const colon = value.indexOf(':');
+  if (colon === -1) return value; // relative / anchor / query — no scheme
+  const beforeSlash = value.search(/[/?#]/);
+  // A ':' after the first '/', '?' or '#' is part of the path, not a scheme.
+  if (beforeSlash !== -1 && beforeSlash < colon) return value;
+  const scheme = value.slice(0, colon + 1).replace(HREF_CONTROL_CHARS, '').toLowerCase();
+  return SAFE_HREF_SCHEMES.includes(scheme) ? value : '';
+}
+
 function inlineStyle(inline: RichTextInline, theme: ThemeData): { style: React.CSSProperties; href?: string } {
   const style: React.CSSProperties = {};
   const decorations: string[] = [];
@@ -65,9 +85,10 @@ function renderInline(inline: RichTextInline, theme: ThemeData, key: number): Re
       {inline.text}
     </span>
   );
-  if (href) {
+  const safeHref = sanitizeHref(href);
+  if (safeHref) {
     return (
-      <a key={key} href={href} style={style} target="_blank" rel="noreferrer">
+      <a key={key} href={safeHref} style={style} target="_blank" rel="noreferrer">
         {inline.text}
       </a>
     );

@@ -53,8 +53,10 @@ export function formatPlainNumber(value: number, format: CellFormat): string {
     formatted = parts.join('.');
   }
 
-  // Remove trailing zeros after decimal point
-  formatted = formatted.replace(/\.?0+$/, '');
+  // Remove trailing zeros, but only when there's a decimal point — otherwise
+  // the optional '.' in the pattern eats an integer's real trailing zeros
+  // (100 -> "1", 1000 -> "1,").
+  formatted = formatted.includes('.') ? formatted.replace(/\.?0+$/, '') : formatted;
 
   // Apply negative format
   if (value < 0) {
@@ -141,7 +143,8 @@ export function formatPercentage(value: number, format: CellFormat): string {
   const percentValue = value * 100; // Assume value is stored as decimal (0.5 = 50%)
 
   let formatted = percentValue.toFixed(decimalPlaces);
-  formatted = formatted.replace(/\.?0+$/, ''); // Remove trailing zeros
+  // Trailing zeros only after a decimal point (see formatPlainNumber).
+  formatted = formatted.includes('.') ? formatted.replace(/\.?0+$/, '') : formatted;
 
   return `${formatted}%`;
 }

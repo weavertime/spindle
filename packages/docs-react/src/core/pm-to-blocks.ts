@@ -7,10 +7,12 @@
  */
 
 import { Node as PmNode, Mark } from 'prosemirror-model';
+import { sanitizeHref } from './sanitize';
 import {
   FlowBlock,
   Run,
   TextRun,
+  LinkRun,
   ParagraphBlock,
   HeadingBlock,
   ListItemBlock,
@@ -333,21 +335,40 @@ function extractRuns(node: PmNode): Run[] {
 }
 
 /**
- * Create a TextRun from a ProseMirror text node with marks
+ * Create a TextRun (or LinkRun) from a ProseMirror text node with marks
  */
-function createTextRunFromNode(node: PmNode): TextRun {
+function createTextRunFromNode(node: PmNode): TextRun | LinkRun {
   const run: TextRun = {
     kind: 'text',
     text: node.text || '',
   };
-  
-  // Apply marks
+
+  // Apply marks. A `link` mark promotes the run to a LinkRun so an anchor is
+  // actually produced downstream; its href is sanitized to block javascript:
+  // and other XSS vectors before it reaches the model.
+  let linkHref: string | undefined;
   if (node.marks && node.marks.length > 0) {
     for (const mark of node.marks) {
       applyMarkToRun(run, mark);
+      if (mark.type.name === 'link') {
+        linkHref = sanitizeHref(mark.attrs.href as string | undefined);
+      }
     }
   }
-  
+
+  if (linkHref !== undefined) {
+    return {
+      kind: 'link',
+      text: run.text,
+      href: linkHref,
+      bold: run.bold,
+      italic: run.italic,
+      underline: run.underline,
+      color: run.color,
+      commentThreadId: run.commentThreadId,
+    };
+  }
+
   return run;
 }
 
@@ -400,8 +421,8 @@ function applyMarkToRun(run: TextRun, mark: Mark): void {
       break;
     
     case 'link':
-      // For links, we could convert to LinkRun, but for simplicity
-      // we just apply the color styling
+      // Link styling. The mark is promoted to a LinkRun (with a sanitized
+      // href) by createTextRunFromNode; here we only carry the visual styling.
       run.color = run.color || '#1a73e8';
       run.underline = true;
       break;

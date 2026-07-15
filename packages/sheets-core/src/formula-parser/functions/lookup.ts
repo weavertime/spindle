@@ -206,7 +206,7 @@ export const lookupFunctions: Record<string, EagerFn> = {
   },
 
   CHOOSE: (args) => {
-    const index = toNum(args[0]);
+    const index = Math.trunc(toNum(args[0])); // Excel truncates a fractional index
     if (index < 1 || index >= args.length) throw new Error('#VALUE!');
     return args[index];
   },

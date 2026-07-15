@@ -95,39 +95,41 @@ export function findRunAtOffset(
   content: InlineContent[],
   offset: number
 ): { runIndex: number; offsetInRun: number } | null {
+  if (content.length === 0) {
+    return null;
+  }
+
+  const runLength = (item: InlineContent): number => {
+    if (item.type === 'text') return item.text.length;
+    if (item.type === 'link') return item.text.length;
+    if (item.type === 'image') return 1;
+    return 0;
+  };
+
+  // Clamp negative offsets to the start of the first run.
+  if (offset <= 0) {
+    return { runIndex: 0, offsetInRun: 0 };
+  }
+
   let currentOffset = 0;
-  
+
   for (let i = 0; i < content.length; i++) {
-    const item = content[i];
-    let itemLength = 0;
-    
-    if (item.type === 'text') {
-      itemLength = item.text.length;
-    } else if (item.type === 'link') {
-      itemLength = item.text.length;
-    } else if (item.type === 'image') {
-      itemLength = 1;
+    const runEnd = currentOffset + runLength(content[i]);
+
+    // Prefer the later run at an exact boundary: a boundary offset (=== runEnd)
+    // belongs to the next run so newly typed text inherits the following run's
+    // style rather than the previous run's. The last run owns its own end.
+    if (offset < runEnd || (offset === runEnd && i === content.length - 1)) {
+      return { runIndex: i, offsetInRun: offset - currentOffset };
     }
-    
-    if (offset <= currentOffset + itemLength) {
-      return {
-        runIndex: i,
-        offsetInRun: offset - currentOffset,
-      };
-    }
-    
-    currentOffset += itemLength;
+
+    currentOffset = runEnd;
   }
-  
-  // If offset is at the very end
-  if (content.length > 0) {
-    return {
-      runIndex: content.length - 1,
-      offsetInRun: offset - currentOffset,
-    };
-  }
-  
-  return null;
+
+  // Offset is past the end of all content — clamp to the end of the last run
+  // (offsetInRun never exceeds the run's length).
+  const lastIndex = content.length - 1;
+  return { runIndex: lastIndex, offsetInRun: runLength(content[lastIndex]) };
 }
 
 /**

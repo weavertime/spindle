@@ -229,7 +229,9 @@ export function computeTrueLayout(
         currentY = 0;
       }
       
-      // Add block to new page (even if it overflows)
+      // Add block to new page (even if it overflows). Use the block's full
+      // height — never clamp to contentHeight, or the overflowing remainder of
+      // a non-splittable block (a tall table or image) would be silently lost.
       currentPage.fragments.push({
         blockId: block.id,
         blockIndex,
@@ -237,7 +239,7 @@ export function computeTrueLayout(
         toLine: getLineCount(measure),
         x: 0,
         y: 0,
-        height: Math.min(blockHeight, contentHeight),
+        height: blockHeight,
         isFirstFragment: true,
         isLastFragment: true,
       });

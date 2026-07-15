@@ -12,6 +12,7 @@
 
 import { Schema } from 'prosemirror-model';
 import type { Color } from '../scene/types';
+import { sanitizeHref } from './sanitize';
 
 export const slidesSchema = new Schema({
   nodes: {
@@ -69,9 +70,9 @@ export const slidesSchema = new Schema({
     link: {
       attrs: { href: { default: '' } },
       inclusive: false,
-      parseDOM: [{ tag: 'a[href]', getAttrs: (dom) => ({ href: (dom as HTMLElement).getAttribute('href') }) }],
+      parseDOM: [{ tag: 'a[href]', getAttrs: (dom) => ({ href: sanitizeHref((dom as HTMLElement).getAttribute('href')) }) }],
       // hlink slot resolved via the editor's CSS variable (see RichTextEditor).
-      toDOM: (mark) => ['a', { href: mark.attrs.href as string, rel: 'noreferrer', target: '_blank', style: 'color:var(--slot-hlink);text-decoration:underline' }, 0],
+      toDOM: (mark) => ['a', { href: sanitizeHref(mark.attrs.href as string), rel: 'noreferrer', target: '_blank', style: 'color:var(--slot-hlink);text-decoration:underline' }, 0],
     },
     // Theme slots and 'major'/'minor' fonts can't be resolved in a
     // theme-agnostic schema, so toDOM emits CSS variables that the editor

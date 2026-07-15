@@ -201,17 +201,22 @@ export function insertTableColumn(
   position: number,
   width?: number
 ): TableBlock {
+  // Clamp the insertion index once and use it for both the cells and the
+  // colWidths, so the widths array stays aligned with the columns (a raw
+  // negative/overflowing position would otherwise splice at a different spot).
+  const insertAt = Math.max(0, Math.min(position, getTableColCount(table)));
+
   const newRows = table.rows.map(row => {
     const newCells = [...row.cells];
-    newCells.splice(Math.max(0, Math.min(position, row.cells.length)), 0, createTableCell());
+    newCells.splice(insertAt, 0, createTableCell());
     return { ...row, cells: newCells };
   });
-  
+
   const newColWidths = table.colWidths ? [...table.colWidths] : undefined;
   if (newColWidths) {
-    newColWidths.splice(position, 0, width || 100);
+    newColWidths.splice(insertAt, 0, width || 100);
   }
-  
+
   return { ...table, rows: newRows, colWidths: newColWidths };
 }
 
@@ -257,26 +262,31 @@ export function mergeCells(
   
   const newRows = table.rows.map((row, rowIndex) => {
     if (rowIndex < startRow || rowIndex > endRow) return row;
-    
-    const newCells = row.cells.map((cell, colIndex) => {
-      if (colIndex < startCol || colIndex > endCol) return cell;
-      
-      // Top-left cell gets the merged content
+
+    const newCells: TableCell[] = [];
+    row.cells.forEach((cell, colIndex) => {
+      // Cells outside the merged range are untouched.
+      if (colIndex < startCol || colIndex > endCol) {
+        newCells.push(cell);
+        return;
+      }
+
+      // The top-left cell absorbs the span.
       if (rowIndex === startRow && colIndex === startCol) {
-        return {
+        newCells.push({
           ...cell,
           colspan: endCol - startCol + 1,
           rowspan: endRow - startRow + 1,
-        };
+        });
       }
-      
-      // Other cells in range become empty (will be hidden in rendering)
-      return { ...cell, content: [] };
+
+      // Every other covered cell is removed entirely — leaving it (even empty)
+      // renders/serializes as a phantom extra column under the spanning cell.
     });
-    
+
     return { ...row, cells: newCells };
   });
-  
+
   return { ...table, rows: newRows };
 }
 

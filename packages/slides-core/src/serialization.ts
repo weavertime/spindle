@@ -14,8 +14,12 @@ import type { DeckData, SlideData } from './types';
 function ensureIndices<T extends { index?: string }>(items: T[]): Array<T & { index: string }> {
   const allHaveIndex = items.every((it) => typeof it.index === 'string' && it.index.length > 0);
   if (allHaveIndex) return items as Array<T & { index: string }>;
+  // Mixing given indices with freshly generated ones sorts unpredictably (an
+  // author's 'zzz' would jump ahead of a generated 'a2'). When any index is
+  // missing the set can't be trusted for ordering, so assign fresh monotonically
+  // increasing keys across the whole array — this preserves the given array order.
   const keys = indexesBetween(null, null, items.length);
-  return items.map((it, i) => ({ ...it, index: it.index || keys[i] }));
+  return items.map((it, i) => ({ ...it, index: keys[i] }));
 }
 
 function normalizeSlide(slide: SlideData): SlideData {

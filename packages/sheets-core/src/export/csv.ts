@@ -30,6 +30,11 @@ export function exportToCSV(workbook: WorkbookImpl, sheetId?: string): string {
         }
       }
 
+      // Neutralize CSV / formula injection: a cell that begins with =, +, -,
+      // @, or a control char is run as a formula by Excel/Sheets when the file
+      // is opened. Prefix it with a single quote so it is treated as text.
+      value = guardCsvInjection(value);
+
       // Escape CSV value
       if (value.includes(',') || value.includes('"') || value.includes('\n')) {
         value = `"${value.replace(/"/g, '""')}"`;
@@ -41,6 +46,11 @@ export function exportToCSV(workbook: WorkbookImpl, sheetId?: string): string {
   }
 
   return rows.map((row) => row.join(',')).join('\n');
+}
+
+/** Prefix a leading formula-trigger character with a quote to prevent CSV injection. */
+function guardCsvInjection(value: string): string {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
 }
 
 export function importFromCSV(csv: string, sheet: Sheet): void {

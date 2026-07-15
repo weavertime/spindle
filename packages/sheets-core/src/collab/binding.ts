@@ -183,12 +183,33 @@ export async function attachCollabToWorkbook(
   // so it lands on the wire (via onDocUpdate) but stays out of the undo stack.
   await provider.connect(roomId);
 
-  if (getWorkbookYTypes(ydoc).sheetIds.length === 0) {
-    ydoc.transact(() => hydrateYDocFromData(ydoc, initialData), SEED_ORIGIN);
+  // Seed only if never seeded (persistent marker) AND still empty, so a joiner
+  // to an emptied room doesn't resurrect it and a restored doc isn't re-seeded.
+  // Runs under SEED_ORIGIN so the seed stays out of the undo stack.
+  const seedMeta = ydoc.getMap('__spindle');
+  if (seedMeta.get('seeded') !== true && getWorkbookYTypes(ydoc).sheetIds.length === 0) {
+    ydoc.transact(() => {
+      hydrateYDocFromData(ydoc, initialData);
+      seedMeta.set('seeded', true);
+    }, SEED_ORIGIN);
   }
 
-  const awarenessInit = encodeAwarenessUpdate(awareness, [ydoc.clientID]);
-  provider.send('awareness', awarenessInit);
+  // Contribute our full state so the relay reflects what we hold even if its
+  // log was reset or we restored from local persistence. Idempotent.
+  if (getWorkbookYTypes(ydoc).sheetIds.length > 0) {
+    const stateEncoder = encoding.createEncoder();
+    syncProtocol.writeUpdate(stateEncoder, Y.encodeStateAsUpdate(ydoc));
+    provider.send('doc', encoding.toUint8Array(stateEncoder));
+  }
+
+  // Broadcast presence, and re-broadcast on reconnect so a blip doesn't drop
+  // our cursor for peers.
+  const sendAwareness = (): void =>
+    provider.send('awareness', encodeAwarenessUpdate(awareness, [ydoc.clientID]));
+  sendAwareness();
+  const unsubStatus = provider.onStatusChange?.((status) => {
+    if (status === 'connected') sendAwareness();
+  });
 
   // --- Teardown -----------------------------------------------------------
 
@@ -196,6 +217,7 @@ export async function attachCollabToWorkbook(
     removeAwarenessStates(awareness, [ydoc.clientID], 'detach');
     ydoc.off('update', onDocUpdate);
     awareness.off('update', onAwarenessUpdate);
+    unsubStatus?.();
     unsubDoc();
     unsubAwareness();
     undoManager.destroy();

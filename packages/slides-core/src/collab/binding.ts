@@ -306,17 +306,38 @@ export async function attachCollabToDeck(
 
   await provider.connect(roomId);
 
-  provider.send('awareness', encodeAwarenessUpdate(awareness, [ydoc.clientID]));
-
-  // connect() replays the room's existing state before it resolves, so only
-  // hydrate if the room was empty (we're the first peer) — a joining peer
-  // already received the room's state and must not stack a duplicate. Then
-  // reconcile the engine to exactly match the Y.Doc, and only now attach the
-  // ongoing mirror + observers.
-  if (y.slides.size === 0) hydrateYDocFromData(ydoc, initialData);
+  // connect() replays the room's existing state before it resolves. Seed only
+  // if never seeded (a persistent marker) AND the room is empty — a joiner (or
+  // a joiner to an emptied room, or a restored doc) must not stack a duplicate
+  // or resurrect deleted content. Then reconcile the engine to exactly match
+  // the Y.Doc, and only now attach the ongoing mirror + observers.
+  const seedMeta = ydoc.getMap('__spindle');
+  if (seedMeta.get('seeded') !== true && y.slides.size === 0) {
+    ydoc.transact(() => {
+      hydrateYDocFromData(ydoc, initialData);
+      seedMeta.set('seeded', true);
+    });
+  }
   deck._resyncFromY(serializeYDocToData(ydoc, deck.getSelection(), deck.getActiveSlideId()));
   attachObservers();
   attachMirror();
+
+  // Contribute our full state so the relay reflects what we hold even if its
+  // log was reset or we restored from local persistence. Idempotent.
+  if (y.slides.size > 0) {
+    const stateEncoder = encoding.createEncoder();
+    syncProtocol.writeUpdate(stateEncoder, Y.encodeStateAsUpdate(ydoc));
+    provider.send('doc', encoding.toUint8Array(stateEncoder));
+  }
+
+  // Broadcast presence, and re-broadcast on reconnect so a blip doesn't drop
+  // our cursor for peers.
+  const sendAwareness = (): void =>
+    provider.send('awareness', encodeAwarenessUpdate(awareness, [ydoc.clientID]));
+  sendAwareness();
+  const unsubStatus = provider.onStatusChange?.((status) => {
+    if (status === 'connected') sendAwareness();
+  });
 
   const detach = () => {
     removeAwarenessStates(awareness, [ydoc.clientID], 'detach');
@@ -327,6 +348,7 @@ export async function attachCollabToDeck(
     y.meta.unobserve(onMeta);
     y.threads.unobserve(onThreads);
     for (const off of offs) off();
+    unsubStatus?.();
     unsubDoc();
     unsubAwareness();
     undoManager.destroy();

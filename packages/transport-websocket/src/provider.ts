@@ -107,6 +107,13 @@ export class WebSocketProvider implements CollabProvider {
     this.roomId = roomId;
     this.intentionallyClosed = false;
 
+    // Supersede any still-pending connect() so its promise can't hang forever.
+    if (this.connectReject) {
+      this.connectReject(new Error('WebSocketProvider: connect() superseded by a newer connect()'));
+      this.connectResolve = null;
+      this.connectReject = null;
+    }
+
     return new Promise<void>((resolve, reject) => {
       this.connectResolve = resolve;
       this.connectReject = reject;
@@ -226,6 +233,10 @@ export class WebSocketProvider implements CollabProvider {
       if (this.socket !== ws) return; // superseded
       this.reconnectAttempt = 0;
       this.setStatus('connected');
+      // The socket opened, so we must never reject connect() from here on — a
+      // later drop (before the sync frame) should reconnect, not give up. The
+      // pending connectResolve stays until the sync frame or the sync fallback.
+      this.connectReject = null;
       // Flush any messages queued while the socket was opening.
       for (const m of this.pendingOutbound) {
         try {

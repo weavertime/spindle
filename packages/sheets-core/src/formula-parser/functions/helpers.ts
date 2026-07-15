@@ -229,3 +229,18 @@ export function compareValues(a: unknown, b: unknown): number {
   const sb = toText(b).toLowerCase();
   return sa < sb ? -1 : sa > sb ? 1 : 0;
 }
+
+/**
+ * Excel-style equality for the `=` / `<>` operators. Unlike compareValues it is
+ * type-aware: text never equals a number ("1" != 1, "" != 0), text compares
+ * case-insensitively, and an empty cell (null) coerces to the other operand's
+ * zero-value (blank = 0, blank = "", blank = FALSE).
+ */
+export function excelEqual(a: unknown, b: unknown): boolean {
+  if (a == null) a = typeof b === 'number' ? 0 : typeof b === 'boolean' ? false : '';
+  if (b == null) b = typeof a === 'number' ? 0 : typeof a === 'boolean' ? false : '';
+  if (typeof a === 'number' && typeof b === 'number') return a === b;
+  if (typeof a === 'boolean' && typeof b === 'boolean') return a === b;
+  if (typeof a === 'string' && typeof b === 'string') return a.toLowerCase() === b.toLowerCase();
+  return false;
+}

@@ -9,6 +9,13 @@ import { richTextToPlainText } from '@weavertime/spindle-slides-core';
 import { useDeck, useSlideIds, useActiveSlideId } from '../hooks';
 import { SlideView, ScaledSlide } from './SlideView';
 
+/** Opacity cross-fade duration; the navigation timeout and the CSS transition
+ *  must share this so the fade actually completes before the slide swaps. */
+const FADE_MS = 150;
+/** Clear a typed slide-number after this idle gap so a stray digit doesn't
+ *  linger and hijack a later Enter. */
+const NUMBER_IDLE_MS = 1500;
+
 function mmss(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -27,6 +34,17 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
   const [fading, setFading] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const numberBuffer = useRef('');
+  const numberTimer = useRef<number | undefined>(undefined);
+
+  // Drop any partially-typed slide number and cancel its idle timer. Uses only
+  // refs, so it stays correct when called from the once-subscribed key handler.
+  const clearNumberBuffer = () => {
+    numberBuffer.current = '';
+    if (numberTimer.current !== undefined) {
+      window.clearTimeout(numberTimer.current);
+      numberTimer.current = undefined;
+    }
+  };
 
   // Current index / count via refs so the keydown listener (subscribed once)
   // always reads fresh values without re-subscribing on every navigation.
@@ -36,11 +54,18 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
   lenRef.current = slideIds.length;
 
   const go = (i: number) => {
+    // Any navigation ends the current number-jump entry.
+    clearNumberBuffer();
     const next = Math.max(0, Math.min(lenRef.current - 1, i));
     if (next === indexRef.current) return;
+    // Fade the current slide out, swap at the bottom of the fade, then fade the
+    // new slide back in — the swap timeout matches the CSS transition so the
+    // cross-fade actually completes.
     setFading(true);
-    setIndex(next);
-    window.setTimeout(() => setFading(false), 20);
+    window.setTimeout(() => {
+      setIndex(next);
+      setFading(false);
+    }, FADE_MS);
   };
 
   useLayoutEffect(() => {
@@ -101,9 +126,12 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
         default:
           if (/^[0-9]$/.test(e.key)) {
             numberBuffer.current += e.key;
+            // Restart the idle timer so a digit typed and abandoned doesn't
+            // persist across slides and swallow a later Enter.
+            if (numberTimer.current !== undefined) window.clearTimeout(numberTimer.current);
+            numberTimer.current = window.setTimeout(clearNumberBuffer, NUMBER_IDLE_MS);
           } else if (e.key === 'Enter' && numberBuffer.current) {
-            go(parseInt(numberBuffer.current, 10) - 1);
-            numberBuffer.current = '';
+            go(parseInt(numberBuffer.current, 10) - 1); // go() clears the buffer
           }
       }
     };
@@ -138,7 +166,7 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
         cursor: 'default',
       }}
     >
-      <div style={{ width: w * scale, height: h * scale, opacity: fading ? 0 : 1, transition: 'opacity 150ms ease' }}>
+      <div style={{ width: w * scale, height: h * scale, opacity: fading ? 0 : 1, transition: `opacity ${FADE_MS}ms ease` }}>
         <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: w, height: h }}>
           {slideId ? <SlideView slideId={slideId} /> : null}
         </div>

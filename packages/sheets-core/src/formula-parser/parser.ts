@@ -4,6 +4,7 @@ import type { ParsedFormulaNode, ParseResult, EvaluationContext, RangeReference 
 import { parseCellReference, parseRangeReference, cellReferenceToKey } from './cell-reference';
 import { eagerFunctions, lazyFunctions, refFunctions } from './functions';
 import type { EagerFn, LazyFn, RefFn } from './functions';
+import { compareValues, excelEqual, toText } from './functions/helpers';
 
 export class FormulaParser {
   private functions: Map<string, EagerFn> = new Map();
@@ -31,6 +32,13 @@ export class FormulaParser {
     let error: string | undefined;
 
     try {
+      // Guard against a pathologically long formula. parseExpression is
+      // recursive and roughly O(n^2) on a flat expression, so a huge input
+      // freezes the main thread; reject it instead.
+      if (formula.length > 10_000) {
+        throw new Error('#ERROR! Formula too long');
+      }
+
       // Remove leading = if present
       const expression = formula.startsWith('=') ? formula.slice(1) : formula;
 
@@ -55,6 +63,13 @@ export class FormulaParser {
     dependencies: Set<string>
   ): ParsedFormulaNode {
     expr = expr.trim();
+
+    // Unwrap a fully-enclosing pair of parentheses: (a+b) -> a+b. Grouping
+    // parens are otherwise never stripped, so =(1+2), 2*(3+4) and =(1>0)
+    // mis-parse (as a string or #VALUE!). The loop collapses nested wraps.
+    while (expr.length >= 2 && expr[0] === '(' && this.isFullyParenthesized(expr)) {
+      expr = expr.slice(1, -1).trim();
+    }
 
     // Try to parse as arithmetic/comparison expression
     const operatorMatch = this.findLowestPrecedenceOperator(expr);
@@ -147,11 +162,22 @@ export class FormulaParser {
         ? adjustedRangeRef.end.col 
         : currentCol + adjustedRangeRef.end.col;
 
-      // Add dependencies with sheet name prefix if it's a cross-sheet reference
+      // Add dependencies with sheet name prefix if it's a cross-sheet reference.
+      // Skip the per-cell expansion for an oversized range (e.g. A1:A1048576):
+      // it would iterate billions of cells and hang the main thread. The recalc
+      // graph derives its real dependencies from the AST
+      // (collectStableDependencies), so this Set is only a best-effort extra.
       const sheetPrefix = sheetName ? `${sheetName}!` : '';
-      for (let r = Math.min(startRow, endRow); r <= Math.max(startRow, endRow); r++) {
-        for (let c = Math.min(startCol, endCol); c <= Math.max(startCol, endCol); c++) {
-          dependencies.add(`${sheetPrefix}${r}:${c}`);
+      const rLo = Math.min(startRow, endRow);
+      const rHi = Math.max(startRow, endRow);
+      const cLo = Math.min(startCol, endCol);
+      const cHi = Math.max(startCol, endCol);
+      const MAX_RANGE_DEP_CELLS = 100_000;
+      if ((rHi - rLo + 1) * (cHi - cLo + 1) <= MAX_RANGE_DEP_CELLS) {
+        for (let r = rLo; r <= rHi; r++) {
+          for (let c = cLo; c <= cHi; c++) {
+            dependencies.add(`${sheetPrefix}${r}:${c}`);
+          }
         }
       }
 
@@ -170,6 +196,13 @@ export class FormulaParser {
       };
     }
 
+    // Boolean literals: the barewords TRUE / FALSE (Excel returns booleans,
+    // not the strings). Route through the registered TRUE()/FALSE() functions
+    // so AND/OR/IF and comparisons see a real boolean.
+    const upperExpr = expr.toUpperCase();
+    if (upperExpr === 'TRUE') return { type: 'function', functionName: 'TRUE', args: [] };
+    if (upperExpr === 'FALSE') return { type: 'function', functionName: 'FALSE', args: [] };
+
     // Try to parse as number
     const num = Number(expr);
     if (!isNaN(num) && expr.trim() !== '') {
@@ -186,6 +219,36 @@ export class FormulaParser {
   }
 
   /**
+   * True when the expression is wrapped in one pair of parentheses that spans
+   * the whole thing — `(1+2)` is, but `(1+2)*(3+4)` is not (the first group
+   * closes before the end). Quoted strings are skipped so a `)` inside a
+   * string literal doesn't confuse the depth count.
+   */
+  private isFullyParenthesized(expr: string): boolean {
+    if (expr[0] !== '(' || expr[expr.length - 1] !== ')') return false;
+    let depth = 0;
+    for (let i = 0; i < expr.length; i++) {
+      const c = expr[i];
+      if (c === '"' || c === "'") {
+        const quote = c;
+        i++;
+        while (i < expr.length && expr[i] !== quote) {
+          if (expr[i] === '\\') i++;
+          i++;
+        }
+        continue;
+      }
+      if (c === '(') depth++;
+      else if (c === ')') {
+        depth--;
+        // The opening paren's match closed before the end → not fully wrapping.
+        if (depth === 0 && i !== expr.length - 1) return false;
+      }
+    }
+    return depth === 0;
+  }
+
+  /**
    * Find the operator with lowest precedence (to parse correctly)
    * Returns the rightmost operator of lowest precedence to handle left-associativity
    */
@@ -194,8 +257,8 @@ export class FormulaParser {
     let lowestPrecOp: { operator: string; index: number } | null = null;
     let lowestPrec = Infinity;
 
-    // Operator precedence (lower number = lower precedence, evaluated later):
-    // Comparison operators (precedence 0) < +, - (precedence 1) < *, / (precedence 2)
+    // Operator precedence (lower number = lower precedence, evaluated later),
+    // matching Excel: comparison < & (concat) < +,- < *,/ < ^ (power).
     const operators = [
       { op: '>=', prec: 0 },
       { op: '<=', prec: 0 },
@@ -203,10 +266,12 @@ export class FormulaParser {
       { op: '>', prec: 0 },
       { op: '<', prec: 0 },
       { op: '=', prec: 0 },
-      { op: '+', prec: 1 },
-      { op: '-', prec: 1 },
-      { op: '*', prec: 2 },
-      { op: '/', prec: 2 },
+      { op: '&', prec: 1 },
+      { op: '+', prec: 2 },
+      { op: '-', prec: 2 },
+      { op: '*', prec: 3 },
+      { op: '/', prec: 3 },
+      { op: '^', prec: 4 },
     ];
 
     for (let i = 0; i < expr.length; i++) {
@@ -266,7 +331,7 @@ export class FormulaParser {
             const isUnarySign =
               (op === '-' || op === '+') &&
               prevNonSpace !== '' &&
-              '+-*/(<>='.includes(prevNonSpace);
+              '+-*/(<>=&^'.includes(prevNonSpace);
 
             // Skip a single char that is really one half of a two-char operator
             // — either the first char (<=, >=, <>) or the second (the = in
@@ -377,31 +442,36 @@ export class FormulaParser {
           const leftVal = this.evaluateNode(node.left, ctx, currentRow, currentCol);
           const rightVal = this.evaluateNode(node.right, ctx, currentRow, currentCol);
           
-          // Comparison operators work with any types
+          // Operators that accept any types (text-aware).
           switch (node.operator) {
+            // Text concatenation.
+            case '&':
+              return toText(leftVal) + toText(rightVal);
+            // Comparisons: numeric when both look numeric, otherwise
+            // case-insensitive lexical (compareValues). Equality is type-aware
+            // so "1" != 1 and "" != 0.
             case '>':
-              return Number(leftVal) > Number(rightVal);
+              return compareValues(leftVal, rightVal) > 0;
             case '<':
-              return Number(leftVal) < Number(rightVal);
+              return compareValues(leftVal, rightVal) < 0;
             case '>=':
-              return Number(leftVal) >= Number(rightVal);
+              return compareValues(leftVal, rightVal) >= 0;
             case '<=':
-              return Number(leftVal) <= Number(rightVal);
+              return compareValues(leftVal, rightVal) <= 0;
             case '=':
-              // Excel-style equality: compare values directly
-              return leftVal === rightVal || Number(leftVal) === Number(rightVal);
+              return excelEqual(leftVal, rightVal);
             case '<>':
-              return leftVal !== rightVal && Number(leftVal) !== Number(rightVal);
+              return !excelEqual(leftVal, rightVal);
           }
-          
+
           // Arithmetic operators require numbers
           const leftNum = Number(leftVal);
           const rightNum = Number(rightVal);
-          
+
           if (isNaN(leftNum) || isNaN(rightNum)) {
             throw new Error('#VALUE!');
           }
-          
+
           switch (node.operator) {
             case '+':
               return leftNum + rightNum;
@@ -414,6 +484,8 @@ export class FormulaParser {
                 throw new Error('#DIV/0!');
               }
               return leftNum / rightNum;
+            case '^':
+              return Math.pow(leftNum, rightNum);
             default:
               throw new Error(`#ERROR! Unknown operator: ${node.operator}`);
           }
