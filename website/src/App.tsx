@@ -74,7 +74,7 @@ function TopBar() {
     <header className="top"><div className="wrap">
       <a className="brand" href="#top" aria-label="Spindle home">
         <img src="/spindle.svg" width="28" height="28" alt="" aria-hidden="true" />
-        Spindle <small>by Weavertime</small>
+        Spindle
       </a>
       <nav className="nav">
         <a href="#install">Install</a>
