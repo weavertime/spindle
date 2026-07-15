@@ -306,15 +306,13 @@ export async function attachCollabToDeck(
 
   await provider.connect(roomId);
 
-  const step1 = encoding.createEncoder();
-  syncProtocol.writeSyncStep1(step1, ydoc);
-  provider.send('doc', encoding.toUint8Array(step1));
   provider.send('awareness', encodeAwarenessUpdate(awareness, [ydoc.clientID]));
 
-  // After the sync handshake, only hydrate if the room was empty (we're the
-  // first peer) — a joining peer already received the room's state and must not
-  // stack a duplicate. Then reconcile the engine to exactly match the Y.Doc,
-  // and only now attach the ongoing mirror + observers.
+  // connect() replays the room's existing state before it resolves, so only
+  // hydrate if the room was empty (we're the first peer) — a joining peer
+  // already received the room's state and must not stack a duplicate. Then
+  // reconcile the engine to exactly match the Y.Doc, and only now attach the
+  // ongoing mirror + observers.
   if (y.slides.size === 0) hydrateYDocFromData(ydoc, initialData);
   deck._resyncFromY(serializeYDocToData(ydoc, deck.getSelection(), deck.getActiveSlideId()));
   attachObservers();

@@ -83,10 +83,9 @@ export async function attachCollabToYDoc(
     await persistence.whenSynced;
   }
 
-  if (getYDocFields(ydoc).content.length === 0) {
-    hydrateYDocFromData(ydoc, initialData);
-  }
-
+  // Stable reference to the top-level fragment. It exists whether or not the
+  // doc has content yet; connect() (below) fills it in for a joiner, and the
+  // creator's seed fills it in after connect.
   const { content: xmlFragment } = getYDocFields(ydoc);
 
   // Awareness carries cursor / presence state. Identity goes on local state.
@@ -141,16 +140,18 @@ export async function attachCollabToYDoc(
     applyAwarenessUpdate(awareness, payload, provider);
   });
 
-  // --- Connect + initial sync ------------------------------------------------
+  // --- Connect + seed --------------------------------------------------------
 
+  // connect() replays the room's existing state before it resolves, so once it
+  // returns the fragment already holds whatever the room contains. Seed from
+  // initialData only if it's still empty — i.e. we're the room's creator. A
+  // joiner (or a reconnecting peer whose state was restored) seeds nothing,
+  // which is what prevents duplicated content.
   await provider.connect(roomId);
 
-  // Send SyncStep1 so any already-connected peer responds with what we're
-  // missing. Without this, a late joiner with an empty Y.Doc would never
-  // learn what others have written.
-  const step1Encoder = encoding.createEncoder();
-  syncProtocol.writeSyncStep1(step1Encoder, ydoc);
-  provider.send('doc', encoding.toUint8Array(step1Encoder));
+  if (getYDocFields(ydoc).content.length === 0) {
+    hydrateYDocFromData(ydoc, initialData);
+  }
 
   // Broadcast our awareness state so existing peers see us immediately.
   const awarenessInit = encodeAwarenessUpdate(awareness, [ydoc.clientID]);

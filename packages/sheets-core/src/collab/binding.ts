@@ -37,6 +37,10 @@ import { getWorkbookYTypes, hydrateYDocFromData, serializeYDocToData } from './y
 import type { WorkbookData } from '../types';
 import type { WorkbookImpl } from '../workbook';
 
+// The initial seed is written under this origin so the UndoManager (which
+// tracks null/undefined origins) never makes seeding the document undoable.
+const SEED_ORIGIN = Symbol('spindle-sheets-seed');
+
 export interface CollabHandle {
   ydoc: Y.Doc;
   awareness: Awareness;
@@ -89,10 +93,6 @@ export async function attachCollabToWorkbook(
   if (options.persistenceKey) {
     persistence = new IndexeddbPersistence(options.persistenceKey, ydoc);
     await persistence.whenSynced;
-  }
-
-  if (getWorkbookYTypes(ydoc).sheetIds.length === 0) {
-    hydrateYDocFromData(ydoc, initialData);
   }
 
   const awareness = new Awareness(ydoc);
@@ -173,13 +173,19 @@ export async function attachCollabToWorkbook(
     applyAwarenessUpdate(awareness, payload, provider);
   });
 
-  // --- Connect + initial handshake ----------------------------------------
+  // --- Connect + seed ------------------------------------------------------
 
+  // connect() replays the room's existing state before it resolves, so by the
+  // time it returns the Y.Doc already reflects whatever the room holds. Seed
+  // from initialData only if it's still empty — i.e. we're the room's creator.
+  // A joiner (or a reconnecting peer whose state was restored) seeds nothing,
+  // which is what prevents duplicated content. The seed runs under SEED_ORIGIN
+  // so it lands on the wire (via onDocUpdate) but stays out of the undo stack.
   await provider.connect(roomId);
 
-  const step1Encoder = encoding.createEncoder();
-  syncProtocol.writeSyncStep1(step1Encoder, ydoc);
-  provider.send('doc', encoding.toUint8Array(step1Encoder));
+  if (getWorkbookYTypes(ydoc).sheetIds.length === 0) {
+    ydoc.transact(() => hydrateYDocFromData(ydoc, initialData), SEED_ORIGIN);
+  }
 
   const awarenessInit = encodeAwarenessUpdate(awareness, [ydoc.clientID]);
   provider.send('awareness', awarenessInit);
