@@ -64,6 +64,12 @@ export interface SheetYTypes {
 }
 
 /** Composite key uniquely identifying a merged region by its four stable corners. */
+/** Reject object keys that would poison a plain object's prototype when a key
+ *  comes from peer-controlled collab data. */
+function isUnsafeKey(k: string): boolean {
+  return k === '__proto__' || k === 'constructor' || k === 'prototype';
+}
+
 export function mergedRegionKey(r: MergedRegion): string {
   return `${r.startRowId}:${r.startColId}:${r.endRowId}:${r.endColId}`;
 }
@@ -323,10 +329,12 @@ export function serializeYDocToData(
 
   const stylePool: Record<string, CellStyle> = {};
   for (const [k, v] of t.stylePool.entries()) {
+    if (isUnsafeKey(k)) continue; // guard against __proto__/constructor from a peer
     stylePool[k] = v;
   }
   const formatPool: Record<string, CellFormat> = {};
   for (const [k, v] of t.formatPool.entries()) {
+    if (isUnsafeKey(k)) continue;
     formatPool[k] = v;
   }
 

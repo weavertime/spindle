@@ -78,6 +78,8 @@ export class WebSocketProvider implements CollabProvider {
   /** Promise resolver for the in-flight connect(). */
   private connectResolve: (() => void) | null = null;
   private connectReject: ((err: unknown) => void) | null = null;
+  /** True once the current connect() has opened at least one socket. */
+  private opened = false;
   /** Fallback timer that resolves connect() if no CHANNEL_SYNC frame arrives. */
   private syncTimer: ReturnType<typeof setTimeout> | null = null;
   /** Connection status + subscribers. */
@@ -106,6 +108,7 @@ export class WebSocketProvider implements CollabProvider {
     }
     this.roomId = roomId;
     this.intentionallyClosed = false;
+    this.opened = false;
 
     // Supersede any still-pending connect() so its promise can't hang forever.
     if (this.connectReject) {
@@ -196,8 +199,10 @@ export class WebSocketProvider implements CollabProvider {
   private detachSocket(ws: WebSocket): void {
     ws.onopen = null;
     ws.onmessage = null;
-    ws.onerror = null;
     ws.onclose = null;
+    // Keep a no-op error handler rather than nulling it: closing a socket that
+    // is still CONNECTING emits an 'error', which would otherwise be unhandled.
+    ws.onerror = () => {};
   }
 
   private clearSyncTimer(): void {
@@ -220,8 +225,16 @@ export class WebSocketProvider implements CollabProvider {
 
   private openSocket(): void {
     if (!this.roomId) return;
-    // Retire any previous socket so its handlers can't fight the new one.
-    if (this.socket) this.detachSocket(this.socket);
+    // Retire any previous socket so its handlers can't fight the new one, and
+    // close it so a superseded/reconnected socket doesn't linger open.
+    if (this.socket) {
+      this.detachSocket(this.socket);
+      try {
+        this.socket.close();
+      } catch {
+        /* ignore */
+      }
+    }
 
     const url = `${this.url}/${encodeURIComponent(this.roomId)}`;
     const ws = new this.Ctor(url);
@@ -233,10 +246,11 @@ export class WebSocketProvider implements CollabProvider {
       if (this.socket !== ws) return; // superseded
       this.reconnectAttempt = 0;
       this.setStatus('connected');
-      // The socket opened, so we must never reject connect() from here on — a
-      // later drop (before the sync frame) should reconnect, not give up. The
-      // pending connectResolve stays until the sync frame or the sync fallback.
-      this.connectReject = null;
+      // The socket opened, so a later drop (before the sync frame) should
+      // reconnect, not reject connect(). Mark it opened rather than nulling
+      // connectReject, so a superseding connect() can still reject the pending
+      // promise instead of leaving it to hang.
+      this.opened = true;
       // Flush any messages queued while the socket was opening.
       for (const m of this.pendingOutbound) {
         try {
@@ -302,7 +316,7 @@ export class WebSocketProvider implements CollabProvider {
         this.setStatus('offline');
         return;
       }
-      if (this.connectReject) {
+      if (this.connectReject && !this.opened) {
         // The very first open never succeeded.
         const rej = this.connectReject;
         this.connectResolve = null;

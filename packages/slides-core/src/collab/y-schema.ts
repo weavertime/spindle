@@ -100,7 +100,13 @@ export function yMapToElement(id: string, m: Y.Map<unknown>): SlideElement {
   for (const k of SCALAR_KEYS) {
     if (m.has(k)) el[k] = m.get(k);
   }
-  Object.assign(el, (m.get('props') as Record<string, unknown>) ?? {});
+  // Copy peer-controlled props, skipping keys that would poison el's prototype
+  // (Object.assign's [[Set]] would honor a __proto__ key).
+  const props = (m.get('props') as Record<string, unknown>) ?? {};
+  for (const [k, v] of Object.entries(props)) {
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+    el[k] = v;
+  }
   const frag = m.get('richText') as Y.XmlFragment | undefined;
   if (frag) el.richText = fragmentToRichText(frag);
   return el as unknown as SlideElement;

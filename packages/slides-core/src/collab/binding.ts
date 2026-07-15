@@ -79,6 +79,10 @@ export async function attachCollabToDeck(
   }
 
   const y = getDeckYTypes(ydoc);
+  // Only locally-restored content might be missing from the relay and need
+  // re-contributing on connect; a joiner's replay and a creator's seed already
+  // reach it, so gating the re-push avoids bloating the relay's log per attach.
+  const restoredWithContent = y.slides.size > 0;
 
   const awareness = new Awareness(ydoc);
   awareness.setLocalStateField('user', { userId: identity.userId, name: identity.displayName, color: identity.color });
@@ -322,9 +326,9 @@ export async function attachCollabToDeck(
   attachObservers();
   attachMirror();
 
-  // Contribute our full state so the relay reflects what we hold even if its
-  // log was reset or we restored from local persistence. Idempotent.
-  if (y.slides.size > 0) {
+  // Contribute locally-restored state so a relay that never saw it gets it.
+  // Idempotent (Yjs dedupes).
+  if (restoredWithContent && y.slides.size > 0) {
     const stateEncoder = encoding.createEncoder();
     syncProtocol.writeUpdate(stateEncoder, Y.encodeStateAsUpdate(ydoc));
     provider.send('doc', encoding.toUint8Array(stateEncoder));
