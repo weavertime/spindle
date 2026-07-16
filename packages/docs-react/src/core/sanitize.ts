@@ -142,3 +142,14 @@ export function safeLineHeight(value: unknown): number | undefined {
   const n = typeof value === 'number' ? value : parseFloat(String(value));
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
+
+/**
+ * Coerce a value to a finite CSS length in px, falling back to `fallback` when
+ * it isn't a finite number. A number can never carry a CSS-injection payload, so
+ * this neutralizes numeric style attrs (spacing, indents, font-size) that are
+ * interpolated into a style string.
+ */
+export function safeCssNumber(value: unknown, fallback: number): number {
+  const n = typeof value === 'number' ? value : parseFloat(String(value));
+  return Number.isFinite(n) ? n : fallback;
+}
