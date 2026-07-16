@@ -45,6 +45,23 @@ describe('cross-sheet dependency tracking', () => {
     expect(wb.getCellValue(undefined, 0, 0)).toBe('#REF!');
   });
 
+  it('propagates #REF! through a chain of local formulas after a sheet delete (no stale cache)', () => {
+    const wb = new WorkbookImpl('wb', 'WB');
+    const s2 = wb.addSheet('Sheet2');
+    wb.setCellValue(s2.id, 0, 0, 10);
+    // A1 = B1, B1 = Sheet2!A1. A1 forward-references B1, which is the cell that
+    // actually goes stale on delete.
+    wb.setFormula(undefined, 0, 0, '=B1'); // Sheet1!A1
+    wb.setFormula(undefined, 0, 1, '=Sheet2!A1'); // Sheet1!B1
+    expect(wb.getCellValue(undefined, 0, 0)).toBe(10);
+    expect(wb.getCellValue(undefined, 0, 1)).toBe(10);
+
+    wb.deleteSheet(s2.id);
+    // Both must recompute; A1 must NOT keep its pre-delete cached 10.
+    expect(wb.getCellValue(undefined, 0, 1)).toBe('#REF!');
+    expect(wb.getCellValue(undefined, 0, 0)).toBe('#REF!');
+  });
+
   it('follows a renamed sheet instead of breaking the reference', () => {
     const wb = new WorkbookImpl('wb', 'WB');
     const s2 = wb.addSheet('Sheet2');

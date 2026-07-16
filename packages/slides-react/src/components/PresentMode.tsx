@@ -8,6 +8,7 @@ import { createPortal } from 'react-dom';
 import { richTextToPlainText } from '@weavertime/spindle-slides-core';
 import { useDeck, useSlideIds, useActiveSlideId } from '../hooks';
 import { SlideView, ScaledSlide } from './SlideView';
+import { requestGo, commitGo, type FadeNavState } from './present-navigation';
 
 /** Opacity cross-fade duration; the navigation timeout and the CSS transition
  *  must share this so the fade actually completes before the slide swaps. */
@@ -49,28 +50,33 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
     }
   };
 
-  // Current index / count via refs so the keydown listener (subscribed once)
-  // always reads fresh values without re-subscribing on every navigation.
-  const indexRef = useRef(index);
-  indexRef.current = index;
+  // Count via a ref so the keydown listener (subscribed once) always reads a
+  // fresh value without re-subscribing on every navigation.
   const lenRef = useRef(slideIds.length);
   lenRef.current = slideIds.length;
+  // Navigation/fade state (the slide we're heading toward + whether the commit
+  // timer is armed). Advanced synchronously by go() via the pure scheduler so a
+  // rapid or held key computes off the latest destination rather than the
+  // `index` state, which only updates FADE_MS later when the timer commits.
+  const navRef = useRef<FadeNavState>({ pending: index, timerArmed: false });
 
   const go = (i: number) => {
     // Any navigation ends the current number-jump entry.
     clearNumberBuffer();
-    const next = Math.max(0, Math.min(lenRef.current - 1, i));
-    if (next === indexRef.current) return;
-    // Fade the current slide out, swap at the bottom of the fade, then fade the
-    // new slide back in — the swap timeout matches the CSS transition so the
-    // cross-fade actually completes.
-    setFading(true);
-    if (fadeTimer.current !== undefined) window.clearTimeout(fadeTimer.current);
-    fadeTimer.current = window.setTimeout(() => {
-      fadeTimer.current = undefined;
-      setIndex(next);
-      setFading(false);
-    }, FADE_MS);
+    const step = requestGo(navRef.current, i, lenRef.current);
+    navRef.current = step.state;
+    if (step.fade) setFading(true);
+    // Only arm a fresh timer when the scheduler says to (never reset a pending
+    // one — see present-navigation.ts for the held-key freeze regression).
+    if (step.arm) {
+      fadeTimer.current = window.setTimeout(() => {
+        const done = commitGo(navRef.current);
+        navRef.current = done.state;
+        fadeTimer.current = undefined;
+        setIndex(done.commit);
+        setFading(false);
+      }, FADE_MS);
+    }
   };
 
   useLayoutEffect(() => {
@@ -106,13 +112,13 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
         case 'ArrowDown':
         case 'PageDown':
         case ' ':
-          go(indexRef.current + 1);
+          go(navRef.current.pending + 1);
           e.preventDefault();
           break;
         case 'ArrowLeft':
         case 'ArrowUp':
         case 'PageUp':
-          go(indexRef.current - 1);
+          go(navRef.current.pending - 1);
           e.preventDefault();
           break;
         case 'Home':

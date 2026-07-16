@@ -688,6 +688,12 @@ export class WorkbookImpl implements Workbook {
    * change (delete/rename) that can invalidate cross-sheet references anywhere.
    */
   private recalculateAllFormulas(): void {
+    // Invalidate every cached formula value first. evaluateFormula pulls its
+    // dependencies through getCellCalculatedValue, which returns a node's cached
+    // value while it is clean — so without this, a formula evaluated before a
+    // dependency it forward-references (in arbitrary sheet.entries() order) would
+    // read the pre-change cached value (e.g. a stale number instead of #REF!).
+    this.formulaGraph.markAllDirty();
     for (const [sheetId, sheet] of this.sheets.entries()) {
       for (const [row, col, cell] of sheet.entries()) {
         if (cell.formula) this.evaluateFormula(sheetId, row, col);

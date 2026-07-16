@@ -1,5 +1,12 @@
 import { Schema, NodeSpec, MarkSpec, DOMOutputSpec } from 'prosemirror-model';
-import { sanitizeHref, sanitizeImageSrc, safeCssColor, safeFontFamily } from './sanitize';
+import {
+  sanitizeHref,
+  sanitizeImageSrc,
+  safeCssColor,
+  safeFontFamily,
+  safeCssKeyword,
+  safeCssNumber,
+} from './sanitize';
 
 /**
  * Node specifications matching our document model
@@ -21,7 +28,13 @@ const nodes: Record<string, NodeSpec> = {
     },
     parseDOM: [{ tag: 'p' }],
     toDOM(node): DOMOutputSpec {
-      const style = `text-align: ${node.attrs.alignment}; margin-top: ${node.attrs.spaceBefore}px; margin-bottom: ${node.attrs.spaceAfter}px;`;
+      // Attrs come from loaded/collab document JSON (untrusted); sanitize before
+      // interpolating into the style string, or a value like
+      // `left; background: url(//evil)` injects a CSS declaration.
+      const align = safeCssKeyword(node.attrs.alignment) || 'left';
+      const before = safeCssNumber(node.attrs.spaceBefore) ?? 0;
+      const after = safeCssNumber(node.attrs.spaceAfter) ?? 8;
+      const style = `text-align: ${align}; margin-top: ${before}px; margin-bottom: ${after}px;`;
       return ['p', { style }, 0];
     },
   },
@@ -42,7 +55,8 @@ const nodes: Record<string, NodeSpec> = {
       { tag: 'h6', attrs: { level: 6 } },
     ],
     toDOM(node): DOMOutputSpec {
-      return [`h${node.attrs.level}`, { style: `text-align: ${node.attrs.alignment}` }, 0];
+      const align = safeCssKeyword(node.attrs.alignment) || 'left';
+      return [`h${node.attrs.level}`, { style: `text-align: ${align}` }, 0];
     },
   },
 
@@ -368,7 +382,8 @@ const marks: Record<string, MarkSpec> = {
       if (color) styles.push(`color: ${color}`);
       const bg = safeCssColor(node.attrs.backgroundColor as string | null);
       if (bg) styles.push(`background-color: ${bg}`);
-      if (node.attrs.fontSize) styles.push(`font-size: ${node.attrs.fontSize}pt`);
+      const fontSize = safeCssNumber(node.attrs.fontSize);
+      if (fontSize) styles.push(`font-size: ${fontSize}pt`);
       const font = safeFontFamily(node.attrs.fontFamily as string | null);
       if (font) styles.push(`font-family: ${font}`);
       return ['span', { style: styles.join('; ') }, 0];

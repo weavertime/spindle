@@ -12,7 +12,14 @@
 
 import { Schema } from 'prosemirror-model';
 import type { Color } from '../scene/types';
-import { sanitizeHref, safeCssColor, safeFontFamily, safeThemeSlot } from './sanitize';
+import {
+  sanitizeHref,
+  safeCssColor,
+  safeFontFamily,
+  safeThemeSlot,
+  safeCssKeyword,
+  safeCssNumber,
+} from './sanitize';
 
 // Resolve a model Color to a sanitized CSS value for the editor's best-effort
 // render. A literal hex goes through the color allowlist; a theme color becomes
@@ -47,14 +54,21 @@ export const slidesSchema = new Schema({
         // List items reserve a left gutter for the marker (drawn by the editor
         // stylesheet's ::before, since the flat schema has no list nodes).
         const padLeft = isList ? (indent + 1) * 28 : indent * 28;
+        // Attrs come from imported/collaborator JSON (untrusted); sanitize each
+        // before interpolating, or a value like `left;background:url(//evil)`
+        // injects a CSS declaration into the style string.
+        const align = safeCssKeyword(a.align) || 'left';
+        const lineHeight = safeCssNumber(a.lineHeight) ?? 1.2;
+        const spaceBefore = safeCssNumber(a.spaceBefore);
+        const spaceAfter = safeCssNumber(a.spaceAfter);
         const style =
-          `text-align:${a.align};position:relative;` +
+          `text-align:${align};position:relative;` +
           // Always emit line-height (default 1.2) so it matches StaticRichText —
           // otherwise the editor inherits the browser's `normal` and the text
           // shifts a hair when entering/leaving edit.
-          `line-height:${a.lineHeight || 1.2};` +
-          (a.spaceBefore ? `margin-top:${a.spaceBefore}px;` : '') +
-          (a.spaceAfter ? `margin-bottom:${a.spaceAfter}px;` : '') +
+          `line-height:${lineHeight};` +
+          (spaceBefore ? `margin-top:${spaceBefore}px;` : '') +
+          (spaceAfter ? `margin-bottom:${spaceAfter}px;` : '') +
           (padLeft ? `padding-left:${padLeft}px;` : '');
         return ['p', { style, 'data-list': a.listType }, 0];
       },
