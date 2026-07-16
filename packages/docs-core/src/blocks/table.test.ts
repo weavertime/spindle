@@ -68,6 +68,36 @@ describe('mergeCells — covered cells are removed, not left as phantoms', () =>
     // Row 2 is outside the merge range and unchanged.
     expect(merged.rows[2].cells).toHaveLength(3);
   });
+
+  it('merges by logical column on an already-spanned table (physical ≠ logical index)', () => {
+    // Start with a 2x2 merge at the top-left, so row 0 has 2 physical cells and
+    // row 1 has 1 — physical indices no longer equal logical columns.
+    const base = mergeCells(createTable(3, 3), 0, 0, 1, 1);
+    // Merge logical column 2 down rows 0-1 (the right column, above the merge).
+    const merged = mergeCells(base, 0, 2, 1, 2);
+
+    // Grid stays a rectangular 3 logical columns on every row.
+    expect(getTableColCount(merged)).toBe(3);
+    expect(rowLogicalWidths(merged)).toEqual([3, 3, 3]);
+    // The new span sits on logical column 2 of row 0 (physically the 2nd cell).
+    expect(merged.rows[0].cells[1].rowspan).toBe(2);
+    expect(merged.rows[0].cells[1].colspan).toBe(1);
+  });
+
+  it('expands a merge that partially overlaps an existing span to contain it', () => {
+    // Existing 2x2 span at cols 0-1, rows 0-1. Request a merge of just logical
+    // col 1, rows 0-1 — which bisects the span. It must expand to cover cols 0-1.
+    const base = mergeCells(createTable(3, 3), 0, 0, 1, 1);
+    const merged = mergeCells(base, 0, 1, 1, 1);
+
+    expect(getTableColCount(merged)).toBe(3);
+    expect(rowLogicalWidths(merged)).toEqual([3, 3, 3]);
+    // Still the same 2x2 span (expanded back to the full existing span).
+    expect(merged.rows[0].cells[0].colspan).toBe(2);
+    expect(merged.rows[0].cells[0].rowspan).toBe(2);
+    expect(merged.rows[0].cells).toHaveLength(2); // merged + untouched col 2
+    expect(merged.rows[1].cells).toHaveLength(1);
+  });
 });
 
 describe('logical columns stay consistent across a merge', () => {

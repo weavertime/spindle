@@ -358,7 +358,15 @@ export function deleteTableColumn(
 }
 
 /**
- * Merge cells in a table
+ * Merge a rectangular region of *logical* columns/rows into one spanning cell.
+ *
+ * Span-aware (like insert/deleteTableColumn): the region is given in logical
+ * grid coordinates, not physical cell indices, so it stays correct on a table
+ * that already contains merged cells. If the requested rectangle partially
+ * overlaps an existing span, it is expanded to fully contain that span (repeated
+ * until stable) so the result never leaves a cell straddling the merge boundary.
+ * The top-left origin cell absorbs the span; every other covered cell is removed
+ * entirely — leaving a covered cell would render/serialize as a phantom column.
  */
 export function mergeCells(
   table: TableBlock,
@@ -367,35 +375,55 @@ export function mergeCells(
   endRow: number,
   endCol: number
 ): TableBlock {
-  // Validate range
+  // Validate range (logical columns).
   if (startRow > endRow || startCol > endCol) return table;
   if (startRow < 0 || endRow >= table.rows.length) return table;
   if (startCol < 0 || endCol >= getTableColCount(table)) return table;
-  
-  const newRows = table.rows.map((row, rowIndex) => {
-    if (rowIndex < startRow || rowIndex > endRow) return row;
 
+  const { grid, starts } = buildTableGrid(table);
+
+  // Expand the rectangle to fully contain any cell that partially overlaps it,
+  // until stable — an expansion can pull in yet another span.
+  let r0 = startRow;
+  let r1 = endRow;
+  let c0 = startCol;
+  let c1 = endCol;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        const owner = grid[r]?.[c];
+        if (!owner) continue;
+        const cell = table.rows[owner.r].cells[owner.ci];
+        const ownerR0 = owner.r;
+        const ownerC0 = starts[owner.r][owner.ci];
+        const ownerR1 = ownerR0 + (cell.rowspan || 1) - 1;
+        const ownerC1 = ownerC0 + (cell.colspan || 1) - 1;
+        if (ownerR0 < r0) { r0 = ownerR0; changed = true; }
+        if (ownerR1 > r1) { r1 = ownerR1; changed = true; }
+        if (ownerC0 < c0) { c0 = ownerC0; changed = true; }
+        if (ownerC1 > c1) { c1 = ownerC1; changed = true; }
+      }
+    }
+  }
+
+  const newRows = table.rows.map((row, r) => {
+    if (r < r0 || r > r1) return row;
     const newCells: TableCell[] = [];
-    row.cells.forEach((cell, colIndex) => {
-      // Cells outside the merged range are untouched.
-      if (colIndex < startCol || colIndex > endCol) {
+    row.cells.forEach((cell, ci) => {
+      const sc = starts[r][ci];
+      // A cell whose logical start is outside the (expanded) rectangle is
+      // untouched. Expansion guarantees no cell straddles the boundary.
+      if (sc < c0 || sc > c1) {
         newCells.push(cell);
         return;
       }
-
-      // The top-left cell absorbs the span.
-      if (rowIndex === startRow && colIndex === startCol) {
-        newCells.push({
-          ...cell,
-          colspan: endCol - startCol + 1,
-          rowspan: endRow - startRow + 1,
-        });
+      // The top-left origin absorbs the whole span; all other covered cells drop.
+      if (r === r0 && sc === c0) {
+        newCells.push({ ...cell, colspan: c1 - c0 + 1, rowspan: r1 - r0 + 1 });
       }
-
-      // Every other covered cell is removed entirely — leaving it (even empty)
-      // renders/serializes as a phantom extra column under the spanning cell.
     });
-
     return { ...row, cells: newCells };
   });
 
