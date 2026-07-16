@@ -11,6 +11,7 @@ import {
 import type { Selection, Range, Cell, CellValue } from '@weavertime/spindle-sheets-core';
 import { extractFormulaRanges, columnIndexToLabel, adjustFormula, type FormulaRange } from '@weavertime/spindle-sheets-core';
 import { detectSeries, extrapolate } from '@weavertime/spindle-sheets-core';
+import { encodeTsv, parseTsv } from './tsv';
 import { FilterManager } from '@weavertime/spindle-sheets-core';
 import { RemoteSelectionOverlay } from './RemoteSelectionOverlay';
 
@@ -96,8 +97,12 @@ export const CanvasGrid = memo(function CanvasGrid({
   const [isSelectingFormulaRef, setIsSelectingFormulaRef] = useState(false);
   const [formulaRefStart, setFormulaRefStart] = useState<CellPosition | null>(null);
   
-  // Clipboard state for internal copy/paste
+  // Clipboard state for internal copy/paste. `lastCopiedText` is the exact TSV
+  // written to the system clipboard on our last copy; if a paste's system-
+  // clipboard text matches it, the paste is our own copy and we use the internal
+  // clipboard (which carries formulas), rather than the flattened TSV values.
   const [clipboard, setClipboard] = useState<{ cells: Array<{ row: number; col: number; cell: Cell }> } | null>(null);
+  const lastCopiedTextRef = useRef<string>('');
   
   const headerHeight = propHeaderHeight ?? rowHeight;
   const activeCell = externalActiveCell !== undefined ? externalActiveCell : selection.activeCell;
@@ -970,95 +975,93 @@ export const CanvasGrid = memo(function CanvasGrid({
 
     setClipboard({ cells });
 
-    // Convert to TSV format for system clipboard
-    const tsv = tsvRows.map((row) => row.join('\t')).join('\n');
+    // Convert to TSV for the system clipboard, quoting fields with embedded
+    // tabs/newlines so a multiline cell doesn't scramble the grid on paste.
+    const tsv = encodeTsv(tsvRows);
+    lastCopiedTextRef.current = tsv;
     navigator.clipboard.writeText(tsv).catch(() => {
       // Fallback if clipboard API fails - internal clipboard still works
     });
   }, [selection, sheet]);
+
+  // Paste our own internal clipboard, rebasing relative formulas to the new
+  // location (like drag-fill) and re-registering them via setFormula so they
+  // recompute. Plain values are written with setCellValue.
+  const pasteInternalClipboard = useCallback((
+    cells: Array<{ row: number; col: number; cell: Cell }>,
+    pasteTarget: CellPosition,
+  ) => {
+    const minSourceRow = Math.min(...cells.map((c) => c.row));
+    const minSourceCol = Math.min(...cells.map((c) => c.col));
+    workbook.batch(() => {
+      cells.forEach(({ row, col, cell }) => {
+        const targetRow = pasteTarget.row + (row - minSourceRow);
+        const targetCol = pasteTarget.col + (col - minSourceCol);
+        if (targetRow < 0 || targetRow >= sheet.rowCount || targetCol < 0 || targetCol >= sheet.colCount) return;
+        if (cell.formula) {
+          const adjusted = adjustFormula(cell.formula, workbook, undefined, row, col, targetRow, targetCol);
+          workbook.setFormula(undefined, targetRow, targetCol, adjusted);
+        } else {
+          workbook.setCellValue(undefined, targetRow, targetCol, cell.value ?? null);
+        }
+      });
+    });
+    onContentChange?.();
+  }, [workbook, sheet, onContentChange]);
 
   // Paste from clipboard
   const handlePaste = useCallback(async (targetCell?: CellPosition) => {
     const pasteTarget = targetCell || activeCell;
     if (!pasteTarget) return;
 
+    let text = '';
     try {
-      // Try to get from system clipboard first
-      const text = await navigator.clipboard.readText();
-      if (!text || text.trim() === '') {
-        throw new Error('Clipboard empty');
-      }
-      
-      // Parse TSV: split by newlines and filter out empty rows
-      const lines = text.split(/\r?\n/).filter(line => line.length > 0 || line.includes('\t'));
-      
-      if (lines.length === 0) {
-        throw new Error('No data to paste');
-      }
-      
-      // Determine the expected column count from the first row
-      const firstRowCols = lines[0].split('\t').length;
-      
-      // Parse all rows, ensuring consistent column structure
-      const rows: string[][] = [];
-      for (let i = 0; i < lines.length; i++) {
-        const cols = lines[i].split('\t');
-        while (cols.length < firstRowCols) {
-          cols.push('');
-        }
-        rows.push(cols.slice(0, firstRowCols));
-      }
+      text = await navigator.clipboard.readText();
+    } catch {
+      text = '';
+    }
 
-      // Paste each cell
+    // Our own copy: the system-clipboard text matches what we last wrote, so use
+    // the internal clipboard to preserve (and rebase) formulas rather than
+    // pasting the flattened TSV values.
+    if (clipboard && clipboard.cells.length > 0 && text === lastCopiedTextRef.current) {
+      pasteInternalClipboard(clipboard.cells, pasteTarget);
+      return;
+    }
+
+    // External data (or a stale system clipboard): parse the TSV as values.
+    if (text && text.trim() !== '') {
+      const rows = parseTsv(text);
+      if (rows.length === 0) return;
       workbook.batch(() => {
         for (let rowOffset = 0; rowOffset < rows.length; rowOffset++) {
           const rowData = rows[rowOffset];
           for (let colOffset = 0; colOffset < rowData.length; colOffset++) {
             const targetRow = pasteTarget.row + rowOffset;
             const targetCol = pasteTarget.col + colOffset;
-            
-            // Check bounds
-            if (targetRow >= 0 && targetRow < sheet.rowCount && targetCol >= 0 && targetCol < sheet.colCount) {
-              const value = rowData[colOffset];
-              const trimmedValue = value.trim();
-              
-              if (trimmedValue.startsWith('=')) {
-                workbook.setFormula(undefined, targetRow, targetCol, trimmedValue);
-              } else if (trimmedValue === '') {
-                workbook.setCellValue(undefined, targetRow, targetCol, null);
-              } else {
-                const numValue = Number(trimmedValue);
-                const valueToStore = !isNaN(numValue) && isFinite(numValue) && trimmedValue !== '' ? numValue : trimmedValue;
-                workbook.setCellValue(undefined, targetRow, targetCol, valueToStore);
-              }
+            if (targetRow < 0 || targetRow >= sheet.rowCount || targetCol < 0 || targetCol >= sheet.colCount) continue;
+            const value = rowData[colOffset];
+            if (value === '') {
+              workbook.setCellValue(undefined, targetRow, targetCol, null);
+            } else if (value.startsWith('=')) {
+              workbook.setFormula(undefined, targetRow, targetCol, value);
+            } else {
+              const numValue = Number(value);
+              const valueToStore = value.trim() !== '' && !isNaN(numValue) && isFinite(numValue) ? numValue : value;
+              workbook.setCellValue(undefined, targetRow, targetCol, valueToStore);
             }
           }
         }
       });
-      
       onContentChange?.();
-    } catch {
-      // Fallback to internal clipboard
-      if (clipboard && clipboard.cells.length > 0) {
-        const sourceRows = clipboard.cells.map(c => c.row);
-        const sourceCols = clipboard.cells.map(c => c.col);
-        const minSourceRow = Math.min(...sourceRows);
-        const minSourceCol = Math.min(...sourceCols);
-        
-        workbook.batch(() => {
-          clipboard.cells.forEach(({ row, col, cell }) => {
-            const targetRow = pasteTarget.row + (row - minSourceRow);
-            const targetCol = pasteTarget.col + (col - minSourceCol);
-            if (targetRow >= 0 && targetRow < sheet.rowCount && targetCol >= 0 && targetCol < sheet.colCount) {
-              workbook.setCell(undefined, targetRow, targetCol, cell);
-            }
-          });
-        });
-        
-        onContentChange?.();
-      }
+      return;
     }
-  }, [activeCell, sheet, workbook, clipboard, onContentChange]);
+
+    // No system-clipboard text available at all — fall back to the internal copy.
+    if (clipboard && clipboard.cells.length > 0) {
+      pasteInternalClipboard(clipboard.cells, pasteTarget);
+    }
+  }, [activeCell, sheet, workbook, clipboard, onContentChange, pasteInternalClipboard]);
 
   // Cut selection (copy + delete)
   const handleCut = useCallback(() => {
