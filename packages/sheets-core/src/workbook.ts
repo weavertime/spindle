@@ -922,6 +922,7 @@ export class WorkbookImpl implements Workbook {
       const restoredComments = preservedComments.get(sheetId);
       if (restoredComments) sheet.comments.loadJSON(restoredComments);
       this.wireCommentListener(sheet);
+      this.attachStructureListenerIfNeeded(sheet);
 
       this.sheets.set(sheetId, sheet);
     }
@@ -1317,14 +1318,12 @@ export class WorkbookImpl implements Workbook {
       if (first) this.activeSheetId = first;
     }
 
-    // Re-attach collab structure listeners. setData replaces every
-    // SheetImpl instance, so the listeners installed at attachCollab time
-    // are gone — without this, a peer's structural mutations stop
-    // mirroring after the first remote update it receives.
-    if (this.collabHandle) {
-      for (const sheet of this.sheets.values()) {
-        this.attachStructureListenerIfNeeded(sheet as SheetImpl);
-      }
+    // Re-attach structure listeners. setData replaces every SheetImpl instance,
+    // so the listeners are gone — without this, a structural edit (insert/delete
+    // row/col) after a load stops recalculating dependent formulas, and (in
+    // collab) a peer's structural mutations stop mirroring.
+    for (const sheet of this.sheets.values()) {
+      this.attachStructureListenerIfNeeded(sheet as SheetImpl);
     }
 
     // Wire comment-change listeners — setData replaces every SheetImpl, so
@@ -1664,10 +1663,24 @@ export class WorkbookImpl implements Workbook {
    * sheets) and addSheet (for new ones).
    */
   private attachStructureListenerIfNeeded(sheet: SheetImpl): void {
-    if (!this.collabHandle) return;
-    sheet.__setStructureChangeListener(() => {
-      this.mirrorSheetStructure(sheet.id);
-    });
+    sheet.__setStructureChangeListener(() => this.onStructureChange(sheet.id));
+  }
+
+  /**
+   * React to a structural edit (insert/delete row or column) on a sheet. Such an
+   * edit shifts what formulas reference, so every formula must recompute — the
+   * stable-AST refs are rebased correctly, but nothing recomputes the cached
+   * values otherwise, leaving stale totals until an unrelated edit. Also mirror
+   * the structure to collab when attached. Both are skipped while applying a
+   * remote change (the remote already carries recomputed values, and mirroring
+   * would echo it back).
+   */
+  private onStructureChange(sheetId: string): void {
+    if (this.isApplyingRemoteChange) return;
+    this.recalculateAllFormulas();
+    if (this.collabHandle) {
+      this.mirrorSheetStructure(sheetId);
+    }
   }
 
   /**
