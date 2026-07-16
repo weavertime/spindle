@@ -24,4 +24,11 @@ describe('TEXT respects positive;negative;zero format sections', () => {
     expect(ev('=TEXT(-5,"0")')).toBe('-5');
     expect(ev('=TEXT(-5,"0.0")')).toBe('-5.0');
   });
+
+  it('does not render a negative that rounds to zero as "-0"', () => {
+    expect(ev('=TEXT(-0.4,"0")')).toBe('0');
+    expect(ev('=TEXT(-0.004,"0.00")')).toBe('0.00');
+    // A value that survives rounding still keeps its sign.
+    expect(ev('=TEXT(-0.6,"0")')).toBe('-1');
+  });
 });

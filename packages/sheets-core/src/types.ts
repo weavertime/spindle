@@ -370,6 +370,8 @@ export interface FormulaGraph {
   ): void;
   removeFormula(cellKey: string): void;
   markClean(cellKey: string, value: CellValue): void;
+  /** Invalidate every formula's cached value (used before a full re-evaluation). */
+  markAllDirty(): void;
   /**
    * Collect every cell to recompute after the `seeds` changed — their transitive
    * dependents (single-cell and range-based) plus all volatile cells — along

@@ -41,9 +41,13 @@ function applyNumberFormat(num: number, format: string): string {
   if (sections.length >= 3 && num === 0) {
     return formatMagnitude(0, sections[2]);
   }
-  // Single section (or the positive section): keep the sign explicitly.
-  const sign = num < 0 ? '-' : '';
-  return sign + formatMagnitude(Math.abs(num), sections[0]);
+  // Single section (or the positive section): keep the sign explicitly, but
+  // take it from the *rounded* result — a value that rounds to zero (e.g.
+  // TEXT(-0.4,"0")) must not render as "-0". If no non-zero digit survives the
+  // formatting, the magnitude is zero and the minus is dropped.
+  const body = formatMagnitude(Math.abs(num), sections[0]);
+  const sign = num < 0 && /[1-9]/.test(body) ? '-' : '';
+  return sign + body;
 }
 
 /** Format a non-negative number with one format section (no sign handling). */

@@ -22,18 +22,19 @@ export function exportToCSV(workbook: WorkbookImpl, sheetId?: string): string {
       let value = '';
 
       if (cell) {
+        // Neutralize CSV / formula injection: a text cell that begins with =, +,
+        // -, @, or a control char is run as a formula by Excel/Sheets when the
+        // file is opened. Guard string content and exported formula strings, but
+        // never numbers/booleans — a numeric cell like -5 is not an injection
+        // vector, and quoting it would corrupt it into text on re-import.
         if (cell.formula) {
-          // For formulas, export the formula itself (or could export calculated value)
-          value = cell.formula;
-        } else {
-          value = cell.value?.toString() || '';
+          value = guardCsvInjection(cell.formula);
+        } else if (typeof cell.value === 'number' || typeof cell.value === 'boolean') {
+          value = cell.value.toString();
+        } else if (cell.value != null) {
+          value = guardCsvInjection(cell.value.toString());
         }
       }
-
-      // Neutralize CSV / formula injection: a cell that begins with =, +, -,
-      // @, or a control char is run as a formula by Excel/Sheets when the file
-      // is opened. Prefix it with a single quote so it is treated as text.
-      value = guardCsvInjection(value);
 
       // Escape CSV value
       if (value.includes(',') || value.includes('"') || value.includes('\n')) {

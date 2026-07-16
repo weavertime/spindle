@@ -88,6 +88,19 @@ export class FormulaGraphImpl implements FormulaGraph {
     }
   }
 
+  /**
+   * Invalidate every formula's cached value. Used after a structural change
+   * (sheet delete/rename) that can affect cross-sheet references anywhere in the
+   * workbook, so a subsequent full re-evaluation can't return a stale cache for
+   * a formula that happens to be evaluated before a dependency it references.
+   */
+  markAllDirty(): void {
+    for (const node of this.nodes.values()) {
+      node.isDirty = true;
+      node.cachedValue = undefined;
+    }
+  }
+
   /** Is `idx` inside the rectangle, resolving its corner keys to indices now? */
   private rectContains(
     rect: RangeDependency,

@@ -14,6 +14,17 @@ import type { RefFn } from './helpers';
 import { toNum, toText } from './helpers';
 import { parseCellReference, parseRangeReference, columnIndexToLabel } from '../cell-reference';
 
+/** Row count of an evaluated array value (fallback when the arg isn't a range). */
+function arrayRowCount(v: unknown): number {
+  return Array.isArray(v) ? (v.length > 0 && Array.isArray(v[0]) ? v.length : 1) : 1;
+}
+
+/** Column count of an evaluated array value. */
+function arrayColCount(v: unknown): number {
+  if (!Array.isArray(v)) return 1;
+  return v.length > 0 && Array.isArray(v[0]) ? (v[0] as unknown[]).length : v.length;
+}
+
 /** Absolute row of a reference (relative refs are stored as offsets). */
 function resolveRow(ref: CellReference, currentRow: number): number {
   return ref.rowAbsolute ? ref.row : currentRow + ref.row;
@@ -62,6 +73,30 @@ export const referenceFunctions: Record<string, RefFn> = {
       );
     }
     throw new Error('#VALUE!');
+  },
+
+  // ROWS/COLUMNS are ref-aware so they read a range's true size from the
+  // reference rather than the materialized values. This is both correct for huge
+  // ranges (=ROWS(A1:A1048576) is 1048576, not the populated-data extent that
+  // getRangeValues clamps to for DoS safety) and free of that per-eval extent
+  // scan. A non-range argument (an array literal or a function that returns an
+  // array) falls back to measuring the evaluated value.
+  ROWS: ({ args, currentRow, evaluate }) => {
+    const node = args[0];
+    if (node?.type === 'range' && node.rangeRef) {
+      return Math.abs(resolveRow(node.rangeRef.end, currentRow) - resolveRow(node.rangeRef.start, currentRow)) + 1;
+    }
+    if (node?.type === 'cell' && node.cellRef) return 1;
+    return arrayRowCount(evaluate(node));
+  },
+
+  COLUMNS: ({ args, currentCol, evaluate }) => {
+    const node = args[0];
+    if (node?.type === 'range' && node.rangeRef) {
+      return Math.abs(resolveCol(node.rangeRef.end, currentCol) - resolveCol(node.rangeRef.start, currentCol)) + 1;
+    }
+    if (node?.type === 'cell' && node.cellRef) return 1;
+    return arrayColCount(evaluate(node));
   },
 
   OFFSET: ({ args, ctx, currentRow, currentCol, evaluate }) => {
