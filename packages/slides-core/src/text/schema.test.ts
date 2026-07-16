@@ -82,3 +82,32 @@ describe('slidesSchema toDOM sanitizes untrusted color/font attrs', () => {
     expect(renderMark('fontSize', { size: 24 })).toBe('font-size:24px');
   });
 });
+
+describe('slidesSchema paragraph toDOM sanitizes untrusted align/line-height/spacing', () => {
+  const styleOfNode = (attrs: Record<string, unknown>): string => {
+    const node = slidesSchema.nodes.paragraph.create(attrs);
+    const toDOM = slidesSchema.nodes.paragraph.spec.toDOM as (n: typeof node) => unknown;
+    const spec = toDOM(node);
+    const a = Array.isArray(spec) && spec[1] && typeof spec[1] === 'object' ? (spec[1] as Record<string, string>) : {};
+    return a.style || '';
+  };
+
+  it('whitelists text-align and drops an injection payload', () => {
+    expect(styleOfNode({ align: 'center' })).toContain('text-align:center;');
+    // A crafted align falls back to the default keyword, not the raw payload.
+    const injected = styleOfNode({ align: 'left;background:url(//evil)' });
+    expect(injected).toContain('text-align:left;');
+    expect(injected).not.toContain('url(');
+  });
+
+  it('coerces line-height and spacing to numbers', () => {
+    expect(styleOfNode({ lineHeight: 1.5 })).toContain('line-height:1.5;');
+    const injected = styleOfNode({ lineHeight: '1;background:url(//evil)', spaceBefore: '4;x', spaceAfter: '2}x' });
+    expect(injected).toContain('line-height:1;'); // parseFloat keeps the leading number
+    expect(injected).not.toContain('url(');
+    expect(injected).not.toContain('background');
+    // Non-numeric spacing is dropped entirely rather than interpolated raw.
+    expect(injected).not.toContain(';x');
+    expect(injected).not.toContain('}x');
+  });
+});

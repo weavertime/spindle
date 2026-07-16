@@ -114,7 +114,10 @@ export function safeFontFamily(value: string | null | undefined): string | undef
   if (!value) return undefined;
   const v = String(value).trim();
   if (v === '') return undefined;
-  if (/url/i.test(v)) return undefined;
+  // Reject an actual url() call, not any name merely containing "url" (e.g. the
+  // legitimate font "Curlz MT"). The char-class allowlist already forbids the
+  // '(' a real url() needs, so this is just defense in depth.
+  if (/url\(/i.test(v)) return undefined;
   return SAFE_FONT_FAMILY.test(v) ? v : undefined;
 }
 

@@ -67,8 +67,34 @@ export function safeFontFamily(value: string | null | undefined): string | undef
   if (!value) return undefined;
   const v = String(value).trim();
   if (v === '') return undefined;
-  if (/url/i.test(v)) return undefined;
+  // Reject an actual url() call, not any name merely containing "url" (e.g. the
+  // legitimate font "Curlz MT"). The char-class allowlist already forbids the
+  // '(' a real url() needs, so this is just defense in depth.
+  if (/url\(/i.test(v)) return undefined;
   return SAFE_FONT_FAMILY.test(v) ? v : undefined;
+}
+
+// The only keywords ever emitted for `text-align`.
+const ALIGN_KEYWORDS = new Set(['left', 'right', 'center', 'justify', 'start', 'end']);
+
+/**
+ * Return a whitelisted CSS alignment keyword (lower-cased), or undefined.
+ * Prevents `left;background:url(//evil)`-style injection at alignment sinks.
+ */
+export function safeCssKeyword(value: string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  const v = String(value).trim().toLowerCase();
+  return ALIGN_KEYWORDS.has(v) ? v : undefined;
+}
+
+/**
+ * Coerce a value to a finite number, or undefined. A number can never carry a
+ * CSS-injection payload, so this neutralizes numeric style attrs (line-height,
+ * spaceBefore/After) that are interpolated into a style string.
+ */
+export function safeCssNumber(value: unknown): number | undefined {
+  const n = typeof value === 'number' ? value : parseFloat(String(value));
+  return Number.isFinite(n) ? n : undefined;
 }
 
 // The 12 PPTX theme slots that may appear in a `var(--slot-…)` reference.
