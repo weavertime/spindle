@@ -9,6 +9,8 @@
  */
 
 import { EditorView } from 'prosemirror-view';
+import { Node as PmNode } from 'prosemirror-model';
+import { applyInsertColumn, applyDeleteColumn, logicalColumnForCell } from './pm-table-columns';
 
 // ============================================================================
 // Types
@@ -821,12 +823,20 @@ export class TableInteractionManager {
     const pmStart = parseInt(tableEl.dataset.pmStart || '0', 10);
     const pmEnd = parseInt(tableEl.dataset.pmEnd || '0', 10);
     
-    // Find row and column indices
+    // Find row and physical column indices from the DOM.
     const row = tableCell.closest('tr');
     const rowIndex = row ? Array.from(row.parentElement?.children || []).indexOf(row) : 0;
-    const colIndex = row ? Array.from(row.children).indexOf(tableCell) : 0;
-    
+    const physicalCol = row ? Array.from(row.children).indexOf(tableCell) : 0;
+
     this.contextMenuTarget = { tableEl, pmStart, pmEnd };
+
+    // Convert the physical cell index to a logical column so column insert/delete
+    // stay correct on merged tables (a spanned cell's physical index != column).
+    const found = this.findTable(pmStart);
+    const colIndex = found
+      ? logicalColumnForCell(found.tableNode, found.tablePos, rowIndex, physicalCol)
+      : physicalCol;
+
     this.showContextMenu(e.clientX, e.clientY, rowIndex, colIndex);
   }
   
@@ -997,49 +1007,36 @@ export class TableInteractionManager {
     this.onTableUpdate?.();
   }
   
-  private insertColumn(colIndex: number, position: 'before' | 'after'): void {
-    if (!this.editorView || !this.contextMenuTarget) return;
-    
-    const { pmStart } = this.contextMenuTarget;
-    const { state, dispatch } = this.editorView;
-    const { schema } = state;
-    
-    // Find the table node
+  /** Resolve the enclosing table node and its start position from a pmStart. */
+  private findTable(pmStart: number): { tableNode: PmNode; tablePos: number } | null {
+    if (!this.editorView) return null;
+    const { state } = this.editorView;
     const $pos = state.doc.resolve(pmStart + 1);
-    let tableNode = null;
-    let tablePos = pmStart;
-    
     for (let d = $pos.depth; d >= 0; d--) {
       const node = $pos.node(d);
       if (node.type.name === 'table') {
-        tableNode = node;
-        tablePos = $pos.before(d);
-        break;
+        return { tableNode: node, tablePos: $pos.before(d) };
       }
     }
-    
-    if (!tableNode) return;
-    
+    return null;
+  }
+
+  // colIndex is a LOGICAL column (handleContextMenu converts the clicked cell's
+  // physical index). The span-aware transform widens a straddling cell or splices
+  // a real cell per row, staying correct on merged tables.
+  private insertColumn(colIndex: number, position: 'before' | 'after'): void {
+    if (!this.editorView || !this.contextMenuTarget) return;
+    const { pmStart } = this.contextMenuTarget;
+    const { state, dispatch } = this.editorView;
+    const found = this.findTable(pmStart);
+    if (!found) return;
+
     const targetColIndex = position === 'after' ? colIndex + 1 : colIndex;
-    
-    // Insert a cell in each row
-    let tr = state.tr;
-    let offset = 0;
-    
-    tableNode.forEach((rowNode, rowOffset) => {
-      let cellPos = tablePos + 1 + rowOffset + offset + 1; // table start + row offset + previous insertions + enter row
-      
-      for (let i = 0; i < targetColIndex && i < rowNode.childCount; i++) {
-        cellPos += rowNode.child(i).nodeSize;
-      }
-      
-      const newCell = schema.nodes.table_cell.create(null, schema.nodes.paragraph.create());
-      tr = tr.insert(cellPos, newCell);
-      offset += newCell.nodeSize;
-    });
-    
-    dispatch(tr);
-    this.onTableUpdate?.();
+    const tr = state.tr;
+    if (applyInsertColumn(tr, found.tableNode, found.tablePos, targetColIndex, state.schema)) {
+      dispatch(tr);
+      this.onTableUpdate?.();
+    }
   }
   
   private deleteRow(rowIndex: number): void {
@@ -1078,54 +1075,21 @@ export class TableInteractionManager {
     this.onTableUpdate?.();
   }
   
+  // colIndex is a LOGICAL column. The span-aware transform shrinks a spanning
+  // cell or removes the origin cell, once per cell, so merged tables stay a
+  // rectangular grid instead of going ragged.
   private deleteColumn(colIndex: number): void {
     if (!this.editorView || !this.contextMenuTarget) return;
-    
     const { pmStart } = this.contextMenuTarget;
     const { state, dispatch } = this.editorView;
-    
-    // Find the table node
-    const $pos = state.doc.resolve(pmStart + 1);
-    let tableNode = null;
-    let tablePos = pmStart;
-    
-    for (let d = $pos.depth; d >= 0; d--) {
-      const node = $pos.node(d);
-      if (node.type.name === 'table') {
-        tableNode = node;
-        tablePos = $pos.before(d);
-        break;
-      }
+    const found = this.findTable(pmStart);
+    if (!found) return;
+
+    const tr = state.tr;
+    if (applyDeleteColumn(tr, found.tableNode, found.tablePos, colIndex)) {
+      dispatch(tr);
+      this.onTableUpdate?.();
     }
-    
-    if (!tableNode) return;
-    
-    // Check if this is the last column
-    const firstRow = tableNode.firstChild;
-    if (!firstRow || firstRow.childCount <= 1) return; // Don't delete last column
-    
-    // Delete cell from each row (in reverse to maintain positions)
-    let tr = state.tr;
-    let adjustment = 0;
-    
-    tableNode.forEach((rowNode, rowOffset) => {
-      if (colIndex >= rowNode.childCount) return;
-      
-      let cellStart = tablePos + 1 + rowOffset - adjustment + 1; // table start + row offset - previous deletions + enter row
-      
-      for (let i = 0; i < colIndex; i++) {
-        cellStart += rowNode.child(i).nodeSize;
-      }
-      
-      const cellNode = rowNode.child(colIndex);
-      const cellEnd = cellStart + cellNode.nodeSize;
-      
-      tr = tr.delete(cellStart, cellEnd);
-      adjustment += cellNode.nodeSize;
-    });
-    
-    dispatch(tr);
-    this.onTableUpdate?.();
   }
   
   // ============================================================================

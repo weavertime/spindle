@@ -1,0 +1,110 @@
+import { Node as PmNode } from 'prosemirror-model';
+import { EditorState } from 'prosemirror-state';
+import { docsSchema } from '@weavertime/spindle-docs-core';
+import {
+  applyInsertColumn,
+  applyDeleteColumn,
+  buildColumnGrid,
+  logicalColumnForCell,
+} from './pm-table-columns';
+
+const schema = docsSchema;
+const cell = (attrs: Record<string, unknown> = {}): PmNode =>
+  schema.nodes.table_cell.create(attrs, schema.nodes.paragraph.create());
+const row = (...cells: PmNode[]): PmNode => schema.nodes.table_row.create(null, cells);
+const table = (...rows: PmNode[]): PmNode => schema.nodes.table.create(null, rows);
+const docWith = (t: PmNode): PmNode => schema.nodes.doc.create(null, t);
+
+/** Independent logical-width computation to cross-check the result grid. */
+function rowLogicalWidths(t: PmNode): number[] {
+  const grid: boolean[][] = [];
+  for (let r = 0; r < t.childCount; r++) grid[r] = grid[r] || [];
+  for (let r = 0; r < t.childCount; r++) {
+    let col = 0;
+    const rowNode = t.child(r);
+    for (let ci = 0; ci < rowNode.childCount; ci++) {
+      const c = rowNode.child(ci);
+      while (grid[r][col]) col++;
+      const cs = (c.attrs.colspan as number) || 1;
+      const rs = (c.attrs.rowspan as number) || 1;
+      for (let dr = 0; dr < rs && r + dr < t.childCount; dr++) {
+        grid[r + dr] = grid[r + dr] || [];
+        for (let dc = 0; dc < cs; dc++) grid[r + dr][col + dc] = true;
+      }
+      col += cs;
+    }
+  }
+  return grid.map((g) => g.length);
+}
+
+/** Apply a transform and return the resulting table node (doc's first child). */
+function run(t: PmNode, fn: (tr: import('prosemirror-state').Transaction, table: PmNode) => boolean): PmNode {
+  const state = EditorState.create({ schema, doc: docWith(t) });
+  const tr = state.tr;
+  // table is the doc's first child → tablePos 0
+  fn(tr, tr.doc.child(0));
+  return tr.doc.child(0);
+}
+
+describe('pm-table-columns — plain tables', () => {
+  const plain3x3 = table(row(cell(), cell(), cell()), row(cell(), cell(), cell()), row(cell(), cell(), cell()));
+
+  it('inserts a column, keeping every row rectangular', () => {
+    const out = run(plain3x3, (tr, t) => applyInsertColumn(tr, t, 0, 1, schema));
+    expect(rowLogicalWidths(out)).toEqual([4, 4, 4]);
+    out.forEach((r) => expect(r.childCount).toBe(4));
+  });
+
+  it('deletes a column, keeping every row rectangular', () => {
+    const out = run(plain3x3, (tr, t) => applyDeleteColumn(tr, t, 0, 1));
+    expect(rowLogicalWidths(out)).toEqual([2, 2, 2]);
+  });
+
+  it('refuses to delete the last column', () => {
+    const oneCol = table(row(cell()), row(cell()));
+    const state = EditorState.create({ schema, doc: docWith(oneCol) });
+    const tr = state.tr;
+    expect(applyDeleteColumn(tr, tr.doc.child(0), 0, 0)).toBe(false);
+  });
+});
+
+describe('pm-table-columns — merged tables stay rectangular (the corruption fix)', () => {
+  // Row 0: a 2x2 span (cols 0-1) then a plain cell; row 1: one plain cell (cols
+  // 0-1 covered by the span); row 2: three plain cells. Physical index != logical.
+  const merged = table(
+    row(cell({ colspan: 2, rowspan: 2 }), cell()),
+    row(cell()),
+    row(cell(), cell(), cell()),
+  );
+
+  it('the naive physical index is not the logical column', () => {
+    const state = EditorState.create({ schema, doc: docWith(merged) });
+    // Row 0's second physical cell is logical column 2, not 1.
+    expect(logicalColumnForCell(state.doc.child(0), 0, 0, 1)).toBe(2);
+    expect(buildColumnGrid(state.doc.child(0), 0).colCount).toBe(3);
+  });
+
+  it('insert through the span widens it once; other rows gain a real cell', () => {
+    const out = run(merged, (tr, t) => applyInsertColumn(tr, t, 0, 1, schema));
+    expect(rowLogicalWidths(out)).toEqual([4, 4, 4]);
+    // The span went colspan 2 -> 3, still rowspan 2.
+    expect(out.child(0).child(0).attrs.colspan).toBe(3);
+    expect(out.child(0).child(0).attrs.rowspan).toBe(2);
+    expect(out.child(0).childCount).toBe(2); // no extra cell in the merged row
+    expect(out.child(2).childCount).toBe(4); // plain row gained a cell
+  });
+
+  it('append a column past the span keeps the grid rectangular', () => {
+    const out = run(merged, (tr, t) => applyInsertColumn(tr, t, 0, 3, schema));
+    expect(rowLogicalWidths(out)).toEqual([4, 4, 4]);
+    expect(out.child(0).child(0).attrs.colspan).toBe(2); // span unchanged
+  });
+
+  it('delete the spanned column shrinks the span, not a wrong physical cell', () => {
+    const out = run(merged, (tr, t) => applyDeleteColumn(tr, t, 0, 0));
+    expect(rowLogicalWidths(out)).toEqual([2, 2, 2]);
+    expect(out.child(0).child(0).attrs.colspan).toBe(1);
+    expect(out.child(0).child(0).attrs.rowspan).toBe(2);
+    expect(out.child(2).childCount).toBe(2);
+  });
+});
