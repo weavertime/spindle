@@ -23,7 +23,14 @@ import {
   isRunContainingBlock,
   isTextRun,
 } from './flow-blocks';
-import { sanitizeHref, sanitizeImageSrc, safeCssColor } from './sanitize';
+import {
+  sanitizeHref,
+  sanitizeImageSrc,
+  safeCssColor,
+  safeFontFamily,
+  safeCssKeyword,
+  safeLineHeight,
+} from './sanitize';
 
 // ============================================================================
 // Measurement Types
@@ -816,8 +823,8 @@ export class DomMeasurer {
     const attrs = block.attrs || {};
     return `
       margin: ${attrs.spaceBefore || 0}px 0 ${attrs.spaceAfter || 8}px 0;
-      text-align: ${attrs.alignment || 'left'};
-      line-height: ${attrs.lineHeight || this.config.lineHeight};
+      text-align: ${safeCssKeyword(attrs.alignment) || 'left'};
+      line-height: ${safeLineHeight(attrs.lineHeight) ?? this.config.lineHeight};
       text-indent: ${attrs.firstLineIndent || 0}px;
       padding-left: ${attrs.leftIndent || 0}px;
       padding-right: ${attrs.rightIndent || 0}px;
@@ -843,7 +850,7 @@ export class DomMeasurer {
       margin: ${attrs.spaceBefore || 16}px 0 ${attrs.spaceAfter || 8}px 0;
       font-size: ${fontSize}px;
       font-weight: ${block.level <= 2 ? 400 : 700};
-      text-align: ${attrs.alignment || 'left'};
+      text-align: ${safeCssKeyword(attrs.alignment) || 'left'};
       line-height: 1.3;
     `;
   }
@@ -855,8 +862,8 @@ export class DomMeasurer {
     const attrs = block.attrs || {};
     return `
       margin: 0 0 4px 0;
-      text-align: ${attrs.alignment || 'left'};
-      line-height: ${attrs.lineHeight || this.config.lineHeight};
+      text-align: ${safeCssKeyword(attrs.alignment) || 'left'};
+      line-height: ${safeLineHeight(attrs.lineHeight) ?? this.config.lineHeight};
     `;
   }
   
@@ -873,7 +880,8 @@ export class DomMeasurer {
     if (run.underline) styles.push('text-decoration: underline');
     if (run.strikethrough) styles.push('text-decoration: line-through');
     if (run.fontSize) styles.push(`font-size: ${run.fontSize}px`);
-    if (run.fontFamily) styles.push(`font-family: ${run.fontFamily}`);
+    const runFont = safeFontFamily(run.fontFamily);
+    if (runFont) styles.push(`font-family: ${runFont}`);
     const runColor = safeCssColor(run.color);
     if (runColor) styles.push(`color: ${runColor}`);
     const runBgColor = safeCssColor(run.backgroundColor);

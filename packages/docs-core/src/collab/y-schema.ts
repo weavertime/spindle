@@ -48,6 +48,12 @@ export interface YDocFields {
 }
 
 /** Return the named Y types used by the schema. Idempotent. */
+/** Reject object keys that would poison a plain object's prototype when a key
+ *  comes from peer-controlled collab data. */
+function isUnsafeKey(k: string): boolean {
+  return k === '__proto__' || k === 'constructor' || k === 'prototype';
+}
+
 export function getYDocFields(ydoc: Y.Doc): YDocFields {
   return {
     meta: ydoc.getMap<unknown>('meta'),
@@ -138,10 +144,12 @@ export function serializeYDocToData(ydoc: Y.Doc): DocumentData {
 
   const textStylePool: Record<string, TextStyle> = {};
   for (const [k, v] of fields.textStylePool.entries()) {
+    if (isUnsafeKey(k)) continue; // guard against __proto__/constructor from a peer
     textStylePool[k] = v as TextStyle;
   }
   const paragraphStylePool: Record<string, ParagraphStyle> = {};
   for (const [k, v] of fields.paragraphStylePool.entries()) {
+    if (isUnsafeKey(k)) continue;
     paragraphStylePool[k] = v as ParagraphStyle;
   }
 

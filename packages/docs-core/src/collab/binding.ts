@@ -82,6 +82,11 @@ export async function attachCollabToYDoc(
     persistence = new IndexeddbPersistence(options.persistenceKey, ydoc);
     await persistence.whenSynced;
   }
+  // Only content restored from local persistence (applied before onDocUpdate is
+  // wired) might be missing from the relay and need re-contributing on connect.
+  // A joiner's replayed state and a creator's seed already reach the relay, so
+  // they must not re-push (that would bloat the relay's log on every attach).
+  const restoredWithContent = getYDocFields(ydoc).content.length > 0;
 
   // Stable reference to the top-level fragment. It exists whether or not the
   // doc has content yet; connect() (below) fills it in for a joiner, and the
@@ -146,7 +151,9 @@ export async function attachCollabToYDoc(
   // returns the fragment already holds whatever the room contains. Seed from
   // initialData only if it's still empty — i.e. we're the room's creator. A
   // joiner (or a reconnecting peer whose state was restored) seeds nothing,
-  // which is what prevents duplicated content.
+  // which prevents duplicated content in the common case. (Two peers creating
+  // the *same* brand-new room within one round-trip can still both seed — that
+  // needs relay-side arbitration, which an opaque relay can't provide.)
   await provider.connect(roomId);
 
   // Seed only if the room has never been seeded (a persistent marker) AND the
@@ -161,10 +168,9 @@ export async function attachCollabToYDoc(
     });
   }
 
-  // Contribute our full state so the relay reflects what we hold even if its
-  // log was reset or we restored from local persistence before connecting.
-  // Idempotent (Yjs dedupes by client/clock); repairs an out-of-date relay.
-  if (getYDocFields(ydoc).content.length > 0) {
+  // Contribute locally-restored state so a relay that never saw it (e.g. a
+  // doc created offline and synced later) gets it. Idempotent (Yjs dedupes).
+  if (restoredWithContent && getYDocFields(ydoc).content.length > 0) {
     const stateEncoder = encoding.createEncoder();
     syncProtocol.writeUpdate(stateEncoder, Y.encodeStateAsUpdate(ydoc));
     provider.send('doc', encoding.toUint8Array(stateEncoder));

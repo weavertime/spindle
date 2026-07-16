@@ -1,5 +1,5 @@
 import { Schema, NodeSpec, MarkSpec, DOMOutputSpec } from 'prosemirror-model';
-import { sanitizeHref } from './sanitize';
+import { sanitizeHref, sanitizeImageSrc, safeCssColor, safeFontFamily } from './sanitize';
 
 /**
  * Node specifications matching our document model
@@ -130,7 +130,8 @@ const nodes: Record<string, NodeSpec> = {
       const attrs: Record<string, string> = {};
       if (node.attrs.colspan !== 1) attrs.colspan = node.attrs.colspan;
       if (node.attrs.rowspan !== 1) attrs.rowspan = node.attrs.rowspan;
-      if (node.attrs.backgroundColor) attrs.style = `background-color: ${node.attrs.backgroundColor}`;
+      const bg = safeCssColor(node.attrs.backgroundColor as string | null);
+      if (bg) attrs.style = `background-color: ${bg}`;
       return ['td', attrs, 0];
     },
   },
@@ -164,7 +165,8 @@ const nodes: Record<string, NodeSpec> = {
       const attrs: Record<string, string> = {};
       if (node.attrs.colspan !== 1) attrs.colspan = node.attrs.colspan;
       if (node.attrs.rowspan !== 1) attrs.rowspan = node.attrs.rowspan;
-      if (node.attrs.backgroundColor) attrs.style = `background-color: ${node.attrs.backgroundColor}`;
+      const bg = safeCssColor(node.attrs.backgroundColor as string | null);
+      if (bg) attrs.style = `background-color: ${bg}`;
       return ['th', attrs, 0];
     },
   },
@@ -195,7 +197,7 @@ const nodes: Record<string, NodeSpec> = {
     ],
     toDOM(node): DOMOutputSpec {
       const attrs: Record<string, string | null> = {
-        src: node.attrs.src,
+        src: sanitizeImageSrc(node.attrs.src as string | null),
         alt: node.attrs.alt,
       };
       if (node.attrs.title) attrs.title = node.attrs.title;
@@ -362,10 +364,13 @@ const marks: Record<string, MarkSpec> = {
     ],
     toDOM(node): DOMOutputSpec {
       const styles: string[] = [];
-      if (node.attrs.color) styles.push(`color: ${node.attrs.color}`);
-      if (node.attrs.backgroundColor) styles.push(`background-color: ${node.attrs.backgroundColor}`);
+      const color = safeCssColor(node.attrs.color as string | null);
+      if (color) styles.push(`color: ${color}`);
+      const bg = safeCssColor(node.attrs.backgroundColor as string | null);
+      if (bg) styles.push(`background-color: ${bg}`);
       if (node.attrs.fontSize) styles.push(`font-size: ${node.attrs.fontSize}pt`);
-      if (node.attrs.fontFamily) styles.push(`font-family: ${node.attrs.fontFamily}`);
+      const font = safeFontFamily(node.attrs.fontFamily as string | null);
+      if (font) styles.push(`font-family: ${font}`);
       return ['span', { style: styles.join('; ') }, 0];
     },
   },

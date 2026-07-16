@@ -12,7 +12,9 @@ function wildcardRegex(pattern: string): RegExp {
       src += pattern[i + 1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       i++;
     } else if (ch === '*') {
-      src += '.*';
+      // Collapse a run of '*' into a single '.*' — repeated '.*.*.*' is a
+      // catastrophic-backtracking (ReDoS) pattern against a long non-match.
+      if (!src.endsWith('.*')) src += '.*';
     } else if (ch === '?') {
       src += '.';
     } else {

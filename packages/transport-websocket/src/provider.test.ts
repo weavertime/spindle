@@ -142,6 +142,31 @@ describe('WebSocketProvider against a replaying relay', () => {
     await new Promise<void>((r) => wss.close(() => http.close(() => r())));
   });
 
+  it('a connect() superseded after its socket opened still settles (rejects), not hangs', async () => {
+    // Server opens the socket but delays the sync frame, creating an
+    // open-but-pre-sync window in which a superseding connect() must still be
+    // able to reject the earlier pending promise.
+    const http = createServer();
+    const wss = new WebSocketServer({ server: http });
+    wss.on('connection', (ws) => {
+      setTimeout(() => {
+        if (ws.readyState === ws.OPEN) ws.send(Buffer.from([CHANNEL_SYNC]), { binary: true });
+      }, 80);
+    });
+    await new Promise<void>((r) => http.listen(0, r));
+    const port = (http.address() as AddressInfo).port;
+    const p = new WebSocketProvider({ url: `ws://localhost:${port}`, WebSocketImpl: WS });
+
+    const first = p.connect('room');
+    await delay(30); // first socket open, sync not yet sent
+    const second = p.connect('room'); // supersede in the open-pre-sync window
+    second.catch(() => {}); // we only assert on `first`; `second` is torn down below
+    await expect(first).rejects.toThrow(/superseded/);
+
+    p.disconnect();
+    await new Promise<void>((r) => wss.close(() => http.close(() => r())));
+  });
+
   it('re-syncs a reconnecting peer via replay (offline edits are not lost)', async () => {
     const server = await startServer();
     const a = new WebSocketProvider({ url: server.url, WebSocketImpl: WS, minReconnectDelayMs: 30 });

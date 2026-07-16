@@ -32,3 +32,53 @@ export function sanitizeHref(href: string | null | undefined): string {
   const scheme = value.slice(0, colon + 1).replace(CONTROL_CHARS, '').toLowerCase();
   return SAFE_HREF_SCHEMES.includes(scheme) ? value : '';
 }
+
+const HEX_COLOR = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+// A whitelisted color function or var() reference over a safe character set.
+// No leading `\s*` (avoids ReDoS — the class already matches whitespace).
+const FN_COLOR =
+  /^(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch|color|color-mix|var)\([a-z0-9.,%/()#_\s-]+\)$/i;
+const KEYWORD_COLOR = /^[a-zA-Z]+$/;
+
+/**
+ * Return `color` if it is a safe CSS color token, otherwise undefined. Blocks
+ * CSS injection such as `red;background:url(//evil)` at the toDOM boundary,
+ * where a literal `hex` from imported/collaborator JSON is interpolated raw.
+ */
+export function safeCssColor(color: string | null | undefined): string | undefined {
+  if (!color) return undefined;
+  const value = String(color).trim();
+  if (value === '') return undefined;
+  if (/url\(/i.test(value)) return undefined;
+  if (HEX_COLOR.test(value) || FN_COLOR.test(value) || KEYWORD_COLOR.test(value)) {
+    return value;
+  }
+  return undefined;
+}
+
+// font-family: letters, digits, spaces, commas, quotes, hyphens. Excludes the
+// characters (';{}():') needed to break out of the declaration.
+const SAFE_FONT_FAMILY = /^[a-zA-Z0-9\s,'"-]+$/;
+
+/**
+ * Return `value` if it is a safe CSS `font-family` list, otherwise undefined.
+ */
+export function safeFontFamily(value: string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  const v = String(value).trim();
+  if (v === '') return undefined;
+  if (/url/i.test(v)) return undefined;
+  return SAFE_FONT_FAMILY.test(v) ? v : undefined;
+}
+
+// The 12 PPTX theme slots that may appear in a `var(--slot-…)` reference.
+const THEME_SLOTS = new Set([
+  'dk1', 'lt1', 'dk2', 'lt2', 'accent1', 'accent2', 'accent3', 'accent4',
+  'accent5', 'accent6', 'hlink', 'folHlink',
+]);
+
+/** Return the slot name if it is a known theme slot, otherwise undefined. */
+export function safeThemeSlot(slot: string | null | undefined): string | undefined {
+  if (!slot) return undefined;
+  return THEME_SLOTS.has(String(slot)) ? String(slot) : undefined;
+}

@@ -34,6 +34,29 @@ describe('cross-sheet dependency tracking', () => {
     expect(wb.getCellValue(s2.id, 0, 0)).toBe('#CIRCULAR!');
   });
 
+  it('recomputes to #REF! when a referenced sheet is deleted', () => {
+    const wb = new WorkbookImpl('wb', 'WB');
+    const s2 = wb.addSheet('Sheet2');
+    wb.setCellValue(s2.id, 0, 0, 10);
+    wb.setFormula(undefined, 0, 0, '=Sheet2!A1');
+    expect(wb.getCellValue(undefined, 0, 0)).toBe(10);
+
+    wb.deleteSheet(s2.id);
+    expect(wb.getCellValue(undefined, 0, 0)).toBe('#REF!');
+  });
+
+  it('follows a renamed sheet instead of breaking the reference', () => {
+    const wb = new WorkbookImpl('wb', 'WB');
+    const s2 = wb.addSheet('Sheet2');
+    wb.setCellValue(s2.id, 0, 0, 10);
+    wb.setFormula(undefined, 0, 0, '=Sheet2!A1');
+    expect(wb.getCellValue(undefined, 0, 0)).toBe(10);
+
+    wb.renameSheet(s2.id, 'Renamed');
+    wb.setCellValue(s2.id, 0, 0, 20); // edit via the renamed sheet
+    expect(wb.getCellValue(undefined, 0, 0)).toBe(20); // reference followed the rename
+  });
+
   it('does not falsely recompute for a same-index cell on another sheet', () => {
     const wb = new WorkbookImpl('wb', 'WB');
     const s2 = wb.addSheet('Sheet2');

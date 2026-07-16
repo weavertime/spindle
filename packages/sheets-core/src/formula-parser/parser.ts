@@ -313,9 +313,15 @@ export class FormulaParser {
             const nextChar = i < expr.length - 1 ? expr[i + 1] : '';
 
             // The +/- in scientific notation (e.g. 1e-5) is part of the number.
+            // Require the e/E to actually be a number's exponent (preceded by a
+            // digit or '.') so the trailing E of a word like TRUE/FALSE — or a
+            // cell/name ending in E — doesn't swallow the following operator
+            // (=TRUE+1 must split into TRUE + 1, not parse as one token).
+            const charBeforePrev = i > 1 ? expr[i - 2] : '';
             const isPartOfNumber =
-              (op === '-' && (prevChar === 'e' || prevChar === 'E')) ||
-              (op === '+' && (prevChar === 'e' || prevChar === 'E'));
+              (op === '-' || op === '+') &&
+              (prevChar === 'e' || prevChar === 'E') &&
+              /[0-9.]/.test(charBeforePrev);
 
             // A +/- directly following another operator is a unary sign that
             // belongs to the operand on its right (e.g. the -3 in 2*-3), not a

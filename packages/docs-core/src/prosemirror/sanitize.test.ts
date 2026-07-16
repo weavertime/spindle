@@ -1,4 +1,4 @@
-import { sanitizeHref } from './sanitize';
+import { sanitizeHref, sanitizeImageSrc, safeCssColor, safeFontFamily } from './sanitize';
 
 describe('sanitizeHref', () => {
   it('neutralizes javascript: hrefs', () => {
@@ -29,5 +29,38 @@ describe('sanitizeHref', () => {
     expect(sanitizeHref('')).toBe('');
     expect(sanitizeHref(null)).toBe('');
     expect(sanitizeHref(undefined)).toBe('');
+  });
+});
+
+describe('sanitizeImageSrc', () => {
+  it('allows http/https/data:image and relative, rejects javascript/non-image data', () => {
+    expect(sanitizeImageSrc('https://x/y.png')).toBe('https://x/y.png');
+    expect(sanitizeImageSrc('data:image/png;base64,AAAA')).toBe('data:image/png;base64,AAAA');
+    expect(sanitizeImageSrc('/a.png')).toBe('/a.png');
+    expect(sanitizeImageSrc('javascript:alert(1)')).toBe('');
+    expect(sanitizeImageSrc('data:text/html,<script>')).toBe('');
+  });
+});
+
+describe('safeCssColor', () => {
+  it('accepts hex/functional/keyword/modern colors', () => {
+    expect(safeCssColor('#1a73e8')).toBe('#1a73e8');
+    expect(safeCssColor('rgb(1,2,3)')).toBe('rgb(1,2,3)');
+    expect(safeCssColor('red')).toBe('red');
+    expect(safeCssColor('var(--brand)')).toBe('var(--brand)');
+  });
+
+  it('rejects injection payloads', () => {
+    expect(safeCssColor('red; background: url(//evil)')).toBeUndefined();
+    expect(safeCssColor('url(//evil)')).toBeUndefined();
+    expect(safeCssColor('')).toBeUndefined();
+  });
+});
+
+describe('safeFontFamily', () => {
+  it('accepts font lists, rejects injection', () => {
+    expect(safeFontFamily('Arial, sans-serif')).toBe('Arial, sans-serif');
+    expect(safeFontFamily('Arial; background: url(//evil)')).toBeUndefined();
+    expect(safeFontFamily('url(//evil)')).toBeUndefined();
   });
 });
