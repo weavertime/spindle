@@ -157,6 +157,18 @@ export function PresentMode({ onExit }: { onExit: () => void }): React.ReactElem
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Re-clamp if the deck shrinks below the current index (e.g. a collaborator
+  // deletes slides while presenting) — otherwise slideIds[index] is undefined
+  // and the stage renders a blank slide until the next navigation.
+  useEffect(() => {
+    if (slideIds.length > 0 && index > slideIds.length - 1) {
+      const clamped = slideIds.length - 1;
+      navRef.current = { pending: clamped, timerArmed: false };
+      setFading(false);
+      setIndex(clamped);
+    }
+  }, [index, slideIds.length]);
+
   // Keep the engine's active slide in sync so the filmstrip reflects the jump.
   useEffect(() => {
     if (slideIds[index]) deck.setActiveSlide(slideIds[index]);

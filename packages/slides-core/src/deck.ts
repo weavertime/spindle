@@ -272,6 +272,9 @@ export class DeckImpl {
       index: this.slideIndexAfter(slideId),
     };
     this.slides.set(copy.id, copy);
+    // Announce the new slide before its elements so the collab mirror has the
+    // slide's Y.Map in place when each elementAdd lands.
+    this.emit('slideAdd', { slideId: copy.id });
     const srcElements = this.getElementsForSlide(slideId);
     // Map every source element id to its copy's id first, so internal references
     // (connector binds) can be rewritten to point at the copies rather than
@@ -301,8 +304,10 @@ export class DeckImpl {
         }
       }
       this.elements.set(elCopy.id, elCopy);
+      // Emit per copied element so the collab mirror writes it into the Y.Doc —
+      // otherwise a duplicated slide syncs (and later reloads) with no elements.
+      this.emit('elementAdd', { slideId: copy.id, elementId: elCopy.id });
     }
-    this.emit('slideAdd', { slideId: copy.id });
     return copy;
   }
 
