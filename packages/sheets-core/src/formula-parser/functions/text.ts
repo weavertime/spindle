@@ -1,28 +1,7 @@
 // Text functions.
 
 import type { EagerFn } from './helpers';
-import { flatten, toText, toNum, toBoolean } from './helpers';
-
-/** Build a case-insensitive regex from a SEARCH pattern (`*` / `?` wildcards). */
-function wildcardRegex(pattern: string): RegExp {
-  let src = '';
-  for (let i = 0; i < pattern.length; i++) {
-    const ch = pattern[i];
-    if (ch === '~' && i + 1 < pattern.length) {
-      src += pattern[i + 1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      i++;
-    } else if (ch === '*') {
-      // Collapse a run of '*' into a single '.*' — repeated '.*.*.*' is a
-      // catastrophic-backtracking (ReDoS) pattern against a long non-match.
-      if (!src.endsWith('.*')) src += '.*';
-    } else if (ch === '?') {
-      src += '.';
-    } else {
-      src += ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-  }
-  return new RegExp(src, 'i');
-}
+import { flatten, toText, toNum, toBoolean, wildcardSearch } from './helpers';
 
 /**
  * Render a number with a subset of the spreadsheet number-format language:
@@ -128,9 +107,9 @@ export const textFunctions: Record<string, EagerFn> = {
     const within = toText(args[1]);
     const start = args[2] !== undefined ? toNum(args[2]) : 1;
     if (start < 1) throw new Error('#VALUE!');
-    const match = within.slice(start - 1).match(wildcardRegex(find));
-    if (!match || match.index === undefined) throw new Error('#VALUE!');
-    return start + match.index;
+    const idx = wildcardSearch(within.slice(start - 1), find);
+    if (idx < 0) throw new Error('#VALUE!');
+    return start + idx;
   },
 
   SUBSTITUTE: (args) => {

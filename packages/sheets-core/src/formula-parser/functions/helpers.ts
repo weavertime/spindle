@@ -118,26 +118,95 @@ export function looseEquals(a: unknown, b: unknown): boolean {
   return !isNaN(na) && !isNaN(nb) && a !== '' && b !== '' && a != null && b != null && na === nb;
 }
 
+// Spreadsheet wildcard matching (`*` = any run, `?` = any one char, `~` escapes
+// the next). Implemented as an iterative two-pointer glob match rather than a
+// translated regex: `*`→`.*` in a regex backtracks catastrophically (ReDoS) on a
+// `*`-heavy pattern against a long non-match, and this path is reachable from
+// COUNTIF/SUMIF/MATCH/VLOOKUP/SEARCH with attacker-controlled criteria in a
+// shared workbook. The two-pointer scan is O(text·pattern), never exponential.
+
+type GlobToken = { star: true } | { any: true } | { lit: string };
+
+/** Parse a wildcard pattern into tokens, honoring `~` escapes. */
+function parseGlob(pattern: string): GlobToken[] {
+  const toks: GlobToken[] = [];
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (ch === '~' && i + 1 < pattern.length) {
+      toks.push({ lit: pattern[i + 1] });
+      i++;
+    } else if (ch === '*') {
+      toks.push({ star: true });
+    } else if (ch === '?') {
+      toks.push({ any: true });
+    } else {
+      toks.push({ lit: ch });
+    }
+  }
+  return toks;
+}
+
+/**
+ * Match `toks` against `text` starting at `t0`. With `anchorEnd`, the whole of
+ * `text` must be consumed (full match); otherwise a prefix match suffices (used
+ * for substring SEARCH). Iterative with single-star backtracking — linear, no
+ * catastrophic backtracking. `text` and literal tokens must already be lowered
+ * if a case-insensitive compare is wanted.
+ */
+function globMatchFrom(toks: GlobToken[], text: string, t0: number, anchorEnd: boolean): boolean {
+  let t = t0;
+  let p = 0;
+  let star = -1;
+  let tStar = t0;
+  for (;;) {
+    if (p === toks.length) {
+      if (!anchorEnd) return true; // pattern consumed → prefix match
+      if (t === text.length) return true; // consumed all of text → full match
+    } else {
+      const tok = toks[p];
+      if ('star' in tok) {
+        star = p;
+        tStar = t;
+        p++;
+        continue;
+      }
+      if (t < text.length && ('any' in tok || tok.lit === text[t])) {
+        t++;
+        p++;
+        continue;
+      }
+    }
+    // Mismatch: retry the last `*`, letting it consume one more character.
+    if (star !== -1 && tStar < text.length) {
+      tStar++;
+      t = tStar;
+      p = star + 1;
+      continue;
+    }
+    return false;
+  }
+}
+
 /** Compare text against a criterion pattern that may contain `*` / `?` wildcards. */
 export function wildcardEquals(text: string, pattern: string): boolean {
   if (!/[*?~]/.test(pattern)) {
     return text.toLowerCase() === pattern.toLowerCase();
   }
-  let regex = '';
-  for (let i = 0; i < pattern.length; i++) {
-    const ch = pattern[i];
-    if (ch === '~' && i + 1 < pattern.length) {
-      regex += pattern[i + 1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      i++;
-    } else if (ch === '*') {
-      regex += '.*';
-    } else if (ch === '?') {
-      regex += '.';
-    } else {
-      regex += ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
+  return globMatchFrom(parseGlob(pattern.toLowerCase()), text.toLowerCase(), 0, true);
+}
+
+/**
+ * Earliest 0-based index in `text` where the wildcard `pattern` matches a
+ * substring, or -1. Case-insensitive. Used by SEARCH; linear per start position,
+ * so O(text²·pattern) worst case but never exponential (no ReDoS).
+ */
+export function wildcardSearch(text: string, pattern: string): number {
+  const hay = text.toLowerCase();
+  const toks = parseGlob(pattern.toLowerCase());
+  for (let i = 0; i <= hay.length; i++) {
+    if (globMatchFrom(toks, hay, i, false)) return i;
   }
-  return new RegExp(`^${regex}$`, 'i').test(text);
+  return -1;
 }
 
 /**

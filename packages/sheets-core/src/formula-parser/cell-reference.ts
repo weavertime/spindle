@@ -16,8 +16,10 @@ export function parseCellReference(ref: string): CellReference | null {
     cellPart = sheetMatch[3];
   }
 
-  // Match patterns like A1, $A1, A$1, $A$1
-  const match = cellPart.match(/^(\$?)([A-Z]+)(\$?)(\d+)$/);
+  // Match patterns like A1, $A1, A$1, $A$1. Column letters are accepted in any
+  // case (Excel/Sheets are case-insensitive: `a1` === `A1`); columnLabelToIndex
+  // upper-cases internally.
+  const match = cellPart.match(/^(\$?)([A-Za-z]+)(\$?)(\d+)$/);
   if (!match) return null;
 
   const [, colAbs, colStr, rowAbs, rowStr] = match;

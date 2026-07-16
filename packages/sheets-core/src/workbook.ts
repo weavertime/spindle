@@ -605,12 +605,29 @@ export class WorkbookImpl implements Workbook {
     for (let row = minRow; row <= effMaxRow; row++) {
       const rowValues: unknown[] = [];
       for (let col = minCol; col <= effMaxCol; col++) {
-        rowValues.push(this.getCellCalculatedValue(sheetId, row, col));
+        rowValues.push(this.getRangeCellValue(sheetId, row, col));
       }
       values.push(rowValues);
     }
 
     return values;
+  }
+
+  /**
+   * Value of a cell as seen inside a range. Unlike getCellCalculatedValue this
+   * yields `null` (not `0`) for a truly-empty cell, so blank-aware aggregates
+   * (AVERAGE/COUNT/COUNTA/MIN/MEDIAN/COUNTBLANK/STDEV…) can distinguish an empty
+   * cell from a real 0. Numeric coercion still treats null as 0 (toNum(null)===0),
+   * so SUM and arithmetic are unaffected. Single-cell refs (=A1+B1) keep going
+   * through getCellValue, which still returns 0 for a blank operand.
+   */
+  private getRangeCellValue(sheetId: string | undefined, row: number, col: number): unknown {
+    const cell = this.getCell(sheetId, row, col);
+    if (cell?.formula) return this.getCellCalculatedValue(sheetId, row, col);
+    const spilled = this.getSpillIndex(sheetId).spilledValueAt(row, col);
+    if (spilled !== undefined) return spilled;
+    if (!cell || cell.value === null || cell.value === undefined) return null;
+    return cell.value;
   }
 
   /**
