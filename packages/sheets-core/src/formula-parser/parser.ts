@@ -184,8 +184,10 @@ export class FormulaParser {
       return { type: 'range', rangeRef: adjustedRangeRef };
     }
 
-    // Try to parse as function call (e.g., SUM(A1:A10) or ERROR.TYPE(A1))
-    const functionMatch = expr.match(/^([A-Z][A-Z.]*)\s*\((.*)\)$/);
+    // Try to parse as function call (e.g., SUM(A1:A10) or ERROR.TYPE(A1)).
+    // Case-insensitive: `sum(...)` === `SUM(...)`; the name is upper-cased for
+    // lookup below.
+    const functionMatch = expr.match(/^([A-Za-z][A-Za-z.]*)\s*\((.*)\)$/);
     if (functionMatch) {
       const [, funcName, argsStr] = functionMatch;
       const args = this.parseArguments(argsStr, currentRow, currentCol, dependencies);

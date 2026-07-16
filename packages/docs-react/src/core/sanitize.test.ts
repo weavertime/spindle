@@ -5,6 +5,7 @@ import {
   safeFontFamily,
   safeCssKeyword,
   safeLineHeight,
+  safeCssNumber,
 } from './sanitize';
 
 describe('sanitizeHref', () => {
@@ -112,5 +113,19 @@ describe('safeLineHeight', () => {
     expect(safeLineHeight('nope')).toBeUndefined();
     expect(safeLineHeight(0)).toBeUndefined();
     expect(safeLineHeight(-1)).toBeUndefined();
+  });
+});
+
+describe('safeCssNumber', () => {
+  it('coerces finite numbers and falls back on injection payloads', () => {
+    expect(safeCssNumber(8, 0)).toBe(8);
+    expect(safeCssNumber('12', 0)).toBe(12);
+    expect(safeCssNumber(-3, 0)).toBe(-3);
+    // A crafted numeric attr can't inject a CSS declaration — it falls back.
+    expect(safeCssNumber('8px 0; background: url(//evil)', 0)).toBe(8); // parseFloat keeps leading number
+    expect(safeCssNumber('; background: url(//evil)', 0)).toBe(0);
+    expect(safeCssNumber('nope', 16)).toBe(16);
+    expect(safeCssNumber(undefined, 8)).toBe(8);
+    expect(safeCssNumber(NaN, 5)).toBe(5);
   });
 });

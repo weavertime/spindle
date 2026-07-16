@@ -11,7 +11,7 @@
 
 import type { CellReference, RangeReference } from '../types';
 import type { RefFn } from './helpers';
-import { toNum, toText } from './helpers';
+import { toNum, toText, flatten } from './helpers';
 import { parseCellReference, parseRangeReference, columnIndexToLabel } from '../cell-reference';
 
 /** Row count of an evaluated array value (fallback when the arg isn't a range). */
@@ -83,20 +83,37 @@ export const referenceFunctions: Record<string, RefFn> = {
   // array) falls back to measuring the evaluated value.
   ROWS: ({ args, currentRow, evaluate }) => {
     const node = args[0];
-    if (node?.type === 'range' && node.rangeRef) {
+    if (!node) throw new Error('#VALUE!'); // ROWS() with no argument
+    if (node.type === 'range' && node.rangeRef) {
       return Math.abs(resolveRow(node.rangeRef.end, currentRow) - resolveRow(node.rangeRef.start, currentRow)) + 1;
     }
-    if (node?.type === 'cell' && node.cellRef) return 1;
+    if (node.type === 'cell' && node.cellRef) return 1;
     return arrayRowCount(evaluate(node));
   },
 
   COLUMNS: ({ args, currentCol, evaluate }) => {
     const node = args[0];
-    if (node?.type === 'range' && node.rangeRef) {
+    if (!node) throw new Error('#VALUE!'); // COLUMNS() with no argument
+    if (node.type === 'range' && node.rangeRef) {
       return Math.abs(resolveCol(node.rangeRef.end, currentCol) - resolveCol(node.rangeRef.start, currentCol)) + 1;
     }
-    if (node?.type === 'cell' && node.cellRef) return 1;
+    if (node.type === 'cell' && node.cellRef) return 1;
     return arrayColCount(evaluate(node));
+  },
+
+  // Ref-aware so a huge range's blank count is the nominal size minus the
+  // populated cells, rather than iterating (and clamping) millions of values.
+  // getRangeValues now yields null for empty cells, so non-blank counting is
+  // accurate within the returned (possibly extent-clamped) values.
+  COUNTBLANK: ({ args, currentRow, currentCol, evaluate }) => {
+    const node = args[0];
+    if (node?.type === 'range' && node.rangeRef) {
+      const rows = Math.abs(resolveRow(node.rangeRef.end, currentRow) - resolveRow(node.rangeRef.start, currentRow)) + 1;
+      const cols = Math.abs(resolveCol(node.rangeRef.end, currentCol) - resolveCol(node.rangeRef.start, currentCol)) + 1;
+      const nonBlank = flatten([evaluate(node)]).filter((v) => v != null && v !== '').length;
+      return Math.max(0, rows * cols - nonBlank);
+    }
+    return flatten(args.map((a) => evaluate(a))).filter((v) => v == null || v === '').length;
   },
 
   OFFSET: ({ args, ctx, currentRow, currentCol, evaluate }) => {

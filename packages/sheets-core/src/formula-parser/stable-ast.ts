@@ -364,27 +364,38 @@ function rebaseRef(
  * target sheet and are globally unique, so `rowId:colId` identifies the right
  * cell across the whole workbook and editing it dirties this formula.
  */
+// Functions that consume only a reference's shape/position, never its cell
+// values (ROWS/COLUMNS/ROW/COLUMN). A direct ref argument to one of these is not
+// a value dependency: its result changes only on a structural edit (which
+// triggers a full recalc), so tracking it would add spurious edges — and, when
+// the formula sits inside its own referenced range, a false #CIRCULAR!.
+const REF_SHAPE_FUNCTIONS = new Set(['ROWS', 'COLUMNS', 'ROW', 'COLUMN']);
+
 export function collectStableDependencies(node: StableFormulaNode): FormulaDependencies {
   const cells = new Set<string>();
   const ranges: RangeDependency[] = [];
-  const visit = (n: StableFormulaNode): void => {
-    if (n.cellRef) {
+  // `skipDirectRef` suppresses collecting this node's OWN cell/range ref when it
+  // is the direct argument of a shape-only function; it does not propagate into
+  // nested function calls (their args are collected normally).
+  const visit = (n: StableFormulaNode, skipDirectRef: boolean): void => {
+    if (n.cellRef && !skipDirectRef) {
       cells.add(`${n.cellRef.rowId}:${n.cellRef.colId}`);
     }
     // A range is kept as its two corner keys — a rectangle. Containment is
     // tested at recalc time, so a cell that is empty when the formula is
     // entered, or a row/column inserted into the range later, is still tracked.
-    if (n.rangeRef) {
+    if (n.rangeRef && !skipDirectRef) {
       ranges.push({
         startKey: `${n.rangeRef.start.rowId}:${n.rangeRef.start.colId}`,
         endKey: `${n.rangeRef.end.rowId}:${n.rangeRef.end.colId}`,
       });
     }
-    for (const a of n.args ?? []) visit(a);
-    if (n.left) visit(n.left);
-    if (n.right) visit(n.right);
+    const argsAreShapeOnly = !!n.functionName && REF_SHAPE_FUNCTIONS.has(n.functionName.toUpperCase());
+    for (const a of n.args ?? []) visit(a, argsAreShapeOnly);
+    if (n.left) visit(n.left, false);
+    if (n.right) visit(n.right, false);
   };
-  visit(node);
+  visit(node, false);
   return { cells, ranges };
 }
 

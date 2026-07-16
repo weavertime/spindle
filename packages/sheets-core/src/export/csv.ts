@@ -55,57 +55,76 @@ function guardCsvInjection(value: string): string {
 }
 
 export function importFromCSV(csv: string, sheet: Sheet): void {
-  const lines = csv.split('\n');
-  let row = 0;
-
-  for (const line of lines) {
-    if (!line.trim()) {
-      row++;
-      continue;
-    }
-
-    // Simple CSV parsing (doesn't handle all edge cases)
-    const values = parseCSVLine(line);
+  const rows = parseCSV(csv);
+  rows.forEach((values, row) => {
     values.forEach((value, col) => {
-      if (value.trim()) {
+      // Set any non-empty field (including whitespace-only, which is a real
+      // value between commas: `a, ,c`). Empty fields are left blank.
+      if (value !== '') {
         sheet.setCellValue(row, col, value);
       }
     });
-
-    row++;
-  }
+  });
 }
 
-function parseCSVLine(line: string): string[] {
-  const values: string[] = [];
+/**
+ * Parse a CSV document into rows of fields. Handles quoted fields containing
+ * commas and embedded newlines, escaped quotes (`""`), and CRLF / CR / LF line
+ * endings — so it round-trips this module's own `exportToCSV` output and does
+ * not mangle Windows CSVs (trailing `\r` on the last column) or quoted-newline
+ * cells (which the old line-then-field split scrambled).
+ */
+function parseCSV(csv: string): string[][] {
+  const rows: string[][] = [];
   let current = '';
+  let field: string[] = [];
   let inQuotes = false;
 
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    const nextChar = line[i + 1];
+  const endField = (): void => {
+    field.push(current);
+    current = '';
+  };
+  const endRow = (): void => {
+    endField();
+    rows.push(field);
+    field = [];
+  };
 
-    if (char === '"') {
-      if (inQuotes && nextChar === '"') {
-        // Escaped quote
-        current += '"';
-        i++; // Skip next quote
+  for (let i = 0; i < csv.length; i++) {
+    const char = csv[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (csv[i + 1] === '"') {
+          current += '"'; // escaped quote
+          i++;
+        } else {
+          inQuotes = false;
+        }
       } else {
-        // Toggle quote state
-        inQuotes = !inQuotes;
+        current += char;
       }
-    } else if (char === ',' && !inQuotes) {
-      // End of value
-      values.push(current);
-      current = '';
+      continue;
+    }
+    if (char === '"') {
+      inQuotes = true;
+    } else if (char === ',') {
+      endField();
+    } else if (char === '\r') {
+      // CRLF or bare CR ends a row; swallow the paired LF.
+      if (csv[i + 1] === '\n') i++;
+      endRow();
+    } else if (char === '\n') {
+      endRow();
     } else {
       current += char;
     }
   }
-
-  // Add last value
-  values.push(current);
-
-  return values;
+  // Flush the final field/row unless the file ended exactly on a row break.
+  if (current !== '' || field.length > 0) endRow();
+  // Drop a trailing fully-empty row produced by a terminal newline.
+  if (rows.length > 0 && rows[rows.length - 1].length === 1 && rows[rows.length - 1][0] === '') {
+    rows.pop();
+  }
+  return rows;
 }
 

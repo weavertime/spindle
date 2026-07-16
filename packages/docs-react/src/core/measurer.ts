@@ -30,6 +30,7 @@ import {
   safeFontFamily,
   safeCssKeyword,
   safeLineHeight,
+  safeCssNumber,
 } from './sanitize';
 
 // ============================================================================
@@ -821,13 +822,16 @@ export class DomMeasurer {
    */
   private getParagraphStyles(block: ParagraphBlock): string {
     const attrs = block.attrs || {};
+    // These numeric attrs come from untrusted document/collab JSON; coerce each
+    // (a string like "8px 0; background: url(//evil)" would otherwise inject a
+    // CSS declaration into this measurement element's style).
     return `
-      margin: ${attrs.spaceBefore || 0}px 0 ${attrs.spaceAfter || 8}px 0;
+      margin: ${safeCssNumber(attrs.spaceBefore, 0)}px 0 ${safeCssNumber(attrs.spaceAfter, 8)}px 0;
       text-align: ${safeCssKeyword(attrs.alignment) || 'left'};
       line-height: ${safeLineHeight(attrs.lineHeight) ?? this.config.lineHeight};
-      text-indent: ${attrs.firstLineIndent || 0}px;
-      padding-left: ${attrs.leftIndent || 0}px;
-      padding-right: ${attrs.rightIndent || 0}px;
+      text-indent: ${safeCssNumber(attrs.firstLineIndent, 0)}px;
+      padding-left: ${safeCssNumber(attrs.leftIndent, 0)}px;
+      padding-right: ${safeCssNumber(attrs.rightIndent, 0)}px;
     `;
   }
   
@@ -847,7 +851,7 @@ export class DomMeasurer {
     const fontSize = fontSizes[block.level] || 16;
     
     return `
-      margin: ${attrs.spaceBefore || 16}px 0 ${attrs.spaceAfter || 8}px 0;
+      margin: ${safeCssNumber(attrs.spaceBefore, 16)}px 0 ${safeCssNumber(attrs.spaceAfter, 8)}px 0;
       font-size: ${fontSize}px;
       font-weight: ${block.level <= 2 ? 400 : 700};
       text-align: ${safeCssKeyword(attrs.alignment) || 'left'};
@@ -879,7 +883,7 @@ export class DomMeasurer {
     if (run.italic) styles.push('font-style: italic');
     if (run.underline) styles.push('text-decoration: underline');
     if (run.strikethrough) styles.push('text-decoration: line-through');
-    if (run.fontSize) styles.push(`font-size: ${run.fontSize}px`);
+    if (run.fontSize) styles.push(`font-size: ${safeCssNumber(run.fontSize, 0)}px`);
     const runFont = safeFontFamily(run.fontFamily);
     if (runFont) styles.push(`font-family: ${runFont}`);
     const runColor = safeCssColor(run.color);

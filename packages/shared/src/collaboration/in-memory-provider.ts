@@ -73,7 +73,9 @@ export class InMemoryProvider implements CollabProvider {
       if (room && room.peers.size === 0) rooms.delete(this.roomId);
       this.roomId = null;
     }
-    this.subscribers.clear();
+    // Keep subscribers (matching WebSocketProvider): they are owned by the
+    // provider, not the room, so a reconnect on the same instance still receives
+    // the replay. They're released individually via each onMessage() unsubscribe.
   }
 
   send(channel: CollabChannel, payload: Uint8Array): void {

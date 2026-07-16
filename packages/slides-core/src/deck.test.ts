@@ -66,6 +66,20 @@ describe('slides', () => {
     expect(copyEls[0].id).not.toBe(deck.getElementsForSlide(slide)[0].id);
   });
 
+  it('emits elementAdd for every copied element (so collab mirrors them)', () => {
+    const deck = new DeckImpl();
+    const slide = deck.getActiveSlideId();
+    deck.addElement(slide, { type: 'shape', shape: 'ellipse' });
+    deck.addElement(slide, { type: 'shape', shape: 'rect' });
+    const adds = capture(deck, 'elementAdd') as { slideId: string; elementId: string }[];
+    const copy = deck.duplicateSlide(slide)!;
+    const copyEls = deck.getElementsForSlide(copy.id);
+    // One elementAdd per copied element, all targeting the new slide.
+    expect(adds).toHaveLength(2);
+    expect(adds.every((a) => a.slideId === copy.id)).toBe(true);
+    expect(new Set(adds.map((a) => a.elementId))).toEqual(new Set(copyEls.map((e) => e.id)));
+  });
+
   it('remaps internal references (group + connector binds) when duplicating a slide', () => {
     const deck = new DeckImpl();
     const slide = deck.getActiveSlideId();

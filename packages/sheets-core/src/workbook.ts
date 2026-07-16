@@ -605,12 +605,29 @@ export class WorkbookImpl implements Workbook {
     for (let row = minRow; row <= effMaxRow; row++) {
       const rowValues: unknown[] = [];
       for (let col = minCol; col <= effMaxCol; col++) {
-        rowValues.push(this.getCellCalculatedValue(sheetId, row, col));
+        rowValues.push(this.getRangeCellValue(sheetId, row, col));
       }
       values.push(rowValues);
     }
 
     return values;
+  }
+
+  /**
+   * Value of a cell as seen inside a range. Unlike getCellCalculatedValue this
+   * yields `null` (not `0`) for a truly-empty cell, so blank-aware aggregates
+   * (AVERAGE/COUNT/COUNTA/MIN/MEDIAN/COUNTBLANK/STDEV…) can distinguish an empty
+   * cell from a real 0. Numeric coercion still treats null as 0 (toNum(null)===0),
+   * so SUM and arithmetic are unaffected. Single-cell refs (=A1+B1) keep going
+   * through getCellValue, which still returns 0 for a blank operand.
+   */
+  private getRangeCellValue(sheetId: string | undefined, row: number, col: number): unknown {
+    const cell = this.getCell(sheetId, row, col);
+    if (cell?.formula) return this.getCellCalculatedValue(sheetId, row, col);
+    const spilled = this.getSpillIndex(sheetId).spilledValueAt(row, col);
+    if (spilled !== undefined) return spilled;
+    if (!cell || cell.value === null || cell.value === undefined) return null;
+    return cell.value;
   }
 
   /**
@@ -905,6 +922,7 @@ export class WorkbookImpl implements Workbook {
       const restoredComments = preservedComments.get(sheetId);
       if (restoredComments) sheet.comments.loadJSON(restoredComments);
       this.wireCommentListener(sheet);
+      this.attachStructureListenerIfNeeded(sheet);
 
       this.sheets.set(sheetId, sheet);
     }
@@ -1300,14 +1318,12 @@ export class WorkbookImpl implements Workbook {
       if (first) this.activeSheetId = first;
     }
 
-    // Re-attach collab structure listeners. setData replaces every
-    // SheetImpl instance, so the listeners installed at attachCollab time
-    // are gone — without this, a peer's structural mutations stop
-    // mirroring after the first remote update it receives.
-    if (this.collabHandle) {
-      for (const sheet of this.sheets.values()) {
-        this.attachStructureListenerIfNeeded(sheet as SheetImpl);
-      }
+    // Re-attach structure listeners. setData replaces every SheetImpl instance,
+    // so the listeners are gone — without this, a structural edit (insert/delete
+    // row/col) after a load stops recalculating dependent formulas, and (in
+    // collab) a peer's structural mutations stop mirroring.
+    for (const sheet of this.sheets.values()) {
+      this.attachStructureListenerIfNeeded(sheet as SheetImpl);
     }
 
     // Wire comment-change listeners — setData replaces every SheetImpl, so
@@ -1647,10 +1663,24 @@ export class WorkbookImpl implements Workbook {
    * sheets) and addSheet (for new ones).
    */
   private attachStructureListenerIfNeeded(sheet: SheetImpl): void {
-    if (!this.collabHandle) return;
-    sheet.__setStructureChangeListener(() => {
-      this.mirrorSheetStructure(sheet.id);
-    });
+    sheet.__setStructureChangeListener(() => this.onStructureChange(sheet.id));
+  }
+
+  /**
+   * React to a structural edit (insert/delete row or column) on a sheet. Such an
+   * edit shifts what formulas reference, so every formula must recompute — the
+   * stable-AST refs are rebased correctly, but nothing recomputes the cached
+   * values otherwise, leaving stale totals until an unrelated edit. Also mirror
+   * the structure to collab when attached. Both are skipped while applying a
+   * remote change (the remote already carries recomputed values, and mirroring
+   * would echo it back).
+   */
+  private onStructureChange(sheetId: string): void {
+    if (this.isApplyingRemoteChange) return;
+    this.recalculateAllFormulas();
+    if (this.collabHandle) {
+      this.mirrorSheetStructure(sheetId);
+    }
   }
 
   /**
