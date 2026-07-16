@@ -116,6 +116,62 @@ describe('WebSocketProvider against a replaying relay', () => {
     await server.close();
   });
 
+  it('disconnect() rejects a still-pending connect() instead of leaving it to hang', async () => {
+    // Server accepts the socket but never sends the sync frame, so connect()
+    // stays pending. disconnect() must settle (reject) it rather than orphan it.
+    const http = createServer();
+    const wss = new WebSocketServer({ server: http });
+    wss.on('connection', () => {/* never sends CHANNEL_SYNC */});
+    await new Promise<void>((r) => http.listen(0, r));
+    const port = (http.address() as AddressInfo).port;
+
+    const p = new WebSocketProvider({ url: `ws://localhost:${port}`, WebSocketImpl: WS });
+    const pending = p.connect('room');
+    await delay(30); // socket opens, still no sync frame
+    p.disconnect();
+    await expect(pending).rejects.toThrow(/disconnect/);
+
+    await new Promise<void>((r) => wss.close(() => http.close(() => r())));
+  });
+
+  it('reconnecting to the same room during backoff clears the stale reconnect timer', async () => {
+    // Only the FIRST connection drops (arming exactly one reconnect timer);
+    // every later connection syncs and stays open. We call connect() again
+    // during that backoff window. If the stale timer is cleared, exactly two
+    // sockets ever open (the initial + the reconnect); if it survives, it fires
+    // after connect() and opens a spurious third.
+    let connCount = 0;
+    const http = createServer();
+    const wss = new WebSocketServer({ server: http });
+    wss.on('connection', (ws) => {
+      connCount += 1;
+      ws.on('error', () => {});
+      if (connCount === 1) {
+        setTimeout(() => ws.close(), 10); // first drops after open (pre-sync)
+      } else if (ws.readyState === ws.OPEN) {
+        ws.send(Buffer.from([CHANNEL_SYNC]), { binary: true }); // rest sync + stay
+      }
+    });
+    await new Promise<void>((r) => http.listen(0, r));
+    const port = (http.address() as AddressInfo).port;
+
+    const p = new WebSocketProvider({
+      url: `ws://localhost:${port}`,
+      WebSocketImpl: WS,
+      minReconnectDelayMs: 150,
+      maxReconnectDelayMs: 150,
+    });
+    p.connect('room').catch(() => {}); // first connect is superseded below
+    await waitFor(() => connCount >= 1); // first socket opened then dropped
+    await p.connect('room'); // reconnect during the 150ms backoff window
+    // Wait well past when the stale timer would have fired (150ms).
+    await delay(250);
+    expect(connCount).toBe(2); // initial + reconnect; no timer-driven third
+
+    p.disconnect();
+    await new Promise<void>((r) => wss.close(() => http.close(() => r())));
+  });
+
   it('reconnects (does not reject) when a socket drops after open but before the sync frame', async () => {
     // First connection opens then closes before sending CHANNEL_SYNC; later
     // connections sync normally. connect() must resolve via the reconnect

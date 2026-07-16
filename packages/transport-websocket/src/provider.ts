@@ -110,6 +110,16 @@ export class WebSocketProvider implements CollabProvider {
     this.intentionallyClosed = false;
     this.opened = false;
 
+    // Cancel any pending reconnect/sync timers from a prior connection to this
+    // same room. Otherwise a backoff timer armed by an earlier drop fires after
+    // openSocket() below and tears down the just-established socket to open yet
+    // another — a spurious disconnect/reconnect blip right after connect().
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.clearSyncTimer();
+
     // Supersede any still-pending connect() so its promise can't hang forever.
     if (this.connectReject) {
       this.connectReject(new Error('WebSocketProvider: connect() superseded by a newer connect()'));
@@ -127,6 +137,15 @@ export class WebSocketProvider implements CollabProvider {
   disconnect(): void {
     this.intentionallyClosed = true;
     this.roomId = null;
+    // Settle a still-pending connect() so an awaiting caller (e.g. attachCollab
+    // during a React unmount mid-connect) doesn't hang forever — with the socket
+    // detached below there is no onclose left to reject it and no timer to
+    // resolve it.
+    if (this.connectReject) {
+      this.connectReject(new Error('WebSocketProvider: connect() aborted by disconnect()'));
+      this.connectResolve = null;
+      this.connectReject = null;
+    }
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;

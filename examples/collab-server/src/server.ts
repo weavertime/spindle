@@ -16,7 +16,8 @@
 // had state (join, don't seed) or was empty (creator, seed). The same replay
 // runs on reconnect, so a peer that dropped re-converges for free.
 //
-// This reference keeps the log in memory and drops a room once it is idle.
+// This reference keeps the log in memory, dedups identical re-pushed frames,
+// and evicts a room after it has been idle (peerless) for a grace window.
 // A production deployment should swap the in-memory `rooms` map for durable,
 // content-agnostic storage (any KV/blob store) and add auth on the upgrade —
 // the protocol above is unchanged.
@@ -31,6 +32,10 @@ interface Room {
   peers: Set<WebSocket>;
   /** Ordered log of every doc frame, replayed verbatim to each newcomer. */
   docLog: Buffer[];
+  /** base64 of every logged frame, so an identical re-push isn't appended twice. */
+  logged: Set<string>;
+  /** Pending eviction timer once the room goes idle (empty). */
+  idleTimer?: ReturnType<typeof setTimeout>;
 }
 
 function roomIdFromUrl(url: string | undefined): string {
@@ -54,6 +59,12 @@ export interface CollabServerOptions {
   port?: number;
   /** Called once the server is listening (receives the resolved port). */
   onListening?: (port: number) => void;
+  /**
+   * How long to keep an idle (peerless) room's log before evicting it, in ms.
+   * A brief drop/reconnect within this window is still replayed its state; a
+   * truly abandoned room is reclaimed instead of leaking forever. Default 5 min.
+   */
+  emptyRoomTtlMs?: number;
 }
 
 /**
@@ -62,6 +73,7 @@ export interface CollabServerOptions {
  */
 export function createCollabServer(options: CollabServerOptions = {}): Server {
   const rooms = new Map<string, Room>();
+  const emptyRoomTtlMs = options.emptyRoomTtlMs ?? 5 * 60_000;
 
   const httpServer = createServer((_req, res) => {
     res.writeHead(200, { 'content-type': 'text/plain' });
@@ -79,8 +91,13 @@ export function createCollabServer(options: CollabServerOptions = {}): Server {
 
     let room = rooms.get(roomId);
     if (!room) {
-      room = { peers: new Set(), docLog: [] };
+      room = { peers: new Set(), docLog: [], logged: new Set() };
       rooms.set(roomId, room);
+    }
+    // A returning peer cancels a pending eviction so its state isn't reclaimed.
+    if (room.idleTimer) {
+      clearTimeout(room.idleTimer);
+      room.idleTimer = undefined;
     }
     room.peers.add(ws);
 
@@ -95,7 +112,18 @@ export function createCollabServer(options: CollabServerOptions = {}): Server {
       const frame = toBuffer(raw);
       if (frame.length < 1) return;
       // Log doc frames (durable); awareness is fanned out but never stored.
-      if (frame[0] === CHANNEL_DOC) room!.docLog.push(Buffer.from(frame));
+      // Dedup identical frames: a persistence-enabled client re-pushes its full
+      // state on every attach, which is byte-identical when nothing changed —
+      // appending each copy would grow the log without bound. Comparing bytes is
+      // content-agnostic, so this stays E2EE-friendly.
+      if (frame[0] === CHANNEL_DOC) {
+        const copy = Buffer.from(frame);
+        const key = copy.toString('base64');
+        if (!room!.logged.has(key)) {
+          room!.logged.add(key);
+          room!.docLog.push(copy);
+        }
+      }
       for (const peer of room!.peers) {
         if (peer === ws || peer.readyState !== peer.OPEN) continue;
         try {
@@ -109,12 +137,19 @@ export function createCollabServer(options: CollabServerOptions = {}): Server {
 
     ws.on('close', () => {
       room!.peers.delete(ws);
-      // Keep the room's doc log even when it goes idle, so a peer that briefly
-      // drops (or the last peer leaving and later rejoining) is replayed its
-      // state instead of losing it — the log is the room's authority. This
-      // grows memory for abandoned rooms: a production deployment should move
-      // `rooms` to durable storage with an eviction + compaction policy. The
-      // payloads stay opaque, so that remains E2EE-friendly.
+      // Keep the room's doc log when it goes idle so a peer that briefly drops
+      // (or the last peer leaving and soon rejoining) is replayed its state —
+      // but only for a grace window, then evict, so abandoned rooms don't leak
+      // forever. A production deployment should move `rooms` to durable storage
+      // with its own eviction + compaction policy. Payloads stay opaque (the
+      // dedup above compares bytes only), so this remains E2EE-friendly.
+      if (room!.peers.size === 0 && !room!.idleTimer) {
+        room!.idleTimer = setTimeout(() => {
+          if (room!.peers.size === 0) rooms.delete(roomId);
+        }, emptyRoomTtlMs);
+        // Don't keep the process alive just to evict an idle room.
+        room!.idleTimer.unref?.();
+      }
     });
 
     ws.on('error', (err) => {
