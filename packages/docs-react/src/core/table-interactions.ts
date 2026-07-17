@@ -15,6 +15,7 @@ import {
   applyDeleteColumn,
   applyInsertRow,
   applyDeleteRow,
+  applyColumnResize,
   logicalColumnForCell,
 } from './pm-table-columns';
 
@@ -1151,34 +1152,15 @@ export class TableInteractionManager {
       }
       
       if (!tableNode) return;
-      
-      let tr = state.tr;
-      let currentRowPos = tablePos + 1; // Enter the table node
-      
-      tableNode.forEach((rowNode) => {
-        if (index >= rowNode.childCount) {
-          currentRowPos += rowNode.nodeSize;
-          return;
-        }
-        
-        // Calculate position of the target cell in this row
-        let cellPos = currentRowPos + 1; // Enter the row node
-        for (let i = 0; i < index; i++) {
-          cellPos += rowNode.child(i).nodeSize;
-        }
-        
-        const cellNode = rowNode.child(index);
-        const newWidths = [newWidth];
-        
-        tr = tr.setNodeMarkup(cellPos, null, {
-          ...cellNode.attrs,
-          colwidth: newWidths,
-        });
-        
-        currentRowPos += rowNode.nodeSize;
-      });
-      
-      dispatch(tr);
+
+      // The handle's `index` is a physical cell index in row 0; resize the
+      // logical column it starts at, span-aware, so merged tables don't get
+      // colwidth stamped on the wrong column (or a length-1 array on a span).
+      const logicalCol = logicalColumnForCell(tableNode, tablePos, 0, index);
+      const tr = state.tr;
+      if (applyColumnResize(tr, tableNode, tablePos, logicalCol, newWidth)) {
+        dispatch(tr);
+      }
     }
     // Row height is typically handled by cell content, but we could add similar logic if needed
   }

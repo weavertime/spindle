@@ -6,6 +6,7 @@ import {
   applyDeleteColumn,
   applyInsertRow,
   applyDeleteRow,
+  applyColumnResize,
   buildColumnGrid,
   logicalColumnForCell,
 } from './pm-table-columns';
@@ -118,6 +119,29 @@ describe('pm-table-columns — merged tables stay rectangular (the corruption fi
     expect(out.child(0).child(0).attrs.colspan).toBe(1);
     expect(out.child(0).child(0).attrs.rowspan).toBe(2);
     expect(out.child(2).childCount).toBe(2);
+  });
+});
+
+describe('pm-table-columns — span-aware column resize', () => {
+  const merged = table(
+    row(cell({ colspan: 2, rowspan: 2 }), cell()),
+    row(cell()),
+    row(cell(), cell(), cell()),
+  );
+
+  it('sets colwidth on the owning cell with an array sized to its colspan', () => {
+    // Resize logical column 0, which is owned by the 2x2 span (colspan 2).
+    const out = run(merged, (tr, t) => applyColumnResize(tr, t, 0, 0, 90));
+    const span = out.child(0).child(0);
+    expect(span.attrs.colspan).toBe(2);
+    expect(span.attrs.colwidth).toEqual([90, 0]); // width set at column 0 of the span
+    // Plain row's first cell (also logical col 0) gets a length-1 colwidth.
+    expect(out.child(2).child(0).attrs.colwidth).toEqual([90]);
+  });
+
+  it('resizing the second logical column of a span sets the right array slot', () => {
+    const out = run(merged, (tr, t) => applyColumnResize(tr, t, 0, 1, 70));
+    expect(out.child(0).child(0).attrs.colwidth).toEqual([0, 70]);
   });
 });
 

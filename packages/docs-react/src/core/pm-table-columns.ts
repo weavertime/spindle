@@ -192,6 +192,40 @@ export function applyDeleteColumn(
   return true;
 }
 
+/**
+ * Set the width of a logical column: update the colwidth entry for that column
+ * on each owning origin cell (span-aware — a spanning cell's colwidth is an
+ * array over its columns, and each cell is touched once).
+ */
+export function applyColumnResize(
+  tr: Transaction,
+  table: PmNode,
+  tablePos: number,
+  logicalCol: number,
+  newWidth: number,
+): boolean {
+  const { grid } = buildColumnGrid(table, tablePos);
+  const seen = new Set<PmCellInfo>();
+  const edits: Array<{ pos: number; apply: () => void }> = [];
+  for (let r = 0; r < grid.length; r++) {
+    const owner = grid[r][logicalCol];
+    if (!owner || seen.has(owner)) continue;
+    seen.add(owner);
+    const existing = Array.isArray(owner.node.attrs.colwidth) ? owner.node.attrs.colwidth : [];
+    const cw: number[] = [];
+    for (let i = 0; i < owner.colspan; i++) cw[i] = existing[i] ?? 0;
+    cw[logicalCol - owner.logicalStart] = newWidth;
+    edits.push({
+      pos: owner.pos,
+      apply: () => tr.setNodeMarkup(owner.pos, undefined, { ...owner.node.attrs, colwidth: cw }),
+    });
+  }
+  if (edits.length === 0) return false;
+  edits.sort((a, b) => b.pos - a.pos);
+  for (const e of edits) e.apply();
+  return true;
+}
+
 // --- Row operations -------------------------------------------------------
 //
 // Rows map 1:1 to table_row nodes (rowspan doesn't create phantom rows), so the
