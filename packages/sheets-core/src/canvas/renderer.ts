@@ -22,6 +22,75 @@ import {
   type FreezeDimensions
 } from '../features/freeze';
 
+/** Inputs for the shared visible-range computation. */
+interface VisibleRangeParams {
+  scrollTop: number;
+  scrollLeft: number;
+  width: number;
+  height: number;
+  headerWidth: number;
+  headerHeight: number;
+  frozenWidth: number;
+  frozenHeight: number;
+  frozenRows: number;
+  frozenCols: number;
+  rowCount: number;
+  colCount: number;
+  rowHeights: Map<number, number>;
+  colWidths: Map<number, number>;
+  defaultRowHeight: number;
+  defaultColWidth: number;
+  hiddenRows: Set<number>;
+  hiddenCols: Set<number>;
+}
+
+/**
+ * Single source of truth for the visible cell range. Both the render path
+ * (calculateVisibleRange) and the cell-load path (calculateVisibleRangeForDimensions)
+ * delegate here so the window that is loaded exactly matches the window that is
+ * drawn — divergence between the two used to leave visible cells blank because
+ * one path skipped hidden/frozen rows and the other did not.
+ */
+export function computeVisibleRange(
+  p: VisibleRangeParams
+): { startRow: number; endRow: number; startCol: number; endCol: number } {
+  // Visible rows (skip hidden; frozen rows don't scroll so start past them)
+  let y = 0;
+  let startRow = p.frozenRows;
+  while (y < p.scrollTop && startRow < p.rowCount) {
+    if (!p.hiddenRows.has(startRow)) y += p.rowHeights.get(startRow) ?? p.defaultRowHeight;
+    startRow++;
+  }
+  if (startRow > p.frozenRows) startRow--; // include partially visible row
+
+  let endRow = startRow;
+  const visibleHeight = p.height - p.headerHeight - p.frozenHeight;
+  while (y < p.scrollTop + visibleHeight && endRow < p.rowCount) {
+    if (!p.hiddenRows.has(endRow)) y += p.rowHeights.get(endRow) ?? p.defaultRowHeight;
+    endRow++;
+  }
+  endRow = Math.min(endRow + 1, p.rowCount); // include partially visible row
+
+  // Visible columns (skip hidden; frozen cols don't scroll)
+  let x = 0;
+  let startCol = p.frozenCols;
+  while (x < p.scrollLeft && startCol < p.colCount) {
+    if (!p.hiddenCols.has(startCol)) x += p.colWidths.get(startCol) ?? p.defaultColWidth;
+    startCol++;
+  }
+  if (startCol > p.frozenCols) startCol--; // include partially visible column
+
+  let endCol = startCol;
+  const visibleWidth = p.width - p.headerWidth - p.frozenWidth;
+  while (x < p.scrollLeft + visibleWidth && endCol < p.colCount) {
+    if (!p.hiddenCols.has(endCol)) x += p.colWidths.get(endCol) ?? p.defaultColWidth;
+    endCol++;
+  }
+  endCol = Math.min(endCol + 1, p.colCount); // include partially visible column
+
+  return { startRow, endRow, startCol, endCol };
+}
+
 /**
  * Main canvas renderer that coordinates all rendering operations
  */
@@ -179,50 +248,52 @@ export class CanvasRenderer {
     rowCount: number,
     colCount: number,
     rowHeights?: Map<number, number>,
-    colWidths?: Map<number, number>
+    colWidths?: Map<number, number>,
+    hiddenRows?: Set<number>,
+    hiddenCols?: Set<number>,
+    frozenRows: number = 0,
+    frozenCols: number = 0
   ): void {
-    const { scrollTop, scrollLeft, width, height } = this.viewport;
-    const defaultRowHeight = this.defaultRowHeight;
-    const defaultColWidth = this.defaultColWidth;
-    
-    // Calculate visible rows
-    let y = 0;
-    let startRow = 0;
-    while (y < scrollTop && startRow < rowCount) {
-      y += rowHeights?.get(startRow) ?? defaultRowHeight;
-      startRow++;
-    }
-    if (startRow > 0) startRow--;
-    
-    let endRow = startRow;
-    const visibleHeight = height - this.headerHeight;
-    while (y < scrollTop + visibleHeight && endRow < rowCount) {
-      y += rowHeights?.get(endRow) ?? defaultRowHeight;
-      endRow++;
-    }
-    endRow = Math.min(endRow + 1, rowCount);
-    
-    // Calculate visible columns
-    let x = 0;
-    let startCol = 0;
-    while (x < scrollLeft && startCol < colCount) {
-      x += colWidths?.get(startCol) ?? defaultColWidth;
-      startCol++;
-    }
-    if (startCol > 0) startCol--;
-    
-    let endCol = startCol;
-    const visibleWidth = width - this.headerWidth;
-    while (x < scrollLeft + visibleWidth && endCol < colCount) {
-      x += colWidths?.get(endCol) ?? defaultColWidth;
-      endCol++;
-    }
-    endCol = Math.min(endCol + 1, colCount);
-    
-    this.viewport.startRow = startRow;
-    this.viewport.endRow = endRow;
-    this.viewport.startCol = startCol;
-    this.viewport.endCol = endCol;
+    const rh = rowHeights ?? new Map<number, number>();
+    const cw = colWidths ?? new Map<number, number>();
+    const hr = hiddenRows ?? new Set<number>();
+    const hc = hiddenCols ?? new Set<number>();
+    // Freeze offsets must match the render path, otherwise the loaded window
+    // shifts relative to the drawn one.
+    const freeze = calculateFreezeDimensions(
+      frozenRows,
+      frozenCols,
+      rh,
+      cw,
+      this.defaultRowHeight,
+      this.defaultColWidth,
+      hr,
+      hc
+    );
+    const r = computeVisibleRange({
+      scrollTop: this.viewport.scrollTop,
+      scrollLeft: this.viewport.scrollLeft,
+      width: this.viewport.width,
+      height: this.viewport.height,
+      headerWidth: this.headerWidth,
+      headerHeight: this.headerHeight,
+      frozenWidth: freeze.frozenWidth,
+      frozenHeight: freeze.frozenHeight,
+      frozenRows,
+      frozenCols,
+      rowCount,
+      colCount,
+      rowHeights: rh,
+      colWidths: cw,
+      defaultRowHeight: this.defaultRowHeight,
+      defaultColWidth: this.defaultColWidth,
+      hiddenRows: hr,
+      hiddenCols: hc,
+    });
+    this.viewport.startRow = r.startRow;
+    this.viewport.endRow = r.endRow;
+    this.viewport.startCol = r.startCol;
+    this.viewport.endCol = r.endCol;
   }
   
   /**
@@ -543,58 +614,30 @@ export class CanvasRenderer {
    * Calculate which rows and columns are visible
    */
   private calculateVisibleRange(state: RenderState): void {
-    const { scrollTop, scrollLeft, width, height } = this.viewport;
-    const hiddenRows = state.hiddenRows ?? new Set<number>();
-    const hiddenCols = state.hiddenCols ?? new Set<number>();
-    
-    // Calculate visible rows (skip hidden rows)
-    // Start from frozenRows since frozen rows don't scroll
-    let y = 0;
-    let startRow = this.frozenRows;
-    while (y < scrollTop && startRow < state.rowCount) {
-      if (!hiddenRows.has(startRow)) {
-        y += state.rowHeights.get(startRow) ?? this.defaultRowHeight;
-      }
-      startRow++;
-    }
-    if (startRow > this.frozenRows) startRow--; // Include partially visible row
-    
-    let endRow = startRow;
-    const visibleHeight = height - this.headerHeight - this.freezeDimensions.frozenHeight;
-    while (y < scrollTop + visibleHeight && endRow < state.rowCount) {
-      if (!hiddenRows.has(endRow)) {
-        y += state.rowHeights.get(endRow) ?? this.defaultRowHeight;
-      }
-      endRow++;
-    }
-    endRow = Math.min(endRow + 1, state.rowCount); // Include partially visible row
-    
-    // Calculate visible columns (skip hidden columns)
-    // Start from frozenCols since frozen columns don't scroll
-    let x = 0;
-    let startCol = this.frozenCols;
-    while (x < scrollLeft && startCol < state.colCount) {
-      if (!hiddenCols.has(startCol)) {
-        x += state.colWidths.get(startCol) ?? this.defaultColWidth;
-      }
-      startCol++;
-    }
-    if (startCol > this.frozenCols) startCol--; // Include partially visible column
-    
-    let endCol = startCol;
-    const visibleWidth = width - this.headerWidth - this.freezeDimensions.frozenWidth;
-    while (x < scrollLeft + visibleWidth && endCol < state.colCount) {
-      if (!hiddenCols.has(endCol)) {
-        x += state.colWidths.get(endCol) ?? this.defaultColWidth;
-      }
-      endCol++;
-    }
-    endCol = Math.min(endCol + 1, state.colCount); // Include partially visible column
-    
-    this.viewport.startRow = startRow;
-    this.viewport.endRow = endRow;
-    this.viewport.startCol = startCol;
-    this.viewport.endCol = endCol;
+    const r = computeVisibleRange({
+      scrollTop: this.viewport.scrollTop,
+      scrollLeft: this.viewport.scrollLeft,
+      width: this.viewport.width,
+      height: this.viewport.height,
+      headerWidth: this.headerWidth,
+      headerHeight: this.headerHeight,
+      frozenWidth: this.freezeDimensions.frozenWidth,
+      frozenHeight: this.freezeDimensions.frozenHeight,
+      frozenRows: this.frozenRows,
+      frozenCols: this.frozenCols,
+      rowCount: state.rowCount,
+      colCount: state.colCount,
+      rowHeights: state.rowHeights,
+      colWidths: state.colWidths,
+      defaultRowHeight: this.defaultRowHeight,
+      defaultColWidth: this.defaultColWidth,
+      hiddenRows: state.hiddenRows ?? new Set<number>(),
+      hiddenCols: state.hiddenCols ?? new Set<number>(),
+    });
+    this.viewport.startRow = r.startRow;
+    this.viewport.endRow = r.endRow;
+    this.viewport.startCol = r.startCol;
+    this.viewport.endCol = r.endCol;
   }
   
   /**
