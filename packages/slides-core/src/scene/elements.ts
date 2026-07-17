@@ -174,14 +174,24 @@ export interface TableElementInput extends BaseElementInput {
 export function createTableElement(input: TableElementInput): TableElement {
   const rows = Math.max(1, input.rows);
   const cols = Math.max(1, input.cols);
+  // Normalize cells to exactly rows×cols so malformed authored JSON (a cells
+  // grid that doesn't match rows/cols) can't throw on cells[r][c] at render.
+  const grid = makeGrid(rows, cols);
+  if (input.cells) {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (input.cells[r]?.[c]) grid[r][c] = input.cells[r][c];
+      }
+    }
+  }
   return {
     ...base(input, 'table'),
     type: 'table',
     rows,
     cols,
-    colFractions: input.colFractions ?? evenFractions(cols),
-    rowFractions: input.rowFractions ?? evenFractions(rows),
-    cells: input.cells ?? makeGrid(rows, cols),
+    colFractions: input.colFractions?.length === cols ? input.colFractions : evenFractions(cols),
+    rowFractions: input.rowFractions?.length === rows ? input.rowFractions : evenFractions(rows),
+    cells: grid,
     border: input.border ?? { color: { kind: 'theme', slot: 'dk2' }, width: 1 },
   };
 }

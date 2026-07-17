@@ -592,6 +592,46 @@ export class DeckImpl {
     return copy;
   }
 
+  /**
+   * Duplicate several elements as one action, preserving grouping (a fresh
+   * shared group id per source group) and re-pointing connector binds among the
+   * copied set — so Cmd+D of a group yields a grouped copy, not loose elements.
+   */
+  duplicateElements(ids: string[]): SlideElement[] {
+    const src = ids.map((id) => this.elements.get(id)).filter(Boolean) as SlideElement[];
+    if (src.length === 0) return [];
+    this.recordHistory();
+    const idMap = new Map<string, string>();
+    for (const el of src) idMap.set(el.id, generateId());
+    const groupMap = new Map<string, string>();
+    const copies: SlideElement[] = [];
+    for (const el of src) {
+      const copy = {
+        ...structuredClone(el),
+        id: idMap.get(el.id)!,
+        index: this.topZIndex(el.containerId),
+        x: el.x + 16,
+        y: el.y + 16,
+      } as SlideElement;
+      if (copy.groupId) {
+        let mapped = groupMap.get(copy.groupId);
+        if (!mapped) { mapped = generateId(); groupMap.set(copy.groupId, mapped); }
+        copy.groupId = mapped;
+      }
+      if (copy.type === 'line') {
+        const l = copy as LineElement;
+        if (l.startPoint) l.startPoint = { x: l.startPoint.x + 16, y: l.startPoint.y + 16 };
+        if (l.endPoint) l.endPoint = { x: l.endPoint.x + 16, y: l.endPoint.y + 16 };
+        if (l.startBind && idMap.has(l.startBind.elementId)) l.startBind = { ...l.startBind, elementId: idMap.get(l.startBind.elementId)! };
+        if (l.endBind && idMap.has(l.endBind.elementId)) l.endBind = { ...l.endBind, elementId: idMap.get(l.endBind.elementId)! };
+      }
+      this.elements.set(copy.id, copy);
+      copies.push(copy);
+    }
+    for (const c of copies) this.emit('elementAdd', { slideId: c.containerId, elementId: c.id });
+    return copies;
+  }
+
   // ── Rich text ────────────────────────────────────────────────────────────────
 
   /** Replace a text-bearing element's body (commits one history entry). */

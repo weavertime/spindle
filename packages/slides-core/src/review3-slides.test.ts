@@ -46,6 +46,28 @@ describe('normalizeDeckData repairs malformed fractional indices', () => {
   });
 });
 
+describe('duplicateElements preserves grouping', () => {
+  it('a group duplicates to a new group of only the copies', () => {
+    const deck = new DeckImpl();
+    const slide = deck.getActiveSlideId();
+    const a = deck.addElement(slide, { type: 'shape', x: 0, y: 0, w: 50, h: 50 });
+    const b = deck.addElement(slide, { type: 'shape', x: 100, y: 0, w: 50, h: 50 });
+    const groupId = deck.groupElements([a.id, b.id])!;
+
+    const copies = deck.duplicateElements([a.id, b.id]);
+    expect(copies).toHaveLength(2);
+    // Both copies share one fresh group id, different from the source group.
+    const g = copies[0].groupId;
+    expect(g).toBeDefined();
+    expect(g).not.toBe(groupId);
+    expect(copies[1].groupId).toBe(g);
+    // The copied group contains only the copies.
+    expect(deck.getGroupMembers(g!).sort()).toEqual(copies.map((c) => c.id).sort());
+    // Source group untouched.
+    expect(deck.getGroupMembers(groupId).sort()).toEqual([a.id, b.id].sort());
+  });
+});
+
 describe('removeTableRows preserves rowHeights', () => {
   it('keeps rowHeights aligned after removing a range of rows', () => {
     const deck = new DeckImpl();
