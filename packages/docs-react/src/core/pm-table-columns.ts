@@ -191,3 +191,126 @@ export function applyDeleteColumn(
   for (const e of edits) e.apply();
   return true;
 }
+
+// --- Row operations -------------------------------------------------------
+//
+// Rows map 1:1 to table_row nodes (rowspan doesn't create phantom rows), so the
+// caller's row index is already the logical row. But a rowspan cell can span a
+// deleted/inserted boundary, so the naive "delete/insert a row node" corrupts
+// merged tables. We rebuild the table from its logical origin cells — preserving
+// each origin cell's content — which keeps spans consistent and never loses a
+// cell's content (a rowspan cell deleted at its origin relocates down).
+
+interface OriginCell {
+  row: number;
+  col: number; // logical start column
+  colspan: number;
+  rowspan: number;
+  node: PmNode;
+}
+
+function tableToOrigins(table: PmNode, tablePos: number): { origins: OriginCell[]; rowCount: number; colCount: number } {
+  const { rowCells, colCount } = buildColumnGrid(table, tablePos);
+  const origins: OriginCell[] = [];
+  for (const rowArr of rowCells) {
+    for (const c of rowArr) {
+      origins.push({ row: c.rowIndex, col: c.logicalStart, colspan: c.colspan, rowspan: c.rowspan, node: c.node });
+    }
+  }
+  return { origins, rowCount: rowCells.length, colCount };
+}
+
+/** Rebuild a table node from origin cells, or null if any row would be empty
+ *  (an invalid/degenerate grid we refuse to touch rather than crash). */
+function rebuildTable(schema: Schema, table: PmNode, origins: OriginCell[], rowCount: number): PmNode | null {
+  const rows: PmNode[] = [];
+  for (let r = 0; r < rowCount; r++) {
+    const rowOrigins = origins.filter((o) => o.row === r).sort((a, b) => a.col - b.col);
+    if (rowOrigins.length === 0) return null; // a fully-covered row can't be represented
+    const cells = rowOrigins.map((o) =>
+      o.node.type.create({ ...o.node.attrs, colspan: o.colspan, rowspan: o.rowspan }, o.node.content),
+    );
+    rows.push(schema.nodes.table_row.create(null, cells));
+  }
+  try {
+    return table.type.create(table.attrs, rows);
+  } catch {
+    return null;
+  }
+}
+
+function emptyCell(schema: Schema): PmNode {
+  return schema.nodes.table_cell.create(null, schema.nodes.paragraph.create());
+}
+
+/** Insert a row before (`position: 'before'`) or after the given row index. */
+export function applyInsertRow(
+  tr: Transaction,
+  table: PmNode,
+  tablePos: number,
+  rowIndex: number,
+  position: 'before' | 'after',
+  schema: Schema,
+): boolean {
+  const { origins, rowCount, colCount } = tableToOrigins(table, tablePos);
+  const R = position === 'after' ? rowIndex + 1 : rowIndex;
+  if (R < 0 || R > rowCount) return false;
+
+  const newOrigins: OriginCell[] = [];
+  const coveredCols = new Set<number>();
+  for (const o of origins) {
+    const oEnd = o.row + o.rowspan - 1;
+    if (o.row < R && oEnd >= R) {
+      // The new row splits this cell's vertical span — widen it.
+      for (let c = o.col; c < o.col + o.colspan; c++) coveredCols.add(c);
+      newOrigins.push({ ...o, rowspan: o.rowspan + 1 });
+    } else if (o.row >= R) {
+      newOrigins.push({ ...o, row: o.row + 1 });
+    } else {
+      newOrigins.push(o);
+    }
+  }
+  // Fresh empty cells for every logical column not covered by a widened span.
+  for (let c = 0; c < colCount; c++) {
+    if (!coveredCols.has(c)) {
+      newOrigins.push({ row: R, col: c, colspan: 1, rowspan: 1, node: emptyCell(schema) });
+    }
+  }
+  const newTable = rebuildTable(schema, table, newOrigins, rowCount + 1);
+  if (!newTable) return false;
+  tr.replaceWith(tablePos, tablePos + table.nodeSize, newTable);
+  return true;
+}
+
+/** Delete the row at `rowIndex`, shrinking spans and relocating a rowspan cell's
+ *  content down instead of losing it. */
+export function applyDeleteRow(
+  tr: Transaction,
+  table: PmNode,
+  tablePos: number,
+  rowIndex: number,
+  schema: Schema,
+): boolean {
+  const { origins, rowCount } = tableToOrigins(table, tablePos);
+  if (rowCount <= 1 || rowIndex < 0 || rowIndex >= rowCount) return false;
+  const R = rowIndex;
+
+  const newOrigins: OriginCell[] = [];
+  for (const o of origins) {
+    const oEnd = o.row + o.rowspan - 1;
+    if (o.row < R) {
+      // Starts above; shrink if it covers the deleted row.
+      newOrigins.push({ ...o, rowspan: oEnd >= R ? o.rowspan - 1 : o.rowspan });
+    } else if (o.row === R) {
+      // Origin in the deleted row: rowspan 1 disappears; rowspan>1 relocates its
+      // content down into the row that takes R's place (rowspan − 1).
+      if (o.rowspan > 1) newOrigins.push({ ...o, row: R, rowspan: o.rowspan - 1 });
+    } else {
+      newOrigins.push({ ...o, row: o.row - 1 }); // below: shift up
+    }
+  }
+  const newTable = rebuildTable(schema, table, newOrigins, rowCount - 1);
+  if (!newTable) return false;
+  tr.replaceWith(tablePos, tablePos + table.nodeSize, newTable);
+  return true;
+}

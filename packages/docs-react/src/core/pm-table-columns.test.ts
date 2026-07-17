@@ -4,6 +4,8 @@ import { docsSchema } from '@weavertime/spindle-docs-core';
 import {
   applyInsertColumn,
   applyDeleteColumn,
+  applyInsertRow,
+  applyDeleteRow,
   buildColumnGrid,
   logicalColumnForCell,
 } from './pm-table-columns';
@@ -11,6 +13,16 @@ import {
 const schema = docsSchema;
 const cell = (attrs: Record<string, unknown> = {}): PmNode =>
   schema.nodes.table_cell.create(attrs, schema.nodes.paragraph.create());
+const cellText = (text: string, attrs: Record<string, unknown> = {}): PmNode =>
+  schema.nodes.table_cell.create(attrs, schema.nodes.paragraph.create(null, schema.text(text)));
+/** All non-empty text in the table, for content-loss checks. */
+const tableText = (t: PmNode): string[] => {
+  const out: string[] = [];
+  t.descendants((n) => {
+    if (n.isText && n.text) out.push(n.text);
+  });
+  return out;
+};
 const row = (...cells: PmNode[]): PmNode => schema.nodes.table_row.create(null, cells);
 const table = (...rows: PmNode[]): PmNode => schema.nodes.table.create(null, rows);
 const docWith = (t: PmNode): PmNode => schema.nodes.doc.create(null, t);
@@ -106,5 +118,52 @@ describe('pm-table-columns — merged tables stay rectangular (the corruption fi
     expect(out.child(0).child(0).attrs.colspan).toBe(1);
     expect(out.child(0).child(0).attrs.rowspan).toBe(2);
     expect(out.child(2).childCount).toBe(2);
+  });
+});
+
+describe('pm-table-columns — span-aware row ops (no ragged grid, no content loss)', () => {
+  // 2x2 span at top-left carrying text "A"; the third column of rows 0/1, and a
+  // plain third row, carry identifiable text.
+  const merged = table(
+    row(cellText('A', { colspan: 2, rowspan: 2 }), cellText('b0')),
+    row(cellText('b1')),
+    row(cellText('c0'), cellText('c1'), cellText('c2')),
+  );
+
+  it('insert a row through the span widens it and keeps the grid rectangular', () => {
+    const out = run(merged, (tr, t) => applyInsertRow(tr, t, 0, 0, 'after', schema));
+    expect(rowLogicalWidths(out)).toEqual([3, 3, 3, 3]); // 4 rows now
+    // The 2x2 span became 2x3 (covers the inserted row) — content preserved.
+    expect(out.child(0).child(0).attrs.rowspan).toBe(3);
+    expect(out.child(0).child(0).attrs.colspan).toBe(2);
+    expect(tableText(out)).toContain('A');
+  });
+
+  it('delete a row a rowspan reaches into shrinks the span (no orphaned coverage)', () => {
+    const out = run(merged, (tr, t) => applyDeleteRow(tr, t, 0, 1, schema));
+    expect(rowLogicalWidths(out)).toEqual([3, 3]);
+    // Span shrank from rowspan 2 to 1; all cell text survives.
+    expect(out.child(0).child(0).attrs.rowspan).toBe(1);
+    expect(tableText(out).sort()).toEqual(['A', 'b0', 'c0', 'c1', 'c2'].sort());
+  });
+
+  it('delete the row a rowspan ORIGINATES in relocates its content, not loses it', () => {
+    const out = run(merged, (tr, t) => applyDeleteRow(tr, t, 0, 0, schema));
+    expect(rowLogicalWidths(out)).toEqual([3, 3]);
+    // "A" must survive (relocated down), not vanish.
+    expect(tableText(out)).toContain('A');
+    // b0 (rowspan-1 plain cell in the deleted row) is gone; b1 stays.
+    const text = tableText(out).sort();
+    expect(text).toContain('b1');
+    expect(text).not.toContain('b0');
+  });
+
+  it('plain-table row insert/delete round-trips', () => {
+    const plain = table(row(cell(), cell()), row(cell(), cell()));
+    const grown = run(plain, (tr, t) => applyInsertRow(tr, t, 0, 0, 'after', schema));
+    expect(grown.childCount).toBe(3);
+    expect(rowLogicalWidths(grown)).toEqual([2, 2, 2]);
+    const shrunk = run(grown, (tr, t) => applyDeleteRow(tr, t, 0, 1, schema));
+    expect(shrunk.childCount).toBe(2);
   });
 });
