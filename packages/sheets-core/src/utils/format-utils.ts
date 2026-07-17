@@ -335,6 +335,27 @@ export function excelDateToJS(serial: number): Date {
   return new Date(utcValue);
 }
 
+const EXCEL_EPOCH_UTC = Date.UTC(1899, 11, 30); // serial 0, matching excelDateToJS
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Inverse of excelDateToJS for a `YYYY-MM-DD` string. Works in UTC (like
+ * excelDateToJS), so the round trip is timezone-independent — a local-time
+ * inverse drifts by a day in negative-UTC zones.
+ */
+export function dateStringToExcelSerial(dateStr: string): number {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  return Math.round((Date.UTC(y, mo - 1, d) - EXCEL_EPOCH_UTC) / DAY_MS);
+}
+
+/** Inverse of excelDateToJS for a `YYYY-MM-DDTHH:MM` string (UTC). */
+export function dateTimeStringToExcelSerial(dateTimeStr: string): number {
+  const [datePart, timePart = '00:00'] = dateTimeStr.split('T');
+  const [y, mo, d] = datePart.split('-').map(Number);
+  const [hh, mm] = timePart.split(':').map(Number);
+  return (Date.UTC(y, mo - 1, d, hh, mm) - EXCEL_EPOCH_UTC) / DAY_MS;
+}
+
 /**
  * Convert JavaScript Date to Excel date serial
  */

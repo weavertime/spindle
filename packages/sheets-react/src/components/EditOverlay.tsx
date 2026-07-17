@@ -1,6 +1,6 @@
 import React, { memo, useRef, useEffect, useCallback, useState, useImperativeHandle, forwardRef } from 'react';
 import type { CellFormat } from '@weavertime/spindle-sheets-core';
-import { excelDateToJS } from '@weavertime/spindle-sheets-core';
+import { excelDateToJS, dateStringToExcelSerial, dateTimeStringToExcelSerial } from '@weavertime/spindle-sheets-core';
 
 export interface EditOverlayRef {
   insertAtCursor: (text: string, replaceExisting?: boolean) => void;
@@ -83,27 +83,26 @@ export const EditOverlay = memo(forwardRef<EditOverlayRef, EditOverlayProps>(fun
     return '';
   }, [value, cellFormat, showDatePicker, showTimePicker, showDateTimePicker]);
 
-  // Convert HTML date/time input back to Excel serial number
+  // Convert an HTML date/time input value back to an Excel serial number.
+  // getPickerValue / excelDateToJS work in UTC (serial 0 = 1899-12-30 UTC), so
+  // this inverse must build the serial in UTC too — a local-time round trip
+  // drifts by a whole day in negative-UTC timezones (the picker showed the right
+  // date but committing it decremented the stored serial).
   const convertPickerToSerial = useCallback((pickerValue: string) => {
     if (!pickerValue) return '';
-
-    let jsDate: Date;
+    const DAY_MS = 24 * 60 * 60 * 1000;
 
     if (showDatePicker) {
-      jsDate = new Date(pickerValue + 'T00:00:00');
+      return String(dateStringToExcelSerial(pickerValue));
     } else if (showTimePicker) {
-      // For time-only, assume today's date
+      // For time-only, assume today's date (behavior unchanged).
       const today = new Date().toISOString().split('T')[0];
-      jsDate = new Date(today + 'T' + pickerValue + ':00');
+      const jsDate = new Date(today + 'T' + pickerValue + ':00');
+      return String(Math.floor((jsDate.getTime() - new Date(1899, 11, 30).getTime()) / DAY_MS));
     } else if (showDateTimePicker) {
-      jsDate = new Date(pickerValue);
-    } else {
-      return pickerValue;
+      return String(dateTimeStringToExcelSerial(pickerValue));
     }
-
-    // Convert to Excel date serial number
-    const excelSerial = Math.floor((jsDate.getTime() - new Date(1899, 11, 30).getTime()) / (24 * 60 * 60 * 1000));
-    return excelSerial.toString();
+    return pickerValue;
   }, [showDatePicker, showTimePicker, showDateTimePicker]);
   
   // Track the last inserted reference position for replacement

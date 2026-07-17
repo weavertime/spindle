@@ -780,13 +780,20 @@ export class CanvasRenderer {
     let headerWidthOffset = this.headerWidth;
     let headerHeightOffset = this.headerHeight;
     
+    // When the region's header offset already includes the frozen extent, the
+    // grid-line accumulation must start at the frozen boundary (matching how the
+    // cells are positioned) rather than at index 0.
+    let firstAccumRow = 0;
+    let firstAccumCol = 0;
     if (region === 'main' || region === 'top') {
       headerWidthOffset = this.headerWidth + frozenWidth;
+      firstAccumCol = this.frozenCols;
     }
     if (region === 'main' || region === 'left') {
       headerHeightOffset = this.headerHeight + frozenHeight;
+      firstAccumRow = this.frozenRows;
     }
-    
+
     this.gridRenderer.renderGridLines(
       this.ctx,
       regionViewport,
@@ -801,7 +808,9 @@ export class CanvasRenderer {
       startCol,
       endCol,
       state.hiddenRows,
-      state.hiddenCols
+      state.hiddenCols,
+      firstAccumRow,
+      firstAccumCol
     );
   }
   
