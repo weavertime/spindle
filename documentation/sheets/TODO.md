@@ -31,6 +31,12 @@ statistical, date/time, information, financial, reference and array categories
 - [ ] **`#SPILL!` auto-recovery** — a blocked anchor does not re-spill when the
       blocking cell is cleared; the anchor isn't a dependency of the blocker, so
       it's never marked dirty. The formula must be re-entered (`workbook.ts`).
+- [ ] **Missing functions** — a handful of common functions have no catalog
+      entry yet: `TRANSPOSE` (a `transpose` *helper* exists but isn't exported as
+      a function), `YEARFRAC`, `TEXTSPLIT`, `TEXTBEFORE` / `TEXTAFTER`, `EVEN` /
+      `ODD`, and `SUMSQ`. Also `INDEX(range, 0, col)` / `INDEX(range, row, 0)`
+      (whole-column / whole-row array form) returns `#REF!` instead of the
+      column/row (`functions/lookup.ts`).
 
 ## Feature parity
 
@@ -57,12 +63,6 @@ Gaps against Excel / Google Sheets in the non-formula feature set.
       multi-column toggle-cycle logic, but the React layer only ever builds a
       single-key sort (`WorkbookCanvas.tsx`); the multi-column path is never
       exposed.
-
-### Rough edges within shipped features
-
-- [ ] **CSV import robustness** — `importFromCSV` splits on `\n` before field
-      parsing, so embedded newlines inside quoted fields break import
-      (`export/csv.ts`).
 
 ## Already shipped
 

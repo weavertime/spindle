@@ -60,6 +60,12 @@ Verified absent in code.
 - [ ] **Single-section only under collab** — `setData` is disallowed while
       attached, and IndexedDB persistence is browser-only (`collab/binding.ts`,
       `collab/y-schema.ts`).
+- [ ] **Inline images & dynamic fields lost on the collab round-trip** — the
+      block↔ProseMirror conversion the collab hydrate/serialize path uses
+      (`prosemirror/sync.ts`) has no inline PM node type for an inline image run
+      or a `DynamicFieldRun`, so `inlineContentToPm` drops them. Needs new inline
+      schema nodes (+ their render paths). Non-collab `getData/setData` is
+      unaffected (it passes blocks by reference, never through PM).
 
 ## Known limitations (from code)
 

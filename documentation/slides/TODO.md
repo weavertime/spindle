@@ -35,6 +35,11 @@ Not in the current scope; verified absent in code.
       (`ImageFormatBar.tsx`, `Toolbar.tsx`).
 - [ ] **Free-form image crop** — only object-fit modes (fill/contain/cover);
       no region crop (`scene/types.ts`).
+- [ ] **Text autofit / shrink-to-fit** — there is no autofit anywhere in text
+      layout: text that overflows its box is clipped (and with middle/bottom
+      vertical alignment the overflow clips at the *top*, dropping leading
+      lines). No `bodyStyle` autofit flag and nothing scales the font size to fit
+      (`text/` layout, `elements/*Text*`).
 - [ ] **Rich speaker notes** — notes are plain-text only (`NotesPanel.tsx`).
 - [ ] **Real PDF / PNG export backend** — intentionally **not** in these
       packages; export is delegated to the host app (`SlidesEditor.tsx`). A
