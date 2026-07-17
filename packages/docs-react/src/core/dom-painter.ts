@@ -1313,8 +1313,31 @@ export class DomPainter {
 
                   this.applyCommentDecoration(span, run);
                   p.appendChild(span);
+                } else if (run.kind === 'link') {
+                  // A link run must render as an anchor — the previous loop only
+                  // handled text/lineBreak, so links in a cell rendered as nothing.
+                  const a = document.createElement('a');
+                  a.textContent = run.text;
+                  a.href = sanitizeHref(run.href);
+                  a.style.cssText = `color: ${safeCssColor(run.color) || '#1a73e8'}; text-decoration: underline;${run.bold ? ' font-weight: bold;' : ''}${run.italic ? ' font-style: italic;' : ''}`;
+                  const linkStart = paragraphPmStart + 1 + runCharOffset;
+                  a.dataset.pmStart = String(linkStart);
+                  a.dataset.pmEnd = String(linkStart + run.text.length);
+                  runCharOffset += run.text.length;
+                  this.applyCommentDecoration(a, run);
+                  p.appendChild(a);
+                } else if (run.kind === 'image') {
+                  const img = document.createElement('img');
+                  img.src = sanitizeImageSrc(run.src);
+                  img.alt = run.alt || '';
+                  img.width = run.width * this.config.scale;
+                  img.height = run.height * this.config.scale;
+                  runCharOffset += 1; // an inline image is one PM position
+                  p.appendChild(img);
                 } else if (run.kind === 'lineBreak') {
                   p.appendChild(document.createElement('br'));
+                  runCharOffset += 1; // a hard break is one PM position — advance,
+                  // or every subsequent cell's PM positions drift by one.
                 }
               }
               
