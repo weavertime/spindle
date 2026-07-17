@@ -47,15 +47,21 @@ export class SheetImpl implements Sheet {
   // width, hide/show, freeze, filter, sort). The collab binding wires
   // this on attachCollab to mirror the sheet's metadata + order maps
   // into the Y.Doc. No-op when collab is detached.
-  protected structureChangeListener: (() => void) | undefined;
+  protected structureChangeListener: ((affectsFormulas: boolean) => void) | undefined;
 
-  /** @internal Used by the collab binding only. */
-  __setStructureChangeListener(listener: (() => void) | undefined): void {
+  /** @internal Used by the workbook (recalc + collab mirror). */
+  __setStructureChangeListener(listener: ((affectsFormulas: boolean) => void) | undefined): void {
     this.structureChangeListener = listener;
   }
 
-  protected notifyStructureChange(): void {
-    this.structureChangeListener?.();
+  /**
+   * Notify a structural change. `affectsFormulas` is true only for edits that
+   * shift cell references (insert/delete row/col) — cosmetic changes like column
+   * width, row height, hide, and freeze pass false so they don't trigger a
+   * full-workbook recalc (which would fire on every mousemove of a resize drag).
+   */
+  protected notifyStructureChange(affectsFormulas = false): void {
+    this.structureChangeListener?.(affectsFormulas);
   }
 
   constructor(id: string, name: string, config: Partial<SheetConfig> = {}) {
@@ -255,27 +261,27 @@ export class SheetImpl implements Sheet {
   insertRows(startRow: number, count: number): void {
     this.shiftOrder(this.rowOrder, this.rowIdToIndex, startRow, count);
     this.rowCount += count;
-    this.notifyStructureChange();
+    this.notifyStructureChange(true);
   }
 
   deleteRows(startRow: number, count: number): void {
     this.removeOrderRange(this.rowOrder, this.rowIdToIndex, startRow, count, /*isRow*/ true);
     this.shiftOrder(this.rowOrder, this.rowIdToIndex, startRow + count, -count, startRow);
     this.rowCount = Math.max(0, this.rowCount - count);
-    this.notifyStructureChange();
+    this.notifyStructureChange(true);
   }
 
   insertCols(startCol: number, count: number): void {
     this.shiftOrder(this.colOrder, this.colIdToIndex, startCol, count);
     this.colCount += count;
-    this.notifyStructureChange();
+    this.notifyStructureChange(true);
   }
 
   deleteCols(startCol: number, count: number): void {
     this.removeOrderRange(this.colOrder, this.colIdToIndex, startCol, count, /*isRow*/ false);
     this.shiftOrder(this.colOrder, this.colIdToIndex, startCol + count, -count, startCol);
     this.colCount = Math.max(0, this.colCount - count);
-    this.notifyStructureChange();
+    this.notifyStructureChange(true);
   }
 
   /** Shift every order entry with index >= threshold by `delta`. */

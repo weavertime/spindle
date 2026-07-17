@@ -28,6 +28,9 @@ export const arrayFunctions: Record<string, EagerFn> = {
     const start = args[2] !== undefined ? toNum(args[2]) : 1;
     const step = args[3] !== undefined ? toNum(args[3]) : 1;
     if (rows < 1 || cols < 1) throw new Error('#VALUE!');
+    // Cap total size so a huge SEQUENCE (used as a function arg, not spilled)
+    // can't allocate unboundedly and freeze/OOM the thread.
+    if (rows * cols > 1_000_000) throw new Error('#NUM!');
     const out: unknown[][] = [];
     let value = start;
     for (let r = 0; r < rows; r++) {

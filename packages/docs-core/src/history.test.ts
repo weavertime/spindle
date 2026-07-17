@@ -41,6 +41,19 @@ describe('DocumentHistory', () => {
     expect(h.canRedo()).toBe(false);
   });
 
+  it('an edit within the debounce window after an undo clears redo (not folds)', () => {
+    // The default 300ms debounce would previously return early before clearing
+    // redo, leaving a stale redo entry and clobbering the pre-undo undo entry.
+    const h = new DocumentHistory({ debounceMs: 300 });
+    h.record(sectionsWith('A'));
+    h.record(sectionsWith('B')); // folds into A under debounce → one entry
+    h.undo(sectionsWith('cur'));
+    expect(h.canRedo()).toBe(true);
+    h.record(sectionsWith('C')); // fresh branch within the debounce window
+    expect(h.canRedo()).toBe(false); // redo cleared
+    expect(h.canUndo()).toBe(true); // the new edit is its own entry
+  });
+
   it('deep-clones snapshots so post-record mutation does not leak in', () => {
     const h = history();
     const sections = sectionsWith('original');

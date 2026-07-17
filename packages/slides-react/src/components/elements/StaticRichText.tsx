@@ -142,14 +142,22 @@ export interface StaticRichTextProps {
 }
 
 function StaticRichTextImpl({ doc, theme }: StaticRichTextProps): React.ReactElement {
-  // Running counter for ordered lists — resets whenever a paragraph is not a
-  // numbered item at the same nesting level.
-  let counter = 0;
+  // Per-nesting-level ordered-list counters. A numbered item continues its own
+  // level's sequence and restarts any deeper levels; a non-numbered paragraph
+  // breaks the list. (A single flat counter numbered nested lists continuously.)
+  const counters: number[] = [];
   const children = doc.content.map((p, i) => {
     const attrs = p.attrs ?? {};
-    if ((attrs.listType ?? 'none') === 'number') counter += 1;
-    else counter = 0;
-    return renderParagraph(p, theme, i, counter);
+    const level = (attrs.indent as number) ?? 0;
+    let ordinal = 0;
+    if ((attrs.listType ?? 'none') === 'number') {
+      counters[level] = (counters[level] ?? 0) + 1;
+      counters.length = level + 1; // entering this level ends deeper sub-lists
+      ordinal = counters[level];
+    } else {
+      counters.length = 0;
+    }
+    return renderParagraph(p, theme, i, ordinal);
   });
   return <>{children}</>;
 }

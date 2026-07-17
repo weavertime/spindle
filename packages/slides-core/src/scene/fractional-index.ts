@@ -97,6 +97,19 @@ export function indexesBetween(a: string | null, b: string | null, n: number): s
 }
 
 /**
+ * True if `key` is a well-formed ordering key: a non-empty base-62 string that
+ * does not end in the smallest digit ('0'). Ingested/authored data that violates
+ * this (e.g. a bare '0', or an out-of-alphabet char) would crash midpoint()/
+ * indexBetween() on the next structural edit, so callers repair it first.
+ */
+export function isValidIndex(key: unknown): key is string {
+  if (typeof key !== 'string' || key.length === 0) return false;
+  if (key.endsWith(ZERO)) return false;
+  for (const ch of key) if (digitIndex(ch) === -1) return false;
+  return true;
+}
+
+/**
  * Return a new array sorted ascending by `.index`, breaking ties by `.id` so
  * the order is fully deterministic even in the (jitter-guarded) event of two
  * equal indices.

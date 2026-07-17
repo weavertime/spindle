@@ -10,7 +10,14 @@
 
 import { EditorView } from 'prosemirror-view';
 import { Node as PmNode } from 'prosemirror-model';
-import { applyInsertColumn, applyDeleteColumn, logicalColumnForCell } from './pm-table-columns';
+import {
+  applyInsertColumn,
+  applyDeleteColumn,
+  applyInsertRow,
+  applyDeleteRow,
+  applyColumnResize,
+  logicalColumnForCell,
+} from './pm-table-columns';
 
 // ============================================================================
 // Types
@@ -960,51 +967,21 @@ export class TableInteractionManager {
   // Table Modification Commands
   // ============================================================================
   
+  // Span-aware row insert: widens a rowspan cell that straddles the boundary and
+  // fills only the uncovered logical columns of the new row (rows map 1:1 to
+  // table_row nodes, so rowIndex is already logical).
   private insertRow(rowIndex: number, position: 'before' | 'after'): void {
     if (!this.editorView || !this.contextMenuTarget) return;
-    
     const { pmStart } = this.contextMenuTarget;
     const { state, dispatch } = this.editorView;
-    const { schema } = state;
-    
-    // Find the table node
-    const $pos = state.doc.resolve(pmStart + 1);
-    let tableNode = null;
-    let tablePos = pmStart;
-    
-    for (let d = $pos.depth; d >= 0; d--) {
-      const node = $pos.node(d);
-      if (node.type.name === 'table') {
-        tableNode = node;
-        tablePos = $pos.before(d);
-        break;
-      }
+    const found = this.findTable(pmStart);
+    if (!found) return;
+
+    const tr = state.tr;
+    if (applyInsertRow(tr, found.tableNode, found.tablePos, rowIndex, position, state.schema)) {
+      dispatch(tr);
+      this.onTableUpdate?.();
     }
-    
-    if (!tableNode) return;
-    
-    // Get number of columns from first row
-    const firstRow = tableNode.firstChild;
-    const colCount = firstRow ? firstRow.childCount : 1;
-    
-    // Create new row with empty cells
-    const cells = [];
-    for (let i = 0; i < colCount; i++) {
-      cells.push(schema.nodes.table_cell.create(null, schema.nodes.paragraph.create()));
-    }
-    const newRow = schema.nodes.table_row.create(null, cells);
-    
-    // Calculate insert position
-    const targetRowIndex = position === 'after' ? rowIndex + 1 : rowIndex;
-    let insertPos = tablePos + 1; // Enter table
-    
-    for (let i = 0; i < targetRowIndex && i < tableNode.childCount; i++) {
-      insertPos += tableNode.child(i).nodeSize;
-    }
-    
-    const tr = state.tr.insert(insertPos, newRow);
-    dispatch(tr);
-    this.onTableUpdate?.();
   }
   
   /** Resolve the enclosing table node and its start position from a pmStart. */
@@ -1039,40 +1016,20 @@ export class TableInteractionManager {
     }
   }
   
+  // Span-aware row delete: shrinks a rowspan cell that covers the deleted row and
+  // relocates a rowspan cell's content down instead of losing it.
   private deleteRow(rowIndex: number): void {
     if (!this.editorView || !this.contextMenuTarget) return;
-    
     const { pmStart } = this.contextMenuTarget;
     const { state, dispatch } = this.editorView;
-    
-    // Find the table node
-    const $pos = state.doc.resolve(pmStart + 1);
-    let tableNode = null;
-    let tablePos = pmStart;
-    
-    for (let d = $pos.depth; d >= 0; d--) {
-      const node = $pos.node(d);
-      if (node.type.name === 'table') {
-        tableNode = node;
-        tablePos = $pos.before(d);
-        break;
-      }
+    const found = this.findTable(pmStart);
+    if (!found) return;
+
+    const tr = state.tr;
+    if (applyDeleteRow(tr, found.tableNode, found.tablePos, rowIndex, state.schema)) {
+      dispatch(tr);
+      this.onTableUpdate?.();
     }
-    
-    if (!tableNode || tableNode.childCount <= 1) return; // Don't delete last row
-    
-    // Calculate row position
-    let rowStart = tablePos + 1;
-    for (let i = 0; i < rowIndex && i < tableNode.childCount; i++) {
-      rowStart += tableNode.child(i).nodeSize;
-    }
-    
-    const rowNode = tableNode.child(rowIndex);
-    const rowEnd = rowStart + rowNode.nodeSize;
-    
-    const tr = state.tr.delete(rowStart, rowEnd);
-    dispatch(tr);
-    this.onTableUpdate?.();
   }
   
   // colIndex is a LOGICAL column. The span-aware transform shrinks a spanning
@@ -1195,34 +1152,15 @@ export class TableInteractionManager {
       }
       
       if (!tableNode) return;
-      
-      let tr = state.tr;
-      let currentRowPos = tablePos + 1; // Enter the table node
-      
-      tableNode.forEach((rowNode) => {
-        if (index >= rowNode.childCount) {
-          currentRowPos += rowNode.nodeSize;
-          return;
-        }
-        
-        // Calculate position of the target cell in this row
-        let cellPos = currentRowPos + 1; // Enter the row node
-        for (let i = 0; i < index; i++) {
-          cellPos += rowNode.child(i).nodeSize;
-        }
-        
-        const cellNode = rowNode.child(index);
-        const newWidths = [newWidth];
-        
-        tr = tr.setNodeMarkup(cellPos, null, {
-          ...cellNode.attrs,
-          colwidth: newWidths,
-        });
-        
-        currentRowPos += rowNode.nodeSize;
-      });
-      
-      dispatch(tr);
+
+      // The handle's `index` is a physical cell index in row 0; resize the
+      // logical column it starts at, span-aware, so merged tables don't get
+      // colwidth stamped on the wrong column (or a length-1 array on a span).
+      const logicalCol = logicalColumnForCell(tableNode, tablePos, 0, index);
+      const tr = state.tr;
+      if (applyColumnResize(tr, tableNode, tablePos, logicalCol, newWidth)) {
+        dispatch(tr);
+      }
     }
     // Row height is typically handled by cell content, but we could add similar logic if needed
   }

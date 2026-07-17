@@ -19,7 +19,11 @@ export class SortManager {
   ): void {
     if (sortOrder.length === 0) return;
 
-    const startRow = dataRange?.startRow ?? this.detectDataStartRow(sheet);
+    // Treat the first populated row as a header and keep it in place — matching
+    // FilterManager, which always treats row 0 as a header. Without this the
+    // header sorts as a data row (e.g. "Name" drags to the bottom). An explicit
+    // dataRange overrides the auto-detected header.
+    const startRow = dataRange?.startRow ?? this.detectDataStartRow(sheet) + 1;
     const endRow = dataRange?.endRow ?? this.detectDataEndRow(sheet);
     if (startRow >= endRow) return;
 

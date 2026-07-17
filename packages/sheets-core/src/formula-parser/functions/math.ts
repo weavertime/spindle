@@ -1,7 +1,14 @@
 // Math and aggregation functions.
 
 import type { EagerFn } from './helpers';
-import { flatten, toNum, strictNumbers, matchesCriterion } from './helpers';
+import { flatten, toNum, strictNumbers, matchesCriterion, toSumNum, isErrorValue } from './helpers';
+
+/** Number of a summed cell, propagating an error value but skipping non-numeric text. */
+function summedNumberOrThrow(v: unknown): number | null {
+  if (typeof v === 'string' && isErrorValue(v)) throw new Error(v);
+  const n = Number(v);
+  return isNaN(n) ? null : n;
+}
 
 function sum(nums: number[]): number {
   return nums.reduce((a, b) => a + b, 0);
@@ -96,8 +103,7 @@ export const mathFunctions: Record<string, EagerFn> = {
     for (let i = 0; i < length; i++) {
       let product = 1;
       for (const list of lists) {
-        const n = Number(list[i]);
-        product *= isNaN(n) ? 0 : n;
+        product *= toSumNum(list[i]); // error propagates; text/blank → 0
       }
       total += product;
     }
@@ -111,8 +117,8 @@ export const mathFunctions: Record<string, EagerFn> = {
     let total = 0;
     for (let i = 0; i < range.length; i++) {
       if (matchesCriterion(range[i], criterion)) {
-        const n = Number(sumRange[i]);
-        if (!isNaN(n)) total += n;
+        const n = summedNumberOrThrow(sumRange[i]);
+        if (n !== null) total += n;
       }
     }
     return total;
@@ -123,8 +129,8 @@ export const mathFunctions: Record<string, EagerFn> = {
     const indices = matchingIndices(args.slice(1));
     let total = 0;
     for (const i of indices) {
-      const n = Number(sumRange[i]);
-      if (!isNaN(n)) total += n;
+      const n = summedNumberOrThrow(sumRange[i]);
+      if (n !== null) total += n;
     }
     return total;
   },
@@ -144,8 +150,8 @@ export const mathFunctions: Record<string, EagerFn> = {
     const matched: number[] = [];
     for (let i = 0; i < range.length; i++) {
       if (matchesCriterion(range[i], criterion)) {
-        const n = Number(avgRange[i]);
-        if (!isNaN(n)) matched.push(n);
+        const n = summedNumberOrThrow(avgRange[i]);
+        if (n !== null) matched.push(n);
       }
     }
     if (matched.length === 0) throw new Error('#DIV/0!');
@@ -157,8 +163,8 @@ export const mathFunctions: Record<string, EagerFn> = {
     const indices = matchingIndices(args.slice(1));
     const matched: number[] = [];
     for (const i of indices) {
-      const n = Number(avgRange[i]);
-      if (!isNaN(n)) matched.push(n);
+      const n = summedNumberOrThrow(avgRange[i]);
+      if (n !== null) matched.push(n);
     }
     if (matched.length === 0) throw new Error('#DIV/0!');
     return sum(matched) / matched.length;
@@ -232,6 +238,9 @@ export const mathFunctions: Record<string, EagerFn> = {
     const n = toNum(args[0]);
     const significance = args[1] !== undefined ? toNum(args[1]) : 1;
     if (significance === 0) return 0;
+    // Excel: a positive number with negative significance is #NUM! (signs must
+    // agree unless the number is 0).
+    if (n > 0 && significance < 0) throw new Error('#NUM!');
     return Math.ceil(n / significance) * significance;
   },
 
@@ -239,6 +248,7 @@ export const mathFunctions: Record<string, EagerFn> = {
     const n = toNum(args[0]);
     const significance = args[1] !== undefined ? toNum(args[1]) : 1;
     if (significance === 0) return 0;
+    if (n > 0 && significance < 0) throw new Error('#NUM!');
     return Math.floor(n / significance) * significance;
   },
 

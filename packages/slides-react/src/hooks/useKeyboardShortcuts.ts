@@ -115,10 +115,11 @@ export function useKeyboardShortcuts(): { onKeyDown: (e: React.KeyboardEvent) =>
           break;
         }
         case 'd': {
-          const ids = selectedIds();
-          const copies = ids.map((id) => deck.duplicateElement(id)).filter(Boolean);
+          // Duplicate the whole selection in one action so grouping is preserved
+          // (a group duplicates to a group, not loose elements).
+          const copies = deck.duplicateElements(selectedIds());
           if (copies.length) {
-            deck.setSelection({ slideId: deck.getActiveSlideId(), elementIds: copies.map((c) => c!.id) });
+            deck.setSelection({ slideId: deck.getActiveSlideId(), elementIds: copies.map((c) => c.id) });
           }
           e.preventDefault();
           break;

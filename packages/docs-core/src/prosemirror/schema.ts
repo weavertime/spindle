@@ -88,9 +88,18 @@ const nodes: Record<string, NodeSpec> = {
 
   list_item: {
     content: 'paragraph block*',
-    parseDOM: [{ tag: 'li' }],
-    toDOM(): DOMOutputSpec {
-      return ['li', 0];
+    attrs: { level: { default: 0 } }, // nesting depth; preserved across collab round-trips
+    parseDOM: [
+      {
+        tag: 'li',
+        getAttrs(dom: HTMLElement) {
+          const lvl = dom.getAttribute('data-level');
+          return { level: lvl ? parseInt(lvl, 10) || 0 : 0 };
+        },
+      },
+    ],
+    toDOM(node): DOMOutputSpec {
+      return node.attrs.level ? ['li', { 'data-level': node.attrs.level }, 0] : ['li', 0];
     },
     defining: true,
   },
@@ -100,6 +109,9 @@ const nodes: Record<string, NodeSpec> = {
     group: 'block',
     tableRole: 'table',
     isolating: true,
+    // colWidths/styleId are model metadata carried across collab round-trips;
+    // toDOM doesn't emit them (the painter reads them from the block model).
+    attrs: { colWidths: { default: null }, styleId: { default: null } },
     parseDOM: [{ tag: 'table' }],
     toDOM(): DOMOutputSpec {
       return ['table', { class: 'docs-table' }, ['tbody', 0]];
@@ -109,6 +121,7 @@ const nodes: Record<string, NodeSpec> = {
   table_row: {
     content: '(table_cell | table_header)+',
     tableRole: 'row',
+    attrs: { height: { default: null } },
     parseDOM: [{ tag: 'tr' }],
     toDOM(): DOMOutputSpec {
       return ['tr', 0];
@@ -122,6 +135,7 @@ const nodes: Record<string, NodeSpec> = {
       rowspan: { default: 1 },
       colwidth: { default: null },
       backgroundColor: { default: null },
+      styleId: { default: null },
     },
     tableRole: 'cell',
     isolating: true,

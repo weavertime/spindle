@@ -61,10 +61,24 @@ export function importFromCSV(csv: string, sheet: Sheet): void {
       // Set any non-empty field (including whitespace-only, which is a real
       // value between commas: `a, ,c`). Empty fields are left blank.
       if (value !== '') {
-        sheet.setCellValue(row, col, value);
+        sheet.setCellValue(row, col, coerceCsvField(value));
       }
     });
   });
+}
+
+/**
+ * Coerce a CSV field to a number when it round-trips exactly (so exportToCSV's
+ * unquoted numbers re-import as numbers, per its own contract), while preserving
+ * as text anything where coercion would lose information — leading zeros
+ * ("007"), exponential spellings ("1e21"), or explicit trailing zeros ("5.0").
+ */
+function coerceCsvField(value: string): string | number {
+  const n = Number(value);
+  if (value.trim() !== '' && !Number.isNaN(n) && String(n) === value.trim()) {
+    return n;
+  }
+  return value;
 }
 
 /**

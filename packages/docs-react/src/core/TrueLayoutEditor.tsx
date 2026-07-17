@@ -232,16 +232,23 @@ export const TrueLayoutEditor = forwardRef<TrueLayoutEditorHandle, TrueLayoutEdi
     const contentWidth = Math.floor(
       (pageConfig.width - pageConfig.margins.left - pageConfig.margins.right) * zoom
     );
-    
+    // The measurer measures at NATURAL size (natural font, natural width); the
+    // layout engine and painter apply `scale: zoom` afterwards. Feeding it the
+    // zoomed width while it renders an unscaled font made its chars-per-line
+    // ratio wrong at any zoom != 1, mis-wrapping lines and mis-paginating.
+    const measureContentWidth = Math.floor(
+      pageConfig.width - pageConfig.margins.left - pageConfig.margins.right
+    );
+
     // Initialize measurer
     useEffect(() => {
-      measurerRef.current = new DomMeasurer({ contentWidth });
-      
+      measurerRef.current = new DomMeasurer({ contentWidth: measureContentWidth });
+
       return () => {
         measurerRef.current?.destroy();
         measurerRef.current = null;
       };
-    }, [contentWidth]);
+    }, [measureContentWidth]);
     
     // Header/footer click handler
     const handleHeaderFooterClick = useCallback((type: 'header' | 'footer', pageIndex: number) => {
@@ -764,7 +771,7 @@ export const TrueLayoutEditor = forwardRef<TrueLayoutEditorHandle, TrueLayoutEdi
     // Update layout when zoom changes
     useEffect(() => {
       if (editorView) {
-        measurerRef.current?.updateContentWidth(contentWidth);
+        measurerRef.current?.updateContentWidth(measureContentWidth);
         painterRef.current?.updateConfig({ scale: zoom, pageGap });
         tableInteractionRef.current?.setScale(zoom);
         imageInteractionRef.current?.setScale(zoom);

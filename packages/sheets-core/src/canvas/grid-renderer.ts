@@ -29,26 +29,33 @@ export class GridRenderer {
     startCol: number,
     endCol: number,
     hiddenRows?: Set<number>,
-    hiddenCols?: Set<number>
+    hiddenCols?: Set<number>,
+    // First row/column to accumulate offsets from. For a frozen region's
+    // scrolling pane, headerHeight/headerWidth already include the frozen extent,
+    // so accumulation must start at the frozen boundary — otherwise the frozen
+    // rows/cols are counted twice and the grid lines shift by the frozen extent
+    // (misaligned with the cells, which accumulate from the boundary).
+    firstAccumRow: number = 0,
+    firstAccumCol: number = 0
   ): void {
     const { scrollTop, scrollLeft, width, height } = viewport;
     const hidRows = hiddenRows ?? new Set<number>();
     const hidCols = hiddenCols ?? new Set<number>();
-    
+
     ctx.strokeStyle = this.theme.gridLineColor;
     ctx.lineWidth = this.theme.gridLineWidth;
-    
+
     // Calculate starting positions (skip hidden rows/cols)
     let startY = headerHeight;
-    for (let r = 0; r < startRow; r++) {
+    for (let r = firstAccumRow; r < startRow; r++) {
       if (!hidRows.has(r)) {
         startY += rowHeights.get(r) ?? defaultRowHeight;
       }
     }
     startY -= scrollTop;
-    
+
     let startX = headerWidth;
-    for (let c = 0; c < startCol; c++) {
+    for (let c = firstAccumCol; c < startCol; c++) {
       if (!hidCols.has(c)) {
         startX += colWidths.get(c) ?? defaultColWidth;
       }

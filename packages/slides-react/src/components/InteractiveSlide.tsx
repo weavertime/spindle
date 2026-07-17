@@ -48,12 +48,20 @@ function selectOnDown(deck: DeckImpl, slideId: string, id: string, shift: boolea
 const ANCHOR_GRAB = 16; // slide px: snap radius + hover margin for connection dots
 
 /** Map a slide-space point to the [row, col] of the table cell under it,
- *  clamped to the grid (points left/above/right/below snap to the edge cells). */
-function cellAtPoint(t: TableElement, p: Point): [number, number] {
+ *  clamped to the grid (points left/above/right/below snap to the edge cells).
+ *  `rowTops` are the *measured* content-driven row edges (rows+1 fractions of
+ *  box height); rows are rendered at those heights, not the legacy even
+ *  rowFractions, so the row hit-test must use them when available. */
+function cellAtPoint(t: TableElement, p: Point, rowTops?: number[]): [number, number] {
   let c = t.cols - 1, ax = t.x;
   for (let i = 0; i < t.cols; i++) { const cw = t.colFractions[i] * t.w; if (p.x < ax + cw) { c = i; break; } ax += cw; }
-  let r = t.rows - 1, ay = t.y;
-  for (let i = 0; i < t.rows; i++) { const rh = t.rowFractions[i] * t.h; if (p.y < ay + rh) { r = i; break; } ay += rh; }
+  let r = t.rows - 1;
+  if (rowTops && rowTops.length === t.rows + 1) {
+    for (let i = 0; i < t.rows; i++) { if (p.y < t.y + rowTops[i + 1] * t.h) { r = i; break; } }
+  } else {
+    let ay = t.y;
+    for (let i = 0; i < t.rows; i++) { const rh = t.rowFractions[i] * t.h; if (p.y < ay + rh) { r = i; break; } ay += rh; }
+  }
   return [r, c];
 }
 
@@ -63,7 +71,7 @@ function frameOf(el: { x: number; y: number; w: number; h: number; rotation: num
 
 export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: number }): React.ReactElement {
   const deck = useDeck();
-  const { nodes, transient, editing, connectors, tableSel } = useDeckContext();
+  const { nodes, transient, editing, connectors, tableSel, tableMetrics } = useDeckContext();
   const { w, h } = deck.getSlideSize();
   const surfaceRef = useRef<HTMLDivElement>(null);
   const lastDown = useRef<{ id: string; t: number }>({ id: '', t: 0 });
@@ -206,11 +214,11 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
       if (colSelEl) {
         const c0 = Number(colSelEl.getAttribute('data-col-select'));
         tableSel.set(tableId, [0, c0], [tbl.rows - 1, c0]);
-        gesture = { onMove(p) { tableSel.setFocus([tbl.rows - 1, cellAtPoint(tbl, p)[1]]); }, onEnd() {} };
+        gesture = { onMove(p) { tableSel.setFocus([tbl.rows - 1, cellAtPoint(tbl, p, tableMetrics.get(tbl.id))[1]]); }, onEnd() {} };
       } else {
         const r0 = Number(rowSelEl!.getAttribute('data-row-select'));
         tableSel.set(tableId, [r0, 0], [r0, tbl.cols - 1]);
-        gesture = { onMove(p) { tableSel.setFocus([cellAtPoint(tbl, p)[0], tbl.cols - 1]); }, onEnd() {} };
+        gesture = { onMove(p) { tableSel.setFocus([cellAtPoint(tbl, p, tableMetrics.get(tbl.id))[0], tbl.cols - 1]); }, onEnd() {} };
       }
     } else if (endpointEl?.dataset.endpoint) {
       // Drag a selected line's tip: resize + rotate at once. The tip snaps to a
@@ -310,7 +318,7 @@ export function InteractiveSlide({ slideId, scale }: { slideId: string; scale: n
         gesture = {
           onMove(p) {
             if (Math.hypot(p.x - startP.x, p.y - startP.y) > 3 / scale) moved = true;
-            tableSel.setFocus(cellAtPoint(tbl, p));
+            tableSel.setFocus(cellAtPoint(tbl, p, tableMetrics.get(tbl.id)));
           },
           onEnd() {
             if (isDouble && !moved) editing.setEditingId(id, cell!);

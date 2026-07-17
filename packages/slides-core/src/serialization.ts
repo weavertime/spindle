@@ -5,19 +5,22 @@
 // order-sensitive.
 
 import { generateId } from './utils/id';
-import { indexesBetween } from './scene/fractional-index';
+import { indexesBetween, isValidIndex } from './scene/fractional-index';
 import { getBuiltinTheme, DEFAULT_SLIDE_SIZE } from './theme/builtin';
 import type { SlideElement } from './scene/types';
 import type { DeckData, SlideData } from './types';
 
-/** Assign ascending fractional indices to items missing one, preserving array order. */
+/**
+ * Assign ascending fractional indices, preserving array order. The given indices
+ * are trusted only when EVERY item has a well-formed, unique key — otherwise the
+ * set can't be relied on for ordering, and a malformed key (missing, a bare '0',
+ * out-of-alphabet, or a duplicate) would crash the next structural edit. In that
+ * case we re-key the whole array in its current order.
+ */
 function ensureIndices<T extends { index?: string }>(items: T[]): Array<T & { index: string }> {
-  const allHaveIndex = items.every((it) => typeof it.index === 'string' && it.index.length > 0);
-  if (allHaveIndex) return items as Array<T & { index: string }>;
-  // Mixing given indices with freshly generated ones sorts unpredictably (an
-  // author's 'zzz' would jump ahead of a generated 'a2'). When any index is
-  // missing the set can't be trusted for ordering, so assign fresh monotonically
-  // increasing keys across the whole array — this preserves the given array order.
+  const allValid = items.every((it) => isValidIndex(it.index));
+  const unique = new Set(items.map((it) => it.index)).size === items.length;
+  if (allValid && unique) return items as Array<T & { index: string }>;
   const keys = indexesBetween(null, null, items.length);
   return items.map((it, i) => ({ ...it, index: keys[i] }));
 }

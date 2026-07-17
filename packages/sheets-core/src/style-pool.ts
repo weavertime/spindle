@@ -51,6 +51,26 @@ export class StylePool {
     this.styles = styles;
   }
 
+  /**
+   * Load an entire serialized style pool at once. Rebuilds both maps and the id
+   * counter in a single pass. (Do NOT set entries one at a time via setStyles —
+   * that replaces the whole map each call, collapsing the pool to one entry.)
+   */
+  load(entries: Record<string, CellStyle>): void {
+    this.styles = new Map();
+    this.styleToId = new Map();
+    let maxId = 0;
+    for (const [id, style] of Object.entries(entries)) {
+      // A peer/imported id could be __proto__/constructor; Map.set is safe.
+      if (id === '__proto__' || id === 'constructor' || id === 'prototype') continue;
+      this.styles.set(id, style);
+      this.styleToId.set(this.getStyleKey(style), id);
+      const n = parseInt(id.split('_')[1] || '0', 10);
+      if (Number.isFinite(n) && n > maxId) maxId = n;
+    }
+    this.nextId = maxId + 1;
+  }
+
   getNextId(): number {
     return this.nextId;
   }

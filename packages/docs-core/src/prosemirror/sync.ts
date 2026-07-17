@@ -103,6 +103,7 @@ function blockToPmNode(block: Block, stylePool?: TextStylePool): PmNodeJSON | nu
         listType: block.listType,
         content: [{
           type: 'list_item',
+          attrs: { level: block.level ?? 0 }, // preserve nesting depth across the round-trip
           content: [{
             type: 'paragraph',
             content: inlineContentToPm(block.content, stylePool),
@@ -113,13 +114,16 @@ function blockToPmNode(block: Block, stylePool?: TextStylePool): PmNodeJSON | nu
     case 'table':
       return {
         type: 'table',
+        attrs: { colWidths: block.colWidths ?? null, styleId: block.styleId ?? null },
         content: block.rows.map(row => ({
           type: 'table_row',
+          attrs: { height: row.height ?? null },
           content: row.cells.map(cell => ({
             type: 'table_cell',
             attrs: {
               colspan: cell.colspan || 1,
               rowspan: cell.rowspan || 1,
+              styleId: cell.styleId ?? null,
             },
             content: [{
               type: 'paragraph',
@@ -342,7 +346,7 @@ function pmNodeToBlocks(node: PmNode, startIndex: number, stylePool?: TextStyleP
           id: `block_${startIndex + index}_${Date.now()}`,
           type: 'list-item',
           listType,
-          level: 0,
+          level: (listItem.attrs.level as number) ?? 0,
           content,
         });
       });
@@ -366,18 +370,22 @@ function pmNodeToBlocks(node: PmNode, startIndex: number, stylePool?: TextStyleP
             content,
             colspan: cellNode.attrs.colspan,
             rowspan: cellNode.attrs.rowspan,
+            ...(cellNode.attrs.styleId ? { styleId: cellNode.attrs.styleId as string } : {}),
           });
         });
         rows.push({
           id: `row_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           cells,
+          ...(rowNode.attrs.height != null ? { height: rowNode.attrs.height as number } : {}),
         });
       });
-      
+
       return [{
         id: `block_${startIndex}_${Date.now()}`,
         type: 'table',
         rows,
+        ...(node.attrs.colWidths ? { colWidths: node.attrs.colWidths as number[] } : {}),
+        ...(node.attrs.styleId ? { styleId: node.attrs.styleId as string } : {}),
       }];
     }
       

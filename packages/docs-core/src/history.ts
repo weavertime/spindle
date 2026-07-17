@@ -39,8 +39,10 @@ export class DocumentHistory {
   record(sections: Section[], selection?: TextSelection, description?: string): void {
     const now = Date.now();
     
-    // Debounce rapid changes
-    if (now - this.lastRecordTime < (this.config.debounceMs || 0)) {
+    // Debounce rapid changes — but NOT right after an undo (redo pending): that
+    // edit is a fresh branch, so it must create a new entry and clear the redo
+    // stack (below), not fold into the pre-undo entry and leave redo stale.
+    if (now - this.lastRecordTime < (this.config.debounceMs || 0) && this.redoStack.length === 0) {
       // Update the last entry instead of creating a new one
       if (this.undoStack.length > 0) {
         const lastEntry = this.undoStack[this.undoStack.length - 1];

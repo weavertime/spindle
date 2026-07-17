@@ -41,6 +41,9 @@ export function formatNumber(value: number, format: CellFormat): string {
  * Format plain numbers with decimal places and thousands separator
  */
 export function formatPlainNumber(value: number, format: CellFormat): string {
+  // An explicit decimalPlaces is a FIXED count (Excel "Number, 2 decimals"
+  // shows 1.50); only when it's unset do we auto-trim trailing zeros.
+  const fixedDecimals = format.decimalPlaces !== undefined;
   const decimalPlaces = format.decimalPlaces ?? 2;
   const useThousands = format.useThousandsSeparator ?? true;
 
@@ -53,10 +56,12 @@ export function formatPlainNumber(value: number, format: CellFormat): string {
     formatted = parts.join('.');
   }
 
-  // Remove trailing zeros, but only when there's a decimal point — otherwise
-  // the optional '.' in the pattern eats an integer's real trailing zeros
-  // (100 -> "1", 1000 -> "1,").
-  formatted = formatted.includes('.') ? formatted.replace(/\.?0+$/, '') : formatted;
+  // Trim trailing zeros only in auto mode (no fixed decimalPlaces), and only
+  // when there's a decimal point — otherwise the optional '.' in the pattern
+  // eats an integer's real trailing zeros (100 -> "1", 1000 -> "1,").
+  if (!fixedDecimals) {
+    formatted = formatted.includes('.') ? formatted.replace(/\.?0+$/, '') : formatted;
+  }
 
   // Apply negative format
   if (value < 0) {
@@ -139,12 +144,15 @@ export function formatAccounting(value: number, format: CellFormat): string {
  * Format percentage values
  */
 export function formatPercentage(value: number, format: CellFormat): string {
+  const fixedDecimals = format.decimalPlaces !== undefined;
   const decimalPlaces = format.decimalPlaces ?? 2;
   const percentValue = value * 100; // Assume value is stored as decimal (0.5 = 50%)
 
   let formatted = percentValue.toFixed(decimalPlaces);
-  // Trailing zeros only after a decimal point (see formatPlainNumber).
-  formatted = formatted.includes('.') ? formatted.replace(/\.?0+$/, '') : formatted;
+  // Auto-trim trailing zeros only when no fixed decimalPlaces (see formatPlainNumber).
+  if (!fixedDecimals) {
+    formatted = formatted.includes('.') ? formatted.replace(/\.?0+$/, '') : formatted;
+  }
 
   return `${formatted}%`;
 }
@@ -325,6 +333,27 @@ export function excelDateToJS(serial: number): Date {
   const utcDays = Math.floor(serial - 25569);
   const utcValue = utcDays * 86400 * 1000;
   return new Date(utcValue);
+}
+
+const EXCEL_EPOCH_UTC = Date.UTC(1899, 11, 30); // serial 0, matching excelDateToJS
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Inverse of excelDateToJS for a `YYYY-MM-DD` string. Works in UTC (like
+ * excelDateToJS), so the round trip is timezone-independent — a local-time
+ * inverse drifts by a day in negative-UTC zones.
+ */
+export function dateStringToExcelSerial(dateStr: string): number {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  return Math.round((Date.UTC(y, mo - 1, d) - EXCEL_EPOCH_UTC) / DAY_MS);
+}
+
+/** Inverse of excelDateToJS for a `YYYY-MM-DDTHH:MM` string (UTC). */
+export function dateTimeStringToExcelSerial(dateTimeStr: string): number {
+  const [datePart, timePart = '00:00'] = dateTimeStr.split('T');
+  const [y, mo, d] = datePart.split('-').map(Number);
+  const [hh, mm] = timePart.split(':').map(Number);
+  return (Date.UTC(y, mo - 1, d, hh, mm) - EXCEL_EPOCH_UTC) / DAY_MS;
 }
 
 /**

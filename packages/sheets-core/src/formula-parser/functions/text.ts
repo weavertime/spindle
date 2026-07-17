@@ -49,7 +49,12 @@ function formatMagnitude(num: number, format: string): string {
   const grouped = /[#0],[#0]/.test(format);
   const currency = format.trimStart().startsWith('$') ? '$' : '';
 
-  const [rawInt, fracPart] = working.toFixed(decimals).split('.');
+  let [rawInt] = working.toFixed(decimals).split('.');
+  const fracPart = working.toFixed(decimals).split('.')[1];
+  // Left-pad the integer part to the count of '0' placeholders before the
+  // decimal point, so "00000" formats 5 as "00005" (zip/fixed-width IDs).
+  const minIntDigits = (format.split('.')[0].match(/0/g) ?? []).length;
+  if (rawInt.length < minIntDigits) rawInt = rawInt.padStart(minIntDigits, '0');
   const intPart = grouped ? rawInt.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : rawInt;
   let result = currency + intPart + (fracPart ? '.' + fracPart : '');
   if (isPercent) result += '%';
