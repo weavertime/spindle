@@ -55,6 +55,24 @@ describe('resizeFrame — anchor invariance', () => {
     expect(next.w / next.h).toBeCloseTo(2, 5);
   });
 
+  it('does not produce NaN when aspect-locking a zero-dimension frame', () => {
+    // A degenerate frame (zero height/width) would make ratio/scale Infinity or
+    // NaN under lockAspect; the result must stay finite and clamped.
+    for (const frame of [
+      { x: 0, y: 0, w: 100, h: 0, rotation: 0 },
+      { x: 0, y: 0, w: 0, h: 100, rotation: 0 },
+      { x: 0, y: 0, w: 0, h: 0, rotation: 0 },
+    ] as Frame[]) {
+      const next = resizeFrame(frame, 'se', { x: 300, y: 300 }, { lockAspect: true });
+      expect(Number.isFinite(next.w)).toBe(true);
+      expect(Number.isFinite(next.h)).toBe(true);
+      expect(Number.isFinite(next.x)).toBe(true);
+      expect(Number.isFinite(next.y)).toBe(true);
+      expect(next.w).toBeGreaterThanOrEqual(MIN_SIZE);
+      expect(next.h).toBeGreaterThanOrEqual(MIN_SIZE);
+    }
+  });
+
   it('edge handle changes only one dimension', () => {
     const frame: Frame = { x: 0, y: 0, w: 100, h: 100, rotation: 0 };
     const next = resizeFrame(frame, 'e', { x: 260, y: 999 });

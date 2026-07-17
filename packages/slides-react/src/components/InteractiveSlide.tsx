@@ -5,7 +5,7 @@
 // only re-renders on the commit at pointerup.
 
 import React, { useEffect, useRef } from 'react';
-import { anchorPoint, connectorBox, resolveEndpoints, type AnchorId, type DeckImpl, type Frame, type NewElementSpec, type ResizeHandle, type TableElement, type Point } from '@weavertime/spindle-slides-core';
+import { anchorPoint, connectorBox, resolveEndpoints, toLocal, type AnchorId, type DeckImpl, type Frame, type NewElementSpec, type ResizeHandle, type TableElement, type Point } from '@weavertime/spindle-slides-core';
 import { useDeck } from '../hooks';
 import { useDeckContext } from '../context/DeckContext';
 import { SlideView } from './SlideView';
@@ -49,18 +49,22 @@ const ANCHOR_GRAB = 16; // slide px: snap radius + hover margin for connection d
 
 /** Map a slide-space point to the [row, col] of the table cell under it,
  *  clamped to the grid (points left/above/right/below snap to the edge cells).
+ *  The point is first mapped into the table's un-rotated local space so the
+ *  hit-test is correct for a rotated table (`local` has origin at the box's
+ *  top-left, ranging 0..w × 0..h).
  *  `rowTops` are the *measured* content-driven row edges (rows+1 fractions of
  *  box height); rows are rendered at those heights, not the legacy even
  *  rowFractions, so the row hit-test must use them when available. */
 function cellAtPoint(t: TableElement, p: Point, rowTops?: number[]): [number, number] {
-  let c = t.cols - 1, ax = t.x;
-  for (let i = 0; i < t.cols; i++) { const cw = t.colFractions[i] * t.w; if (p.x < ax + cw) { c = i; break; } ax += cw; }
+  const local = toLocal(p, frameOf(t));
+  let c = t.cols - 1, ax = 0;
+  for (let i = 0; i < t.cols; i++) { const cw = t.colFractions[i] * t.w; if (local.x < ax + cw) { c = i; break; } ax += cw; }
   let r = t.rows - 1;
   if (rowTops && rowTops.length === t.rows + 1) {
-    for (let i = 0; i < t.rows; i++) { if (p.y < t.y + rowTops[i + 1] * t.h) { r = i; break; } }
+    for (let i = 0; i < t.rows; i++) { if (local.y < rowTops[i + 1] * t.h) { r = i; break; } }
   } else {
-    let ay = t.y;
-    for (let i = 0; i < t.rows; i++) { const rh = t.rowFractions[i] * t.h; if (p.y < ay + rh) { r = i; break; } ay += rh; }
+    let ay = 0;
+    for (let i = 0; i < t.rows; i++) { const rh = t.rowFractions[i] * t.h; if (local.y < ay + rh) { r = i; break; } ay += rh; }
   }
   return [r, c];
 }

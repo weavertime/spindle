@@ -1,4 +1,4 @@
-import { normalizeGrid, parseTsv, clipboardToGrid } from './table-paste';
+import { normalizeGrid, parseTsv, clipboardToGrid, MAX_PASTE_ROWS, MAX_PASTE_COLS } from './table-paste';
 
 describe('normalizeGrid', () => {
   it('pads ragged rows to a rectangle', () => {
@@ -10,6 +10,14 @@ describe('normalizeGrid', () => {
   });
   it('keeps a single row that has multiple cells', () => {
     expect(normalizeGrid([['a', 'b', 'c']])).toEqual([['a', 'b', 'c']]);
+  });
+  it('caps a pathologically large paste to bound allocation', () => {
+    const huge = Array.from({ length: MAX_PASTE_ROWS + 500 }, () =>
+      Array.from({ length: MAX_PASTE_COLS + 200 }, () => 'x')
+    );
+    const grid = normalizeGrid(huge)!;
+    expect(grid.length).toBe(MAX_PASTE_ROWS);
+    expect(grid[0].length).toBe(MAX_PASTE_COLS);
   });
 });
 
