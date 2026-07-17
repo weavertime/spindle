@@ -9,6 +9,9 @@ import { useDeck } from './index';
 
 // Module-scoped so copy in one place and paste in another share it.
 let buffer: NewElementSpec[] = [];
+// Parallel to `buffer`: each spec's source group id (undefined if ungrouped), so
+// paste can re-group the copies that belonged together into a fresh group.
+let bufferGroups: (string | undefined)[] = [];
 let pasteCount = 0;
 
 function toSpec(el: SlideElement): NewElementSpec {
@@ -33,6 +36,7 @@ export function copyElements(deck: DeckImpl): void {
   const els = ids.map((id) => deck.getElement(id)).filter((e): e is SlideElement => !!e);
   if (els.length === 0) return;
   buffer = els.map(toSpec);
+  bufferGroups = els.map((el) => el.groupId);
   pasteCount = 0;
   try {
     void navigator.clipboard?.writeText('application/x-spindle-slides');
@@ -52,7 +56,8 @@ export function pasteElements(deck: DeckImpl): void {
   pasteCount += 1;
   const offset = 16 * pasteCount;
   const newIds: string[] = [];
-  for (const spec of buffer) {
+  const groupToNewIds = new Map<string, string[]>();
+  buffer.forEach((spec, i) => {
     const base = spec as unknown as { x?: number; y?: number };
     const el = deck.addElement(slideId, {
       ...spec,
@@ -60,6 +65,16 @@ export function pasteElements(deck: DeckImpl): void {
       y: (base.y ?? 0) + offset,
     } as NewElementSpec);
     newIds.push(el.id);
+    const g = bufferGroups[i];
+    if (g) {
+      const arr = groupToNewIds.get(g) ?? [];
+      arr.push(el.id);
+      groupToNewIds.set(g, arr);
+    }
+  });
+  // Re-form each source group among the pasted copies (fresh group ids).
+  for (const ids of groupToNewIds.values()) {
+    if (ids.length > 1) deck.groupElements(ids);
   }
   deck.setSelection({ slideId, elementIds: newIds });
 }
