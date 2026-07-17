@@ -17,6 +17,7 @@ import { Measure, hasLineData } from './measurer';
 import { DocumentLayout, PageConfig, findPageAtY, getPageY } from './true-layout-engine';
 import { createBlockPositionMap } from './pm-to-blocks';
 import { Node as PmNode } from 'prosemirror-model';
+import { constrainSelectionToIsolatingBlock } from './selection-constraint';
 
 // ============================================================================
 // Debug Logging
@@ -334,7 +335,10 @@ export class InputBridge {
    */
   private handleBeforeInput(e: InputEvent): void {
     if (!this.hiddenEditor) return;
-    
+    // Ignore synthetic events — this handler is on the window, so a re-dispatched
+    // bubbling event would re-enter here and recurse until the stack overflows.
+    if (!e.isTrusted) return;
+
     // Only handle events from our hidden editor
     const target = e.target as HTMLElement | null;
     if (!target || !this.hiddenEditor.dom.contains(target)) {
@@ -412,19 +416,14 @@ export class InputBridge {
         }
         break;
         
-      default: {
-        // For other input types, try forwarding as synthetic event
-        const synthetic = new InputEvent('beforeinput', {
-          data: e.data,
-          inputType: e.inputType,
-          dataTransfer: e.dataTransfer,
-          isComposing: false,
-          bubbles: true,
-          cancelable: true,
-        });
-        view.dom.dispatchEvent(synthetic);
+      default:
+        // Unknown/exotic input types (e.g. insertTranspose from Ctrl+T,
+        // insertFromYank from Ctrl+Y, formatBold from an OS menu): we've already
+        // preventDefault'd, and ProseMirror's own beforeinput handler is a no-op,
+        // so there is nothing to forward. Re-dispatching a synthetic bubbling
+        // event here re-entered this window listener and recursed to a
+        // stack-overflow crash — just ignore the input.
         break;
-      }
     }
   }
   
@@ -1705,17 +1704,31 @@ export class InputBridge {
   /**
    * Set selection in the hidden editor
    */
+  /**
+   * Keep a selection from crossing an isolating boundary (a table or table cell).
+   * A raw TextSelection with one endpoint inside a cell and the other outside —
+   * or in a different cell — deletes/merges rows and cells on the next edit
+   * (there's no prosemirror-tables CellSelection installed). Clamp the head
+   * (`to`) into the anchor's (`anchor`) isolating node, or out of the head's, so
+   * both endpoints share the same cell/block context.
+   */
+  private constrainSelectionEnd(doc: PmNode, anchor: number, to: number): number {
+    return constrainSelectionToIsolatingBlock(doc, anchor, to);
+  }
+
   private setSelection(from: number, to: number): void {
     if (!this.hiddenEditor) return;
-    
+
     try {
       const { state } = this.hiddenEditor;
       const docSize = state.doc.content.size;
-      
-      // Clamp positions to valid range
+
+      // Clamp positions to valid range, and constrain the head to the anchor's
+      // isolating context so a cross-cell/table selection can't corrupt on edit.
       const clampedFrom = Math.max(0, Math.min(from, docSize));
-      const clampedTo = Math.max(0, Math.min(to, docSize));
-      
+      const constrainedTo = this.constrainSelectionEnd(state.doc, clampedFrom, Math.max(0, Math.min(to, docSize)));
+      const clampedTo = Math.max(0, Math.min(constrainedTo, docSize));
+
       // Create and dispatch selection
       const selection = TextSelection.create(
         state.doc,
@@ -1744,11 +1757,13 @@ export class InputBridge {
     try {
       const { state } = this.hiddenEditor;
       const docSize = state.doc.content.size;
-      
-      // Clamp positions to valid range
+
+      // Clamp to valid range, and constrain the head to the anchor's isolating
+      // context (prevents a cross-cell/table drag from corrupting on edit).
       const clampedFrom = Math.max(0, Math.min(from, docSize));
-      const clampedTo = Math.max(0, Math.min(to, docSize));
-      
+      const constrainedTo = this.constrainSelectionEnd(state.doc, clampedFrom, Math.max(0, Math.min(to, docSize)));
+      const clampedTo = Math.max(0, Math.min(constrainedTo, docSize));
+
       // Skip if selection hasn't changed
       if (state.selection.from === Math.min(clampedFrom, clampedTo) &&
           state.selection.to === Math.max(clampedFrom, clampedTo)) {
