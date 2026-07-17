@@ -51,6 +51,24 @@ export class FormatPool {
     this.formats = formats;
   }
 
+  /**
+   * Load an entire serialized format pool at once (see StylePool.load — setting
+   * entries one at a time collapses the pool to a single entry).
+   */
+  load(entries: Record<string, CellFormat>): void {
+    this.formats = new Map();
+    this.formatToId = new Map();
+    let maxId = 0;
+    for (const [id, format] of Object.entries(entries)) {
+      if (id === '__proto__' || id === 'constructor' || id === 'prototype') continue;
+      this.formats.set(id, format);
+      this.formatToId.set(this.getFormatKey(format), id);
+      const n = parseInt(id.split('_')[1] || '0', 10);
+      if (Number.isFinite(n) && n > maxId) maxId = n;
+    }
+    this.nextId = maxId + 1;
+  }
+
   getNextId(): number {
     return this.nextId;
   }

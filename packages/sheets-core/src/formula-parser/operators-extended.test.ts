@@ -102,7 +102,9 @@ describe('formatNumber does not corrupt integers at 0 decimals', () => {
     expect(formatNumber(250, dp0)).toBe('250');
     expect(formatNumber(1000, dp0)).toBe('1,000');
   });
-  it('still trims trailing zeros after a real decimal point', () => {
-    expect(formatNumber(1.5, { type: 'number', decimalPlaces: 2 })).toBe('1.5');
+  it('honors an explicit decimalPlaces as a FIXED count (Excel semantics)', () => {
+    // "Number, 2 decimals" shows 1.50, not 1.5 — decimalPlaces is fixed, not a max.
+    expect(formatNumber(1.5, { type: 'number', decimalPlaces: 2 })).toBe('1.50');
+    expect(formatNumber(1.234, { type: 'number', decimalPlaces: 2 })).toBe('1.23');
   });
 });

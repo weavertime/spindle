@@ -551,7 +551,11 @@ export class WorkbookImpl implements Workbook {
     } catch (error) {
       this.evaluatingCells.delete(cellKey);
       this.releaseSpill(sheetId, row, col);
-      const errorMsg = error instanceof Error ? error.message : '#ERROR!';
+      const raw = error instanceof Error ? error.message : '';
+      // Only surface a spreadsheet error token (starts with '#'). A raw JS
+      // exception message (e.g. "Invalid string length" from REPT) would
+      // otherwise be stored as the cell value; normalize it to #VALUE!.
+      const errorMsg = raw.startsWith('#') ? raw : '#VALUE!';
       this.formulaGraph.markClean(cellKey, errorMsg as CellValue);
       this.setCell(sheetId, row, col, { value: errorMsg as CellValue });
       return errorMsg;
@@ -1186,30 +1190,14 @@ export class WorkbookImpl implements Workbook {
       this.selection = { ...data.selection };
     }
 
-    // Restore style pool
-    for (const [styleId, style] of Object.entries(data.stylePool)) {
-      // We need to manually set the style since we cleared the pool
-      (this.stylePool as StylePool).setStyles(new Map([[styleId, style]]));
-      (this.stylePool as StylePool).setStyleToId(new Map([[this.stylePool.getStyleKey(style), styleId]]));
-      // Update nextId to avoid conflicts
-      const idNum = parseInt(styleId.split('_')[1] || '0');
-      if (idNum >= (this.stylePool as StylePool).getNextId()) {
-        (this.stylePool as StylePool).setNextId(idNum + 1);
-      }
-    }
+    // Restore the whole style pool in one pass. (Setting entries one at a time
+    // via setStyles replaces the entire map each call, collapsing the pool to a
+    // single style and leaving every other cell's styleId unresolved.)
+    (this.stylePool as StylePool).load(data.stylePool);
 
     // Restore format pool (if present - for backward compatibility)
     if (data.formatPool) {
-      for (const [formatId, format] of Object.entries(data.formatPool)) {
-        // We need to manually set the format since we cleared the pool
-        (this.formatPool as FormatPool).setFormats(new Map([[formatId, format]]));
-        (this.formatPool as FormatPool).setFormatToId(new Map([[this.formatPool.getFormatKey(format), formatId]]));
-        // Update nextId to avoid conflicts
-        const idNum = parseInt(formatId.split('_')[1] || '0');
-        if (idNum >= (this.formatPool as FormatPool).getNextId()) {
-          (this.formatPool as FormatPool).setNextId(idNum + 1);
-        }
-      }
+      (this.formatPool as FormatPool).load(data.formatPool);
     }
 
     // Restore sheets. Accept two wire formats:
@@ -1663,21 +1651,24 @@ export class WorkbookImpl implements Workbook {
    * sheets) and addSheet (for new ones).
    */
   private attachStructureListenerIfNeeded(sheet: SheetImpl): void {
-    sheet.__setStructureChangeListener(() => this.onStructureChange(sheet.id));
+    sheet.__setStructureChangeListener((affectsFormulas) =>
+      this.onStructureChange(sheet.id, affectsFormulas),
+    );
   }
 
   /**
-   * React to a structural edit (insert/delete row or column) on a sheet. Such an
-   * edit shifts what formulas reference, so every formula must recompute — the
-   * stable-AST refs are rebased correctly, but nothing recomputes the cached
-   * values otherwise, leaving stale totals until an unrelated edit. Also mirror
-   * the structure to collab when attached. Both are skipped while applying a
-   * remote change (the remote already carries recomputed values, and mirroring
-   * would echo it back).
+   * React to a structural edit on a sheet. Insert/delete row/col shift what
+   * formulas reference (`affectsFormulas`), so every formula must recompute — the
+   * stable-AST refs rebase correctly but nothing recomputes the cached values
+   * otherwise, leaving stale totals. Cosmetic changes (column width, row height,
+   * hide, freeze) pass `affectsFormulas: false` and must NOT recalc — otherwise a
+   * resize drag recomputes the whole workbook on every mousemove. Always mirror
+   * the structure to collab when attached. All skipped during a remote apply (the
+   * remote already carries recomputed values, and mirroring would echo it back).
    */
-  private onStructureChange(sheetId: string): void {
+  private onStructureChange(sheetId: string, affectsFormulas: boolean): void {
     if (this.isApplyingRemoteChange) return;
-    this.recalculateAllFormulas();
+    if (affectsFormulas) this.recalculateAllFormulas();
     if (this.collabHandle) {
       this.mirrorSheetStructure(sheetId);
     }

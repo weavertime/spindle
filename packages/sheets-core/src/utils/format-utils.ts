@@ -41,6 +41,9 @@ export function formatNumber(value: number, format: CellFormat): string {
  * Format plain numbers with decimal places and thousands separator
  */
 export function formatPlainNumber(value: number, format: CellFormat): string {
+  // An explicit decimalPlaces is a FIXED count (Excel "Number, 2 decimals"
+  // shows 1.50); only when it's unset do we auto-trim trailing zeros.
+  const fixedDecimals = format.decimalPlaces !== undefined;
   const decimalPlaces = format.decimalPlaces ?? 2;
   const useThousands = format.useThousandsSeparator ?? true;
 
@@ -53,10 +56,12 @@ export function formatPlainNumber(value: number, format: CellFormat): string {
     formatted = parts.join('.');
   }
 
-  // Remove trailing zeros, but only when there's a decimal point — otherwise
-  // the optional '.' in the pattern eats an integer's real trailing zeros
-  // (100 -> "1", 1000 -> "1,").
-  formatted = formatted.includes('.') ? formatted.replace(/\.?0+$/, '') : formatted;
+  // Trim trailing zeros only in auto mode (no fixed decimalPlaces), and only
+  // when there's a decimal point — otherwise the optional '.' in the pattern
+  // eats an integer's real trailing zeros (100 -> "1", 1000 -> "1,").
+  if (!fixedDecimals) {
+    formatted = formatted.includes('.') ? formatted.replace(/\.?0+$/, '') : formatted;
+  }
 
   // Apply negative format
   if (value < 0) {
@@ -139,12 +144,15 @@ export function formatAccounting(value: number, format: CellFormat): string {
  * Format percentage values
  */
 export function formatPercentage(value: number, format: CellFormat): string {
+  const fixedDecimals = format.decimalPlaces !== undefined;
   const decimalPlaces = format.decimalPlaces ?? 2;
   const percentValue = value * 100; // Assume value is stored as decimal (0.5 = 50%)
 
   let formatted = percentValue.toFixed(decimalPlaces);
-  // Trailing zeros only after a decimal point (see formatPlainNumber).
-  formatted = formatted.includes('.') ? formatted.replace(/\.?0+$/, '') : formatted;
+  // Auto-trim trailing zeros only when no fixed decimalPlaces (see formatPlainNumber).
+  if (!fixedDecimals) {
+    formatted = formatted.includes('.') ? formatted.replace(/\.?0+$/, '') : formatted;
+  }
 
   return `${formatted}%`;
 }

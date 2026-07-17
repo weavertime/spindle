@@ -66,6 +66,16 @@ export function toNum(v: unknown): number {
   throw new Error('#VALUE!');
 }
 
+/**
+ * Coerce for SUM-style aggregation over a range: an error value propagates
+ * (throws), while text and blanks count as 0 (Excel SUMPRODUCT/SUMIF semantics).
+ */
+export function toSumNum(v: unknown): number {
+  if (typeof v === 'string' && isErrorValue(v)) throw new Error(v);
+  const n = Number(v);
+  return isNaN(n) ? 0 : n;
+}
+
 /** Coerce a value to text. Booleans render as TRUE/FALSE; blank as ''. */
 export function toText(v: unknown): string {
   if (v == null) return '';
@@ -80,6 +90,7 @@ export function toBoolean(v: unknown): boolean {
   if (typeof v === 'number') return v !== 0;
   if (v == null || v === '') return false;
   if (typeof v === 'string') {
+    if (isErrorValue(v)) throw new Error(v); // AND/OR/… propagate an error input
     const s = v.trim().toUpperCase();
     if (s === 'TRUE') return true;
     if (s === 'FALSE') return false;
@@ -100,6 +111,10 @@ export function strictNumbers(args: unknown[]): number[] {
     if (typeof v === 'number') {
       if (!isNaN(v)) out.push(v);
     } else if (typeof v === 'string') {
+      // An error value anywhere in the input propagates (Excel: SUM/AVERAGE/
+      // MAX/MIN/PRODUCT/MEDIAN/… over a range containing #DIV/0! return the
+      // error, not a number computed from the rest).
+      if (isErrorValue(v)) throw new Error(v);
       const t = v.trim();
       if (t !== '' && !isNaN(Number(t))) out.push(Number(t));
     }
