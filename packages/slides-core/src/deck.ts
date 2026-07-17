@@ -685,7 +685,9 @@ export class DeckImpl {
     this.tableOp(id, (t) => {
       let cur = t;
       for (let r = to; r >= from; r--) cur = { ...cur, ...removeRow(cur, r) } as TableElement;
-      return { rows: cur.rows, rowFractions: cur.rowFractions, cells: cur.cells };
+      // Include rowHeights — removeRow updates it, and dropping it here leaves a
+      // stale, index-misaligned array (wrong per-row min heights render).
+      return { rows: cur.rows, rowFractions: cur.rowFractions, cells: cur.cells, rowHeights: cur.rowHeights };
     });
   }
   removeTableColumns(id: string, from: number, to: number): void {
