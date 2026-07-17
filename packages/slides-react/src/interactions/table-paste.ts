@@ -4,12 +4,19 @@
 // (richest — handles multi-line and empty cells) plus a tab-separated plain
 // text fallback; we prefer the HTML and fall back to TSV.
 
+// A pasted grid becomes a rows×cols table of live cells, so an adversarial (or
+// accidental) huge paste would allocate an unbounded grid and freeze the editor.
+// Cap generously — far beyond any real slide table — and truncate to the cap.
+export const MAX_PASTE_ROWS = 1000;
+export const MAX_PASTE_COLS = 100;
+
 /** Pad every row to the same width so the grid is rectangular. Returns null if
- *  there's nothing tabular (empty, or a single lone value). */
+ *  there's nothing tabular (empty, or a single lone value). The result is capped
+ *  to MAX_PASTE_ROWS × MAX_PASTE_COLS to bound the allocation. */
 export function normalizeGrid(rows: string[][]): string[][] | null {
-  const cleaned = rows.filter((r) => r.length > 0);
+  const cleaned = rows.filter((r) => r.length > 0).slice(0, MAX_PASTE_ROWS);
   if (!cleaned.length) return null;
-  const cols = Math.max(...cleaned.map((r) => r.length));
+  const cols = Math.min(MAX_PASTE_COLS, Math.max(...cleaned.map((r) => r.length)));
   if (cleaned.length === 1 && cols <= 1) return null; // a single value isn't a table
   return cleaned.map((r) => Array.from({ length: cols }, (_, c) => r[c] ?? ''));
 }

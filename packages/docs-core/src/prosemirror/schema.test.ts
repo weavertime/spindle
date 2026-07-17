@@ -44,6 +44,21 @@ describe('docsSchema toDOM sanitizes untrusted block attrs', () => {
     expect(injected).toBe('text-align: left');
   });
 
+  it('heading: clamps level to a valid h1-h6 tag (no InvalidCharacterError)', () => {
+    const tagOf = (attrs: Record<string, unknown>): string => {
+      const node = docsSchema.nodes.heading.create(attrs);
+      const spec = (docsSchema.nodes.heading.spec.toDOM as (n: typeof node) => unknown)(node);
+      return Array.isArray(spec) ? String(spec[0]) : '';
+    };
+    expect(tagOf({ level: 2 })).toBe('h2');
+    expect(tagOf({ level: 99 })).toBe('h6'); // clamped high
+    expect(tagOf({ level: 0 })).toBe('h1'); // clamped low
+    expect(tagOf({ level: -3 })).toBe('h1');
+    expect(tagOf({ level: 2.9 })).toBe('h2'); // truncated
+    expect(tagOf({ level: 'evil' })).toBe('h1'); // non-numeric → h1, valid tag
+    expect(tagOf({ level: NaN })).toBe('h1');
+  });
+
   it('textStyle: coerces fontSize to a number', () => {
     expect(markStyle('textStyle', { fontSize: 12 })).toContain('font-size: 12pt');
     const injected = markStyle('textStyle', { fontSize: '0pt; background: url(//evil)' });

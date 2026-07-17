@@ -102,8 +102,42 @@ export class WorkbookImpl implements Workbook {
     this.wireCommentListener(sheet);
     this.attachStructureListenerIfNeeded(sheet);
     this.mirrorSheetAdd(id, name, sheet);
+    // A formula that referenced this sheet by name before it existed holds a
+    // deferred (#REF!) ref with only a sentinel dependency. Re-parse those
+    // formulas now that the sheet exists so the ref binds to real ids and a real
+    // dependency — recovering the value AND reactive tracking of the target cell.
+    // Guarded to >1 sheet so the constructor's first addSheet is a no-op.
+    if (this.sheets.size > 1 && !this.isApplyingRemoteChange) {
+      this.rebindFormulasReferencingSheet(name);
+    }
     this.events.emit('sheetAdd', { sheetId: id, name });
     return sheet;
+  }
+
+  /**
+   * Re-parse every formula whose text mentions `sheetName`, re-registering its
+   * dependencies and recomputing. Used when a sheet is (re)created so a formula
+   * that referenced it while it was absent stops being a permanent #REF!.
+   */
+  private rebindFormulasReferencingSheet(sheetName: string): void {
+    const needle = sheetName.toLowerCase();
+    // Collect first — setFormula mutates cells, so don't re-parse mid-iteration.
+    const targets: Array<{ sheetId: string; row: number; col: number; formula: string }> = [];
+    for (const [sheetId, sheet] of this.sheets.entries()) {
+      for (const [row, col, cell] of sheet.entries()) {
+        if (cell.formula && cell.formula.toLowerCase().includes(needle)) {
+          targets.push({ sheetId, row, col, formula: cell.formula });
+        }
+      }
+    }
+    if (targets.length === 0) return;
+    const wasUndoing = this.isUndoing;
+    this.isUndoing = true; // re-binding is not a user edit — don't record history
+    try {
+      for (const t of targets) this.setFormula(t.sheetId, t.row, t.col, t.formula);
+    } finally {
+      this.isUndoing = wasUndoing;
+    }
   }
 
   /**
@@ -709,6 +743,12 @@ export class WorkbookImpl implements Workbook {
    * change (delete/rename) that can invalidate cross-sheet references anywhere.
    */
   private recalculateAllFormulas(): void {
+    // Clear the spill overlay first — it's keyed by absolute row/col, so a
+    // structural edit (insert/delete row/col, sort) that shifts or removes a
+    // spill anchor would otherwise leave orphaned coverage (ghost `isSpilled`
+    // cells) and make a re-spill collide with its own stale footprint (`#SPILL!`).
+    // Re-evaluating every formula below rebuilds it fresh, as setData does.
+    this.spillIndexes.clear();
     // Invalidate every cached formula value first. evaluateFormula pulls its
     // dependencies through getCellCalculatedValue, which returns a node's cached
     // value while it is clean — so without this, a formula evaluated before a
@@ -1494,6 +1534,11 @@ export class WorkbookImpl implements Workbook {
         }
 
         SortManager.sortRows(sheet, sortOrder);
+        // Sorting reorders the data rows, so any formula that references into the
+        // sorted range must recompute (SortManager fires notifyStructureChange
+        // with affectsFormulas=false — cosmetic-vs-reindex is ambiguous for a
+        // permute, so recalc here explicitly, matching delete/rename-sheet).
+        if (!this.isApplyingRemoteChange) this.recalculateAllFormulas();
       }
     }
   }

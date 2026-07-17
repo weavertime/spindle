@@ -249,12 +249,34 @@ export const CanvasGrid = memo(function CanvasGrid({
       }
     }
     
+    // Build hidden rows/cols sets and freeze config up front — the visible-range
+    // calculation must account for them, or the loaded window will not match the
+    // rendered one (leaving visible cells blank).
+    const hiddenRows = new Set<number>();
+    const hiddenCols = new Set<number>();
+    for (let r = 0; r < sheet.rowCount; r++) {
+      if (sheet.isRowHidden(r)) {
+        hiddenRows.add(r);
+      }
+    }
+    for (let c = 0; c < sheet.colCount; c++) {
+      if (sheet.isColHidden(c)) {
+        hiddenCols.add(c);
+      }
+    }
+    const frozenRows = sheet.getFrozenRows();
+    const frozenCols = sheet.getFrozenCols();
+
     // Calculate visible range BEFORE getting viewport for cell loading
     renderer.calculateVisibleRangeForDimensions(
       sheet.rowCount,
       sheet.colCount,
       rowHeights,
-      colWidths
+      colWidths,
+      hiddenRows,
+      hiddenCols,
+      frozenRows,
+      frozenCols
     );
     
     // Get visible range for optimization
@@ -281,24 +303,6 @@ export const CanvasGrid = memo(function CanvasGrid({
         }
       }
     }
-    
-    // Build hidden rows/cols sets
-    const hiddenRows = new Set<number>();
-    const hiddenCols = new Set<number>();
-    for (let r = 0; r < sheet.rowCount; r++) {
-      if (sheet.isRowHidden(r)) {
-        hiddenRows.add(r);
-      }
-    }
-    for (let c = 0; c < sheet.colCount; c++) {
-      if (sheet.isColHidden(c)) {
-        hiddenCols.add(c);
-      }
-    }
-    
-    // Get freeze configuration from sheet
-    const frozenRows = sheet.getFrozenRows();
-    const frozenCols = sheet.getFrozenCols();
     
     // Also load frozen cells if not already in visible range
     if (frozenRows > 0 || frozenCols > 0) {

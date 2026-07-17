@@ -2,6 +2,19 @@
 import type { CellFormat, FormatType } from '../types';
 
 /**
+ * Clamp a format's decimalPlaces to the range JS number formatters accept
+ * (toFixed / toExponential / Intl throw a RangeError outside 0–100). A loaded
+ * workbook or a collaborator's format pool can carry an out-of-range value with
+ * no schema enforcement; without this, one bad format throws in the uncaught
+ * canvas paint loop and the whole grid fails to render for every viewer.
+ */
+function safeDecimals(decimalPlaces: number | undefined, fallback = 2): number {
+  const n = typeof decimalPlaces === 'number' ? Math.trunc(decimalPlaces) : fallback;
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(100, Math.max(0, n));
+}
+
+/**
  * Main number formatter that delegates to specific format handlers
  */
 export function formatNumber(value: number, format: CellFormat): string {
@@ -44,7 +57,7 @@ export function formatPlainNumber(value: number, format: CellFormat): string {
   // An explicit decimalPlaces is a FIXED count (Excel "Number, 2 decimals"
   // shows 1.50); only when it's unset do we auto-trim trailing zeros.
   const fixedDecimals = format.decimalPlaces !== undefined;
-  const decimalPlaces = format.decimalPlaces ?? 2;
+  const decimalPlaces = safeDecimals(format.decimalPlaces);
   const useThousands = format.useThousandsSeparator ?? true;
 
   let formatted = value.toFixed(decimalPlaces);
@@ -83,7 +96,7 @@ export function formatPlainNumber(value: number, format: CellFormat): string {
  */
 export function formatCurrency(value: number, format: CellFormat): string {
   const currency = format.currencyCode || 'USD';
-  const decimalPlaces = format.decimalPlaces ?? 2;
+  const decimalPlaces = safeDecimals(format.decimalPlaces);
   const position = format.currencySymbolPosition || 'prefix';
 
   try {
@@ -145,7 +158,7 @@ export function formatAccounting(value: number, format: CellFormat): string {
  */
 export function formatPercentage(value: number, format: CellFormat): string {
   const fixedDecimals = format.decimalPlaces !== undefined;
-  const decimalPlaces = format.decimalPlaces ?? 2;
+  const decimalPlaces = safeDecimals(format.decimalPlaces);
   const percentValue = value * 100; // Assume value is stored as decimal (0.5 = 50%)
 
   let formatted = percentValue.toFixed(decimalPlaces);
@@ -161,7 +174,7 @@ export function formatPercentage(value: number, format: CellFormat): string {
  * Format scientific notation
  */
 export function formatScientific(value: number, format: CellFormat): string {
-  const decimalPlaces = format.decimalPlaces ?? 2;
+  const decimalPlaces = safeDecimals(format.decimalPlaces);
   return value.toExponential(decimalPlaces);
 }
 

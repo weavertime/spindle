@@ -67,7 +67,10 @@ export function resizeFrame(
   w = Math.max(minSize, w);
   h = Math.max(minSize, h);
 
-  if (opts.lockAspect && freeX !== 0 && freeY !== 0) {
+  // Aspect-lock needs a non-degenerate starting frame: with a zero width or
+  // height the ratio and scale factor become Infinity/NaN (0 * Infinity = NaN),
+  // which would corrupt the frame. Fall back to the min-clamped free resize.
+  if (opts.lockAspect && freeX !== 0 && freeY !== 0 && frame.w > 0 && frame.h > 0) {
     const ratio = frame.w / frame.h;
     // Grow/shrink uniformly, driven by whichever axis moved more.
     const s = Math.max(w / frame.w, h / frame.h);

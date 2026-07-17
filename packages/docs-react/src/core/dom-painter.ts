@@ -1081,7 +1081,10 @@ export class DomPainter {
     const data = this.blockLookup.get(block.id);
     const pmPos = data?.pmPos;
     
-    const heading = document.createElement(`h${block.level}`);
+    // Clamp to a valid h1-h6 tag — an untrusted level (string / out of range)
+    // would make createElement throw InvalidCharacterError and abort the render.
+    const headingLevel = Math.min(6, Math.max(1, Math.trunc(Number(block.level)) || 1));
+    const heading = document.createElement(`h${headingLevel}`);
     heading.className = 'heading-fragment';
     
     // Get heading styles

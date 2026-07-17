@@ -56,7 +56,11 @@ const nodes: Record<string, NodeSpec> = {
     ],
     toDOM(node): DOMOutputSpec {
       const align = safeCssKeyword(node.attrs.alignment) || 'left';
-      return [`h${node.attrs.level}`, { style: `text-align: ${align}` }, 0];
+      // Clamp to a valid tag number — an untrusted (collab/loaded) level that is
+      // a string or out of 1-6 would make `h${level}` an invalid tag name and
+      // throw InvalidCharacterError in createElement, aborting the render.
+      const lvl = Math.min(6, Math.max(1, Math.trunc(Number(node.attrs.level)) || 1));
+      return [`h${lvl}`, { style: `text-align: ${align}` }, 0];
     },
   },
 
