@@ -21,6 +21,13 @@ export interface StableCellRef {
   rowAbsolute: boolean;
   colAbsolute: boolean;
   sheetName?: string;
+  // A cross-sheet ref whose target sheet did NOT exist when the formula was
+  // entered can't capture that sheet's stable ids. Rather than binding to the
+  // current sheet (which caused a false #CIRCULAR! and never recovered), it
+  // stores its absolute numeric position here (rowId/colId are set to the #REF!
+  // sentinel) and resolves by position once the named sheet appears.
+  unresolvedRow?: number;
+  unresolvedCol?: number;
 }
 
 export interface StableRangeRef {
@@ -100,13 +107,27 @@ function cellRefToStable(
   currentRow: number,
   currentCol: number,
 ): StableCellRef {
-  const sheet = ref.sheetName ? (resolver.getSheet(ref.sheetName) ?? currentSheet) : currentSheet;
   // Parser convention: absolute refs hold absolute positions; relatives hold offsets.
   const absRow = ref.rowAbsolute ? ref.row : currentRow + ref.row;
   const absCol = ref.colAbsolute ? ref.col : currentCol + ref.col;
+  const target = ref.sheetName ? resolver.getSheet(ref.sheetName) : currentSheet;
+  if (!target) {
+    // Named sheet doesn't exist yet — defer. Don't bind to currentSheet (that
+    // collides with the formula's own cell → false #CIRCULAR!, and never
+    // recovers). Keep the position; resolve when the sheet appears.
+    return {
+      rowId: INVALID_REF_ID,
+      colId: INVALID_REF_ID,
+      rowAbsolute: ref.rowAbsolute,
+      colAbsolute: ref.colAbsolute,
+      sheetName: ref.sheetName,
+      unresolvedRow: absRow,
+      unresolvedCol: absCol,
+    };
+  }
   return {
-    rowId: sheet.ensureRowId(absRow),
-    colId: sheet.ensureColId(absCol),
+    rowId: target.ensureRowId(absRow),
+    colId: target.ensureColId(absCol),
     rowAbsolute: ref.rowAbsolute,
     colAbsolute: ref.colAbsolute,
     sheetName: ref.sheetName,
@@ -152,7 +173,31 @@ function cellRefFromStable(
   currentRow: number,
   currentCol: number,
 ): CellReference {
-  const sheet = ref.sheetName ? (resolver.getSheet(ref.sheetName) ?? currentSheet) : currentSheet;
+  // A named sheet that no longer resolves is #REF! — never silently fall back to
+  // the current sheet (that returns neighboring local data / a false circular).
+  let sheet: Sheet;
+  if (ref.sheetName) {
+    const resolved = resolver.getSheet(ref.sheetName);
+    if (!resolved) throw new StableRefDeletedError();
+    sheet = resolved;
+  } else {
+    sheet = currentSheet;
+  }
+
+  // A deferred cross-sheet ref (target sheet absent at entry time) resolves by
+  // its stored absolute position now that the sheet exists.
+  if (ref.unresolvedRow !== undefined && ref.unresolvedCol !== undefined) {
+    const uRow = ref.unresolvedRow;
+    const uCol = ref.unresolvedCol;
+    return {
+      row: ref.rowAbsolute ? uRow : uRow - currentRow,
+      col: ref.colAbsolute ? uCol : uCol - currentCol,
+      rowAbsolute: ref.rowAbsolute,
+      colAbsolute: ref.colAbsolute,
+      sheetName: ref.sheetName,
+    };
+  }
+
   const absRow = sheet.getRowIndex(ref.rowId);
   const absCol = sheet.getColIndex(ref.colId);
   if (absRow === undefined || absCol === undefined) {
@@ -217,9 +262,18 @@ function renderRef(
   resolver: SheetResolver,
   currentSheet: Sheet,
 ): string {
-  const sheet = ref.sheetName ? (resolver.getSheet(ref.sheetName) ?? currentSheet) : currentSheet;
-  const row = sheet.getRowIndex(ref.rowId);
-  const col = sheet.getColIndex(ref.colId);
+  let row: number | undefined;
+  let col: number | undefined;
+  if (ref.unresolvedRow !== undefined && ref.unresolvedCol !== undefined) {
+    // Deferred cross-sheet ref: render from its stored position so the formula
+    // bar keeps showing e.g. Ghost!A1 rather than #REF! while the sheet is absent.
+    row = ref.unresolvedRow;
+    col = ref.unresolvedCol;
+  } else {
+    const sheet = ref.sheetName ? (resolver.getSheet(ref.sheetName) ?? currentSheet) : currentSheet;
+    row = sheet.getRowIndex(ref.rowId);
+    col = sheet.getColIndex(ref.colId);
+  }
   if (row === undefined || col === undefined) return '#REF!';
   const colLabel = columnIndexToLabel(col);
   const cell =

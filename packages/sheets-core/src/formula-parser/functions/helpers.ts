@@ -31,7 +31,9 @@ export interface RefFnContext {
  */
 export type RefFn = (rc: RefFnContext) => unknown;
 
-const ERROR_PATTERN = /^#(DIV\/0!|N\/A|NAME\?|NULL!|NUM!|REF!|VALUE!|ERROR!|SPILL!|CALC!)$/;
+// Includes the engine-internal #CIRCULAR! so it propagates through aggregations
+// and is recognized by ISERROR/IFERROR like any other error token.
+const ERROR_PATTERN = /^#(DIV\/0!|N\/A|NAME\?|NULL!|NUM!|REF!|VALUE!|ERROR!|SPILL!|CALC!|CIRCULAR!)$/;
 
 /** True when a value is one of the standard spreadsheet error strings. */
 export function isErrorValue(v: unknown): boolean {

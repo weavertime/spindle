@@ -7,9 +7,15 @@
 import type { EagerFn, LazyFn } from './helpers';
 import { flatten, toBoolean, isErrorValue, looseEquals } from './helpers';
 
-/** The boolean/numeric values among the args — text and blanks are ignored. */
+/** The boolean/numeric values among the args — text and blanks are ignored,
+ *  but an error value propagates (AND/OR/XOR over a range with #DIV/0! return
+ *  the error, matching Excel and the aggregation functions). */
 function logicalValues(args: unknown[]): boolean[] {
-  return flatten(args)
+  const flat = flatten(args);
+  for (const v of flat) {
+    if (typeof v === 'string' && isErrorValue(v)) throw new Error(v);
+  }
+  return flat
     .filter((v) => typeof v === 'boolean' || typeof v === 'number')
     .map((v) => (typeof v === 'number' ? v !== 0 : (v as boolean)));
 }
